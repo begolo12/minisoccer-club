@@ -18,8 +18,8 @@ export default async function handler(req, res) {
 
   try {
     const { text: query, values } = toPositional(text, params);
-    const rows = await sql.query(query, values);
-    return res.status(200).json({ rows, rowCount: rows.length });
+    const result = await sql(query, values, { fullResults: true });
+    return res.status(200).json({ rows: result.rows, rowCount: result.rowCount });
   } catch (e) {
     return res.status(400).json({ error: e.message });
   }

@@ -20,3 +20,6 @@ android/key.properties
 node_modules/
 .env
 .vercel/
+.vercel
+.env.production
+.env.local
