@@ -109,6 +109,7 @@ class _UsersPageState extends State<UsersPage> {
 
   Future<bool> _form(BuildContext context) async {
     final username = TextEditingController();
+    final password = TextEditingController();
     var role = 'member';
     var saving = false;
 
@@ -117,6 +118,7 @@ class _UsersPageState extends State<UsersPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Tambah pengguna'),
+          description: const Text('Password dipakai untuk login. Bisa diubah kapan saja.'),
           actions: [
             ShadButton.outline(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
@@ -130,9 +132,13 @@ class _UsersPageState extends State<UsersPage> {
                         toast(ctx, 'Username wajib diisi');
                         return;
                       }
+                      if (password.text.length < 6) {
+                        toast(ctx, 'Password minimal 6 karakter');
+                        return;
+                      }
                       setLocal(() => saving = true);
                       try {
-                        await AppUser.insert(username.text, role);
+                        await AppUser.insert(username.text, role, password: password.text);
                         if (ctx.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (ctx.mounted) {
@@ -150,6 +156,13 @@ class _UsersPageState extends State<UsersPage> {
               ShadInput(
                 controller: username,
                 placeholder: const Text('Username'),
+                autocorrect: false,
+              ),
+              const SizedBox(height: 10),
+              ShadInput(
+                controller: password,
+                placeholder: const Text('Password (min. 6 karakter)'),
+                obscureText: true,
               ),
               const SizedBox(height: 10),
               ShadSelect<String>(

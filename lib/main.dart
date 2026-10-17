@@ -83,9 +83,22 @@ class _BootstrapState extends State<Bootstrap> {
         return;
       }
     }
+
+    await Auth.restore();
+
+    // Web tanpa sesi: jangan sentuh DB (butuh token). Langsung ke login.
+    if (!Db.needsUrl && !Auth.signedIn) {
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _signedIn = false;
+        });
+      }
+      return;
+    }
+
     try {
       await Db.query('SELECT 1');
-      await Auth.restore();
       if (mounted) {
         setState(() {
           _ready = true;
@@ -93,6 +106,16 @@ class _BootstrapState extends State<Bootstrap> {
         });
       }
     } catch (e) {
+      if (e is Unauthorized) {
+        await Auth.logout();
+        if (mounted) {
+          setState(() {
+            _ready = true;
+            _signedIn = false;
+          });
+        }
+        return;
+      }
       if (mounted) setState(() => _error = e.toString());
     }
   }

@@ -505,9 +505,17 @@ class AppUser {
     return rows.map(AppUser.fromMap).toList();
   }
 
-  static Future<void> insert(String username, String role) => Db.execute(
-        'INSERT INTO users (username, role) VALUES (@u, @r)',
-        params: {'u': username.trim(), 'r': role},
+  static Future<void> insert(String username, String role, {String? password}) => Db.execute(
+        '''INSERT INTO users (username, role, password_hash)
+           VALUES (@u, @r, CASE WHEN @p::text IS NULL THEN NULL
+                                ELSE crypt(@p, gen_salt('bf', 10)) END)''',
+        params: {'u': username.trim(), 'r': role, 'p': password},
+      );
+
+  /// Atur ulang password (dipakai admin kalau anggota lupa).
+  static Future<void> setPassword(int id, String password) => Db.execute(
+        '''UPDATE users SET password_hash = crypt(@p, gen_salt('bf', 10)) WHERE id=@id''',
+        params: {'id': id, 'p': password},
       );
 
   static Future<void> delete(int id) =>

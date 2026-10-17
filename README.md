@@ -59,22 +59,24 @@ Web tidak bisa buka TCP ke Postgres, jadi lewat Vercel Function `api/sql.js` (Ne
 
 ```bash
 npm install
-cp .env.example .env                 # isi DATABASE_URL + APP_KEY
+cp .env.example .env                 # isi DATABASE_URL + AUTH_SECRET
 set -a && . ./.env && set +a
 npm run db:init                      # buat tabel di Neon (sekali saja)
 
 npx vercel link                      # sekali saja
 npx vercel env add DATABASE_URL production
-npx vercel env add APP_KEY production
+npx vercel env add AUTH_SECRET production   # string acak panjang
 
-flutter build web --release --dart-define=APP_KEY=<kunci-yang-sama>
+flutter build web --release
 npx vercel --prod
 ```
 
 Setelah itu, deploy berikutnya cukup lewat GitHub Actions **Deploy Web** (Run workflow).
-Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `APP_KEY`.
+Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
-> Tanpa `APP_KEY`, endpoint `/api/sql` menerima SQL dari siapa pun. Wajib diisi untuk produksi.
+> **Login.** Semua akses DB lewat `/api/sql` yang butuh token sesi dari `/api/auth`.
+> Password di-hash bcrypt oleh Postgres (`pgcrypto`), bukan disimpan di app.
+> Tanpa `AUTH_SECRET`, endpoint menolak semua request — itu memang disengaja.
 
 ## Struktur
 

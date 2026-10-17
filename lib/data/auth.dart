@@ -38,6 +38,17 @@ class Auth {
 
   /// Apakah belum ada user sama sekali? (perlu buat admin pertama)
   static Future<bool> needsBootstrap() async {
+    if (!Db.needsUrl) {
+      // Web: /api/sql butuh token, jadi tanya endpoint auth.
+      final res = await http.post(
+        Uri.parse(_endpoint),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({'action': 'status'}),
+      );
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode != 200) throw Exception(body['error'] ?? 'Gagal cek status');
+      return body['bootstrap'] == true;
+    }
     final rows = await Db.query('SELECT count(*)::int AS n FROM users');
     return (rows.first['n'] as int) == 0;
   }

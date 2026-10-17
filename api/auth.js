@@ -14,6 +14,16 @@ export default async function handler(req, res) {
   const user = String(username || '').trim();
   const pass = String(password || '');
 
+  // Cek apakah DB masih kosong (belum ada user) — dipakai layar login.
+  if (action === 'status') {
+    try {
+      const [{ n }] = await sql('SELECT count(*)::int AS n FROM users');
+      return res.status(200).json({ bootstrap: n === 0 });
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
+    }
+  }
+
   if (!user || pass.length < 6) {
     return res.status(400).json({ error: 'Username wajib, password minimal 6 karakter' });
   }

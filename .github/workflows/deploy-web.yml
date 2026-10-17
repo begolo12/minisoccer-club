@@ -4,7 +4,7 @@ name: Deploy Web
 #   VERCEL_TOKEN      token dari vercel.com/account/tokens
 #   VERCEL_ORG_ID     dari .vercel/project.json setelah `vercel link`
 #   VERCEL_PROJECT_ID sama seperti di atas
-#   APP_KEY           kunci rahasia untuk /api/sql (harus sama di env Vercel)
+# AUTH_SECRET dan DATABASE_URL diset di env Vercel, tidak di repo.
 # DATABASE_URL tidak di-build ke web — diset di env Vercel saja.
 
 on:
@@ -22,7 +22,7 @@ jobs:
           channel: stable
 
       - run: flutter pub get
-      - run: flutter build web --release --dart-define=APP_KEY=${{ secrets.APP_KEY }}
+      - run: flutter build web --release
 
       - name: Deploy ke Vercel
         run: npx vercel@latest deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
