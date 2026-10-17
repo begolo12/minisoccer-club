@@ -22,7 +22,7 @@ jobs:
           channel: stable
 
       - run: flutter pub get
-      - run: flutter build web --release
+      - run: flutter build web --release --no-web-resources-cdn
 
       - name: Deploy ke Vercel
         run: npx vercel@latest deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
