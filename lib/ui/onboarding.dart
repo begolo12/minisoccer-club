@@ -45,9 +45,13 @@ class _OnboardingState extends State<Onboarding> {
       // Setup schema otomatis (idempotent).
       final sql = await rootBundle.loadString('db/schema.sql');
       for (final stmt in sql.split(';')) {
-        final s = stmt.trim();
-        if (s.isEmpty || s.startsWith('--')) continue;
-        await Db.execute(s);
+        final clean = stmt
+            .split('\n')
+            .where((l) => !l.trimLeft().startsWith('--'))
+            .join('\n')
+            .trim();
+        if (clean.isEmpty) continue;
+        await Db.execute(clean);
       }
       widget.onDone();
     } catch (e) {

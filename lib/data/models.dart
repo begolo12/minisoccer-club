@@ -257,7 +257,7 @@ class Payment {
         id: m['id'] as int,
         memberId: m['member_id'] as int,
         memberName: (m['member_name'] as String?) ?? '',
-        amount: (m['amount'] as num).toDouble(),
+        amount: _num(m['amount']),
         period: m['period'] as String,
         paidAt: _dt(m['paid_at']),
         note: m['note'] as String?,
@@ -295,7 +295,7 @@ class Payment {
       'SELECT coalesce(sum(amount), 0) AS total FROM payments WHERE period = @p',
       params: {'p': period},
     );
-    return (rows.first['total'] as num).toDouble();
+    return _num(rows.first['total']);
   }
 }
 
@@ -323,7 +323,7 @@ class Booking {
         title: m['title'] as String,
         startsAt: _dt(m['starts_at']),
         durationMin: (m['duration_min'] as int?) ?? 90,
-        cost: (m['cost'] as num).toDouble(),
+        cost: _num(m['cost']),
         status: (m['status'] as String?) ?? 'booked',
       );
 
@@ -426,3 +426,11 @@ class ScorerRow {
 
 DateTime _dt(dynamic v) =>
     v is DateTime ? v : DateTime.parse(v.toString()).toLocal();
+
+/// Neon mengembalikan NUMERIC sebagai String (biar presisi).
+double _num(dynamic v) => switch (v) {
+      null => 0,
+      num n => n.toDouble(),
+      String s => double.tryParse(s) ?? 0,
+      _ => 0,
+    };
