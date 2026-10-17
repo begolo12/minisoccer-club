@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo 'web di-build lokal: flutter build web --release'",
+  "outputDirectory": "build/web",
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
+  "functions": { "api/sql.js": { "memory": 512 } }
+}

@@ -12,16 +12,18 @@ CREATE TABLE IF NOT EXISTS members (
   joined_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- User aplikasi + role. pin_hash = sha256(pin + salt).
+-- User aplikasi + role. pin_hash disiapkan untuk login PIN (belum dipakai).
 CREATE TABLE IF NOT EXISTS users (
   id         SERIAL PRIMARY KEY,
   username   TEXT NOT NULL UNIQUE,
-  pin_hash   TEXT NOT NULL,
+  pin_hash   TEXT,
   role       TEXT NOT NULL DEFAULT 'member', -- admin | treasurer | member
   member_id  INT REFERENCES members(id) ON DELETE SET NULL,
   active     BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Untuk DB lama yang kolomnya sudah terlanjur NOT NULL.
+ALTER TABLE users ALTER COLUMN pin_hash DROP NOT NULL;
 
 -- Sesi pertandingan (1 match bisa beberapa sesi / babak; tiap sesi punya pemenang).
 CREATE TABLE IF NOT EXISTS matches (

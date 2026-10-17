@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:postgres/postgres.dart';
 
 /// Driver native (Android/iOS/desktop): koneksi TCP langsung ke Neon.
-/// ponytail: satu koneksi dipakai bersama — cukup untuk klub kecil (<10 user).
-/// Kalau nanti butuh request paralel tinggi, ganti ke Pool.
 const usesProxy = false;
 
+/// ponytail: satu koneksi dipakai bersama — cukup untuk klub kecil (<10 user).
+/// Kalau nanti butuh request paralel tinggi, ganti ke Pool.
 Connection? _conn;
 Completer<Connection>? _connecting;
 

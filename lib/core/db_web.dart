@@ -2,36 +2,31 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Driver web: browser tidak bisa buka TCP ke Postgres, jadi semua query
-/// lewat Vercel Function `api/sql.js` (Neon HTTP driver).
+/// Driver web: browser tidak bisa buka TCP ke Postgres, jadi query dikirim
+/// ke Vercel Function `api/sql.js` (Neon HTTP driver).
 const usesProxy = true;
 
-/// Kosong = same-origin (`/api/sql`) — cocok kalau web di-host di Vercel.
+/// Default same-origin — cocok saat di-host di Vercel.
 const _endpoint = String.fromEnvironment('API_URL', defaultValue: '/api/sql');
 
-/// Harus sama dengan env `APP_KEY` di Vercel. Isi lewat --dart-define saat build.
+/// Harus sama dengan env `APP_KEY` di Vercel (opsional).
 const _appKey = String.fromEnvironment('APP_KEY');
 
-/// Neon HTTP tidak menerima named params, konversinya di server.
-/// Nilai non-JSON (DateTime) diubah ke ISO string.
-Map<String, dynamic> _jsonParams(Map<String, Object?> params) => {
-      for (final e in params.entries)
-        e.key: e.value is DateTime
-            ? (e.value as DateTime).toUtc().toIso8601String()
-            : e.value,
-    };
-
-Future<Map<String, dynamic>> _post(
-  String sql,
-  Map<String, Object?> params,
-) async {
+Future<Map<String, dynamic>> _post(String sql, Map<String, Object?> params) async {
   final res = await http.post(
     Uri.parse(_endpoint),
     headers: {
       'content-type': 'application/json',
       if (_appKey.isNotEmpty) 'x-app-key': _appKey,
     },
-    body: jsonEncode({'sql': sql, 'params': _jsonParams(params)}),
+    // Neon HTTP tidak kenal tipe DateTime; kirim sebagai ISO-8601.
+    body: jsonEncode({
+      'sql': sql,
+      'params': {
+        for (final e in params.entries)
+          e.key: e.value is DateTime ? (e.value as DateTime).toUtc().toIso8601String() : e.value,
+      },
+    }),
   );
   final body = jsonDecode(res.body);
   if (res.statusCode != 200) {
@@ -46,9 +41,7 @@ Future<List<Map<String, dynamic>>> query(
   Map<String, Object?> params = const {},
 }) async {
   final body = await _post(sql, params);
-  return (body['rows'] as List)
-      .map((r) => Map<String, dynamic>.from(r as Map))
-      .toList();
+  return (body['rows'] as List).map((r) => Map<String, dynamic>.from(r as Map)).toList();
 }
 
 Future<int> execute(

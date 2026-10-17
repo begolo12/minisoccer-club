@@ -5,6 +5,7 @@ import 'announcements.dart';
 import 'bookings.dart';
 import 'settings.dart';
 import 'stats.dart';
+import 'users.dart';
 
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
@@ -38,6 +39,12 @@ class MorePage extends StatelessWidget {
               title: 'Statistik',
               subtitle: 'Rekap hasil & top skor',
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsPage())),
+            ),
+            _Tile(
+              icon: Icons.people_outline,
+              title: 'Pengguna',
+              subtitle: 'Akun & role admin/bendahara',
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersPage())),
             ),
             _Tile(
               icon: Icons.settings_outlined,

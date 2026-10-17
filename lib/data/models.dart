@@ -398,6 +398,10 @@ class Announcement {
 
 // ---------- Sessions (per-babak, ada pemenangnya) ----------
 
+/// Pemenang satu sesi dari skor. Dipakai UI, DB, dan test.
+String sessionWinner(int home, int away) =>
+    home > away ? 'home' : (away > home ? 'away' : 'draw');
+
 class MatchSession {
   final int id;
   final int matchId;
@@ -442,7 +446,7 @@ class MatchSession {
     required int home,
     required int away,
   }) async {
-    final winner = home > away ? 'home' : (away > home ? 'away' : 'draw');
+    final winner = sessionWinner(home, away);
     if (id == null) {
       await Db.execute(
         '''INSERT INTO match_sessions (match_id, session_no, score_home, score_away, winner, ended_at)
@@ -510,8 +514,9 @@ class AppUser {
       Db.execute('DELETE FROM users WHERE id=@id', params: {'id': id});
 }
 
-DateTime _dt(dynamic v) =>
-    v is DateTime ? v : DateTime.parse(v.toString()).toLocal();
+// ---------- Top scorers ----------
+
+class ScorerRow {
   final String name;
   final int goals;
   final int assists;

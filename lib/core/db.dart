@@ -4,36 +4,41 @@ import 'config.dart';
 import 'db_io.dart' if (dart.library.js_interop) 'db_web.dart' as driver;
 
 /// Akses DB dari UI. Driver dipilih saat compile:
-/// - Android/desktop → koneksi TCP langsung ke Neon (`db_io.dart`)
+/// - Android/desktop → TCP langsung ke Neon (`db_io.dart`)
 /// - Web → Vercel Function `/api/sql` (`db_web.dart`)
 class Db {
+  static String? _url;
+
+  /// Web tidak perlu URL: kredensial dipegang server.
+  static bool get needsUrl => !driver.usesProxy;
+
   static Future<String> resolveUrl() async {
+    final cached = _url;
+    if (cached != null) return cached;
     final saved = await SecureStore.read('neon_url');
     final url = (saved?.trim().isNotEmpty ?? false) ? saved!.trim() : kNeonUrlPlaceholder;
-    if (url.contains('sslmode=')) return url;
-    return '$url${url.contains('?') ? '&' : '?'}sslmode=require';
+    return _url = url.contains('sslmode=') ? url : '$url${url.contains('?') ? '&' : '?'}sslmode=require';
   }
-
-  /// Web tidak butuh URL DB (server yang pegang kredensial).
-  static bool get needsUrl => !driver.usesProxy;
 
   static Future<List<Map<String, dynamic>>> query(
     String sql, {
     Map<String, Object?> params = const {},
   }) async =>
-      driver.query(sql, url: await resolveUrl(), params: params);
+      driver.query(sql, url: needsUrl ? await resolveUrl() : '', params: params);
 
   static Future<int> execute(
     String sql, {
     Map<String, Object?> params = const {},
   }) async =>
-      driver.execute(sql, url: await resolveUrl(), params: params);
+      driver.execute(sql, url: needsUrl ? await resolveUrl() : '', params: params);
 
-  static Future<void> close() => driver.close();
+  static Future<void> close() async {
+    _url = null;
+    await driver.close();
+  }
 }
 
 /// Wrapper secure storage sederhana biar import-nya di satu tempat.
-/// Web: aman-aman saja, nilainya cuma dipakai untuk preferensi.
 class SecureStore {
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),

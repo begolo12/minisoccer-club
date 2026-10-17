@@ -183,17 +183,23 @@ class MatchDetailPage extends StatefulWidget {
 
 class _MatchDetailPageState extends State<MatchDetailPage> {
   late Future<List<MatchEvent>> _events;
+  late Future<List<MatchSession>> _sessions;
 
   @override
   void initState() {
     super.initState();
     _events = MatchEvent.forMatch(widget.match.id);
+    _sessions = MatchSession.forMatch(widget.match.id);
   }
 
   Future<void> _reload() async {
-    final f = MatchEvent.forMatch(widget.match.id);
-    setState(() => _events = f);
-    await f;
+    final e = MatchEvent.forMatch(widget.match.id);
+    final s = MatchSession.forMatch(widget.match.id);
+    setState(() {
+      _events = e;
+      _sessions = s;
+    });
+    await Future.wait([e, s]);
   }
 
   @override
@@ -251,6 +257,91 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 20),
+          SectionTitle(
+            'Sesi & pemenang',
+            action: ShadButton.ghost(
+              size: ShadButtonSize.sm,
+              onPressed: () async {
+                if (await _sessionForm(context)) _reload();
+              },
+              child: const Row(
+                children: [Icon(Icons.add, size: 14), SizedBox(width: 4), Text('Sesi')],
+              ),
+            ),
+          ),
+          AsyncView<List<MatchSession>>(
+            future: _sessions,
+            onRefresh: _reload,
+            builder: (sessions) {
+              if (sessions.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text('Belum ada sesi. Skor laga = jumlah semua sesi.',
+                        textAlign: TextAlign.center, style: t.textTheme.muted),
+                  ),
+                );
+              }
+              final won = sessions.where((s) => s.winner == 'home').length;
+              final lost = sessions.where((s) => s.winner == 'away').length;
+              final drew = sessions.where((s) => s.winner == 'draw').length;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      ShadBadge.secondary(child: Text('$won menang', style: t.textTheme.small)),
+                      const SizedBox(width: 6),
+                      ShadBadge.secondary(child: Text('$drew seri', style: t.textTheme.small)),
+                      const SizedBox(width: 6),
+                      ShadBadge.secondary(child: Text('$lost kalah', style: t.textTheme.small)),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  for (final s in sessions)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () async {
+                            if (await _sessionForm(context, session: s)) _reload();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: t.colorScheme.card,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: t.colorScheme.border),
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 34,
+                                  child: Text('S${s.sessionNo}',
+                                      style: t.textTheme.small.copyWith(fontWeight: FontWeight.w700)),
+                                ),
+                                Text('${s.scoreHome} — ${s.scoreAway}',
+                                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                                const Spacer(),
+                                ShadBadge.outline(
+                                  child: Text(
+                                    MatchSession.winnerLabels[s.winner] ?? s.winner,
+                                    style: t.textTheme.small,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 20),
           SectionTitle(
@@ -333,6 +424,97 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
         'red' => t.colorScheme.destructive,
         _ => t.colorScheme.mutedForeground,
       };
+
+  Future<bool> _sessionForm(BuildContext context, {MatchSession? session}) async {
+    final existing = await MatchSession.forMatch(widget.match.id);
+    final nextNo = session?.sessionNo ??
+        (existing.isEmpty
+            ? 1
+            : existing.map((s) => s.sessionNo).reduce((a, b) => a > b ? a : b) + 1);
+    final home = TextEditingController(text: '${session?.scoreHome ?? 0}');
+    final away = TextEditingController(text: '${session?.scoreAway ?? 0}');
+    var saving = false;
+
+    final ok = await showShadDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => ShadDialog(
+          title: Text('Sesi $nextNo'),
+          description: Text(session == null
+              ? 'Skor sesi ini. Pemenang dihitung otomatis.'
+              : 'Ubah skor sesi. Pemenang dihitung ulang.'),
+          actions: [
+            if (session != null)
+              ShadButton.destructive(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        setLocal(() => saving = true);
+                        await MatchSession.delete(session.id, widget.match.id);
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      },
+                child: const Text('Hapus'),
+              ),
+            ShadButton.outline(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            ShadButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      setLocal(() => saving = true);
+                      try {
+                        await MatchSession.save(
+                          id: session?.id,
+                          matchId: widget.match.id,
+                          sessionNo: nextNo,
+                          home: int.tryParse(home.text) ?? 0,
+                          away: int.tryParse(away.text) ?? 0,
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setLocal(() => saving = false);
+                          toast(ctx, 'Gagal simpan: $e');
+                        }
+                      }
+                    },
+              child: const Text('Simpan'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: ShadInput(
+                      controller: home,
+                      placeholder: const Text('Skor kita'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('—'),
+                  ),
+                  Expanded(
+                    child: ShadInput(
+                      controller: away,
+                      placeholder: const Text('Skor lawan'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return ok ?? false;
+  }
 
   Future<bool> _addEvent(BuildContext context) async {
     final members = await Member.all();
