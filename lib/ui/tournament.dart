@@ -79,60 +79,57 @@ class _TournamentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     final running = tournament.status == 'running';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: tournament)),
-          ).then((_) => onChanged()),
-          child: Container(
-            padding: const EdgeInsets.all(14),
+    return OilCard(
+      highlight: running,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: tournament)),
+      ).then((_) => onChanged()),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: running ? t.colorScheme.primary.withValues(alpha: 0.5) : t.colorScheme.border,
-              ),
+              color: t.colorScheme.primary.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(10),
             ),
-            child: Row(
+            child: Icon(Icons.emoji_events_outlined, size: 18, color: t.colorScheme.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: t.colorScheme.primary.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.emoji_events_outlined, size: 18, color: t.colorScheme.primary),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(tournament.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text(
+                Text(tournament.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Pill(
+                      Tournament.statusLabels[tournament.status] ?? tournament.status,
+                      color: running ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
                         [
                           fmtDateTime(tournament.startsAt),
                           if (tournament.venue?.isNotEmpty ?? false) tournament.venue!,
-                          Tournament.statusLabels[tournament.status] ?? tournament.status,
                         ].join(' • '),
                         style: t.textTheme.small,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Icon(Icons.chevron_right, size: 18, color: t.colorScheme.mutedForeground),
               ],
             ),
           ),
-        ),
+          Icon(Icons.chevron_right, size: 18, color: t.colorScheme.mutedForeground),
+        ],
       ),
     );
   }
@@ -276,19 +273,14 @@ class _StandingsTable extends StatelessWidget {
     final head = t.textTheme.small.copyWith(fontWeight: FontWeight.w700);
     final cell = t.textTheme.small;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: t.colorScheme.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: t.colorScheme.border),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return OilCard(
+      padding: EdgeInsets.zero,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
           headingRowHeight: 36,
-          dataRowMinHeight: 40,
-          dataRowMaxHeight: 44,
+          dataRowMinHeight: 42,
+          dataRowMaxHeight: 46,
           horizontalMargin: 12,
           columnSpacing: 18,
           headingTextStyle: head,
@@ -307,7 +299,11 @@ class _StandingsTable extends StatelessWidget {
           ],
           rows: [
             for (var i = 0; i < standings.length; i++)
-              DataRow(cells: [
+              DataRow(
+                color: i == 0
+                    ? WidgetStatePropertyAll(t.colorScheme.primary.withValues(alpha: 0.08))
+                    : null,
+                cells: [
                 DataCell(Text('${i + 1}',
                     style: cell.copyWith(
                       fontWeight: FontWeight.w700,
@@ -522,18 +518,11 @@ class _TeamCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
-        decoration: BoxDecoration(
-          color: t.colorScheme.card,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: t.colorScheme.border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    return OilCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             Row(
               children: [
                 Expanded(
@@ -579,7 +568,6 @@ class _TeamCard extends StatelessWidget {
               ),
           ],
         ),
-      ),
     );
   }
 }

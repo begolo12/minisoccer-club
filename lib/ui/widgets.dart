@@ -1,6 +1,172 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import 'theme.dart';
+
+/// Kartu dasar app: permukaan card + garis tipis gradien "oil".
+/// Semua kartu pakai ini supaya radius, border, dan sheen-nya seragam.
+class OilCard extends StatelessWidget {
+  const OilCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(14),
+    this.onTap,
+    this.highlight = false,
+    this.radius = 16,
+    this.background,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final VoidCallback? onTap;
+
+  /// Versi lebih terang: border gradien penuh + sheen. Untuk item terpilih/juara.
+  final bool highlight;
+  final double radius;
+  final Color? background;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final dark = t.brightness == Brightness.dark;
+
+    final body = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: background ?? t.colorScheme.card,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: child,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(radius),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: highlight
+                    ? [
+                        AppThemes.oilA.withValues(alpha: dark ? 0.75 : 0.9),
+                        AppThemes.oilB.withValues(alpha: dark ? 0.55 : 0.7),
+                        AppThemes.oilC.withValues(alpha: dark ? 0.45 : 0.6),
+                      ]
+                    : [
+                        (dark ? Colors.white : Colors.black).withValues(alpha: dark ? 0.10 : 0.07),
+                        t.colorScheme.border,
+                        (dark ? Colors.white : Colors.black).withValues(alpha: dark ? 0.04 : 0.03),
+                      ],
+              ),
+              boxShadow: highlight
+                  ? [
+                      BoxShadow(
+                        color: AppThemes.oilA.withValues(alpha: dark ? 0.18 : 0.14),
+                        blurRadius: 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : null,
+            ),
+            padding: const EdgeInsets.all(1), // tebal garis
+            child: body,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip kecil untuk status/metadata. Lebih ringan dari ShadBadge.
+class Pill extends StatelessWidget {
+  const Pill(this.text, {super.key, this.color, this.icon});
+
+  final String text;
+  final Color? color;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final c = color ?? t.colorScheme.mutedForeground;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: c.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: c),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            text,
+            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c, letterSpacing: 0.2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Placeholder loading berbentuk kartu — hindari layar kosong + spinner.
+class SkeletonList extends StatefulWidget {
+  const SkeletonList({super.key, this.count = 4, this.height = 64});
+
+  final int count;
+  final double height;
+
+  @override
+  State<SkeletonList> createState() => _SkeletonListState();
+}
+
+class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      children: [
+        for (var i = 0; i < widget.count; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: AnimatedBuilder(
+              animation: _c,
+              builder: (_, __) => Container(
+                height: widget.height,
+                decoration: BoxDecoration(
+                  color: t.colorScheme.card.withValues(alpha: 0.55 + 0.35 * _c.value),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: t.colorScheme.border.withValues(alpha: 0.6)),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+
 /// Empty state — selalu kasih aksi biar user nggak bingung.
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -129,13 +295,7 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.colorScheme.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: t.colorScheme.border),
-      ),
+    return OilCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -193,7 +353,7 @@ class AsyncView<T> extends StatelessWidget {
       future: future,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return loading ?? const Center(child: CircularProgressIndicator());
+          return loading ?? const SkeletonList();
         }
         if (snap.hasError) {
           return ErrorState(error: snap.error!, onRetry: () => onRefresh());
@@ -225,35 +385,52 @@ class PageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
+    final dark = t.brightness == Brightness.dark;
     return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title, style: t.textTheme.h3),
-                        if (subtitle != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: Text(subtitle!, style: t.textTheme.small),
-                          ),
-                      ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              dark
+                  ? t.colorScheme.primary.withValues(alpha: 0.06)
+                  : t.colorScheme.primary.withValues(alpha: 0.05),
+              t.colorScheme.background,
+              t.colorScheme.background,
+            ],
+            stops: const [0, 0.28, 1],
+          ),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title, style: t.textTheme.h3),
+                          if (subtitle != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(subtitle!, style: t.textTheme.small),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  ...actions,
-                ],
+                    ...actions,
+                  ],
+                ),
               ),
-            ),
-            Expanded(child: child),
-          ],
+              Expanded(child: child),
+            ],
+          ),
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
+import 'theme.dart';
 import 'tournament.dart';
 import 'widgets.dart';
 
@@ -190,13 +191,7 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ],
             const SizedBox(height: 22),
-            SectionTitle(
-              'Pertandingan terakhir',
-              action: TextButton(
-                onPressed: () {},
-                child: const Text('Lihat di tab Tanding'),
-              ),
-            ),
+            const SectionTitle('Pertandingan terakhir'),
             if (d.recent.isEmpty)
               Text('Belum ada pertandingan.', style: t.textTheme.muted)
             else
@@ -250,69 +245,110 @@ class _NextMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
     final m = match;
     return Container(
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [t.colorScheme.primary, const Color(0xFF15803D)],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF16A34A), Color(0xFF0F7A3D), Color(0xFF0B5E33)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: AppThemes.oilA.withValues(alpha: 0.28),
+            blurRadius: 26,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          Text(
-            m == null ? 'BELUM ADA JADWAL' : 'JADWAL BERIKUTNYA',
-            style: TextStyle(
-              color: t.colorScheme.primaryForeground.withValues(alpha: 0.8),
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            m == null ? 'Ayo atur jadwal tanding' : 'vs ${m.opponent}',
-            style: TextStyle(
-              color: t.colorScheme.primaryForeground,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              height: 1.2,
-            ),
-          ),
-          if (m != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              '${fmtDateTime(m.playedAt)}${m.venue != null ? ' • ${m.venue}' : ''}',
-              style: TextStyle(color: t.colorScheme.primaryForeground.withValues(alpha: 0.9), fontSize: 13),
-            ),
-          ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: () async {
-                  if (m == null) {
-                    if (await showMatchForm(context)) onChanged();
-                  } else {
-                    if (await showFinishMatch(context, m)) onChanged();
-                  }
-                },
-                icon: Icon(m == null ? Icons.add : Icons.scoreboard, size: 16),
-                label: Text(m == null ? 'Buat jadwal' : 'Isi hasil'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: t.colorScheme.primaryForeground,
-                  foregroundColor: t.colorScheme.primary,
-                ),
+          // Sheen "oil" — dua lingkaran cahaya tipis di sudut.
+          Positioned(
+            right: -40,
+            top: -50,
+            child: Container(
+              width: 170,
+              height: 170,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [
+                  AppThemes.oilC.withValues(alpha: 0.45),
+                  Colors.transparent,
+                ]),
               ),
-              const Spacer(),
-              if (m != null)
-                ShadBadge.secondary(child: Text(m.isHome ? 'Kandang' : 'Tandang')),
-            ],
+            ),
+          ),
+          Positioned(
+            left: -30,
+            bottom: -60,
+            child: Container(
+              width: 150,
+              height: 150,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [
+                  AppThemes.oilB.withValues(alpha: 0.30),
+                  Colors.transparent,
+                ]),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Pill(
+                      m == null ? 'BELUM ADA JADWAL' : 'JADWAL BERIKUTNYA',
+                      color: Colors.white,
+                    ),
+                    const Spacer(),
+                    if (m != null)
+                      Pill(m.isHome ? 'Kandang' : 'Tandang', color: Colors.white),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  m == null ? 'Ayo atur jadwal tanding' : 'vs ${m.opponent}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    height: 1.15,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                if (m != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '${fmtDateTime(m.playedAt)}${m.venue != null ? ' • ${m.venue}' : ''}',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 13),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () async {
+                    if (m == null) {
+                      if (await showMatchForm(context)) onChanged();
+                    } else {
+                      if (await showFinishMatch(context, m)) onChanged();
+                    }
+                  },
+                  icon: Icon(m == null ? Icons.add : Icons.scoreboard, size: 16),
+                  label: Text(m == null ? 'Buat jadwal' : 'Isi hasil'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF0B5E33),
+                    minimumSize: const Size(0, 40),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -330,24 +366,17 @@ class _QuickAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return InkWell(
+    return OilCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: t.colorScheme.card,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: t.colorScheme.border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: t.colorScheme.primary),
-            const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 13)),
-          ],
-        ),
+      radius: 12,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: t.colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(fontSize: 13)),
+        ],
       ),
     );
   }
