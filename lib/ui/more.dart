@@ -5,6 +5,7 @@ import 'announcements.dart';
 import 'bookings.dart';
 import 'settings.dart';
 import 'stats.dart';
+import 'tournament.dart';
 import 'users.dart';
 
 class MorePage extends StatelessWidget {
@@ -22,6 +23,12 @@ class MorePage extends StatelessWidget {
             const SizedBox(height: 4),
             Text('Fitur klub lainnya', style: t.textTheme.small),
             const SizedBox(height: 20),
+            _Tile(
+              icon: Icons.emoji_events_outlined,
+              title: 'Turnamen internal',
+              subtitle: '4 tim, jadwal & klasemen grup',
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TournamentsPage())),
+            ),
             _Tile(
               icon: Icons.stadium_outlined,
               title: 'Booking lapangan',

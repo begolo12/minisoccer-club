@@ -545,6 +545,348 @@ class ScorerRow {
 DateTime _dt(dynamic v) =>
     v is DateTime ? v : DateTime.parse(v.toString()).toLocal();
 
+// ---------- Turnamen internal ----------
+//
+// Format: N tim (default 4) round-robin — semua bertemu semua sekali.
+// 4 tim = 3 babak × 2 laga = 6 laga. Dengan 20 menit/laga, habis 120 menit.
+// Poin: menang 3, seri 1, kalah 0.
+
+const kPointsWin = 3;
+const kPointsDraw = 1;
+
+/// Jadwal round-robin metode lingkaran. Return (babak, timHome, timAway)
+/// urut waktu main. Tim ganjil dapat bye (id -1) dan dilewati.
+List<(int, int, int)> roundRobin(List<int> ids) {
+  if (ids.length < 2) return const [];
+  final t = [...ids];
+  if (t.length.isOdd) t.add(-1);
+  final n = t.length;
+  final out = <(int, int, int)>[];
+  for (var r = 0; r < n - 1; r++) {
+    for (var i = 0; i < n ~/ 2; i++) {
+      final a = t[i], b = t[n - 1 - i];
+      if (a != -1 && b != -1) out.add((r + 1, a, b));
+    }
+    t.insert(1, t.removeLast());
+  }
+  return out;
+}
+
+class Tournament {
+  final int id;
+  final String name;
+  final String? venue;
+  final DateTime startsAt;
+  final int matchMinutes;
+  final int breakMinutes;
+  final String status; // draft | running | done
+
+  Tournament({
+    required this.id,
+    required this.name,
+    this.venue,
+    required this.startsAt,
+    required this.matchMinutes,
+    required this.breakMinutes,
+    required this.status,
+  });
+
+  factory Tournament.fromMap(Map<String, dynamic> m) => Tournament(
+        id: m['id'] as int,
+        name: m['name'] as String,
+        venue: m['venue'] as String?,
+        startsAt: _dt(m['starts_at']),
+        matchMinutes: (m['match_minutes'] as int?) ?? 20,
+        breakMinutes: (m['break_minutes'] as int?) ?? 0,
+        status: (m['status'] as String?) ?? 'draft',
+      );
+
+  static const statusLabels = {'draft': 'Draft', 'running': 'Berjalan', 'done': 'Selesai'};
+
+  static Future<List<Tournament>> all() async {
+    final rows = await Db.query('SELECT * FROM tournaments ORDER BY starts_at DESC');
+    return rows.map(Tournament.fromMap).toList();
+  }
+
+  /// Buat turnamen + tim + jadwal + bagi pemain otomatis.
+  static Future<int> create({
+    required String name,
+    String? venue,
+    required DateTime startsAt,
+    int teamCount = 4,
+    int matchMinutes = 20,
+    int breakMinutes = 0,
+    bool assignPlayers = true,
+  }) async {
+    final rows = await Db.query(
+      '''INSERT INTO tournaments (name, venue, starts_at, match_minutes, break_minutes)
+         VALUES (@n, @v, @s, @mm, @bm) RETURNING id''',
+      params: {
+        'n': name,
+        'v': venue,
+        's': startsAt.toUtc(),
+        'mm': matchMinutes,
+        'bm': breakMinutes,
+      },
+    );
+    final id = rows.first['id'] as int;
+
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    final teamIds = <int>[];
+    for (var i = 0; i < teamCount; i++) {
+      final r = await Db.query(
+        'INSERT INTO teams (tournament_id, name) VALUES (@t, @n) RETURNING id',
+        params: {'t': id, 'n': 'Tim ${letters[i % letters.length]}${i >= letters.length ? i + 1 : ''}'},
+      );
+      teamIds.add(r.first['id'] as int);
+    }
+
+    await _schedule(id, teamIds, startsAt, matchMinutes, breakMinutes);
+    if (assignPlayers) await autoAssign(id);
+    return id;
+  }
+
+  static Future<void> _schedule(
+    int id,
+    List<int> teamIds,
+    DateTime start,
+    int minutes,
+    int rest,
+  ) async {
+    final fixtures = roundRobin(teamIds);
+    if (fixtures.isEmpty) return;
+    final vals = <String>[];
+    final params = <String, Object?>{};
+    for (var i = 0; i < fixtures.length; i++) {
+      final (round, home, away) = fixtures[i];
+      vals.add('(@t$i, @r$i, @s$i, @h$i, @a$i, @k$i)');
+      params['t$i'] = id;
+      params['r$i'] = round;
+      params['s$i'] = i + 1;
+      params['h$i'] = home;
+      params['a$i'] = away;
+      params['k$i'] = start.add(Duration(minutes: i * (minutes + rest))).toUtc();
+    }
+    await Db.execute(
+      '''INSERT INTO tournament_matches
+           (tournament_id, round, slot, home_team_id, away_team_id, kickoff)
+         VALUES ${vals.join(',')} ON CONFLICT DO NOTHING''',
+      params: params,
+    );
+  }
+
+  /// Bagi pemain aktif ke tim secara merata (snake draft, urutan acak).
+  static Future<void> autoAssign(int id) async {
+    final teams = await Team.forTournament(id);
+    if (teams.isEmpty) return;
+    await Db.execute(
+      'DELETE FROM team_players WHERE team_id IN (SELECT id FROM teams WHERE tournament_id=@t)',
+      params: {'t': id},
+    );
+    final members = await Member.all(activeOnly: true);
+    if (members.isEmpty) return;
+    members.shuffle();
+
+    final vals = <String>[];
+    final params = <String, Object?>{};
+    for (var i = 0; i < members.length; i++) {
+      final round = i ~/ teams.length;
+      final idx = round.isEven ? i % teams.length : teams.length - 1 - (i % teams.length);
+      vals.add('(@t$i, @m$i)');
+      params['t$i'] = teams[idx].id;
+      params['m$i'] = members[i].id;
+    }
+    await Db.execute(
+      'INSERT INTO team_players (team_id, member_id) VALUES ${vals.join(',')} ON CONFLICT DO NOTHING',
+      params: params,
+    );
+  }
+
+  static Future<void> setStatus(int id, String status) => Db.execute(
+        'UPDATE tournaments SET status=@s WHERE id=@id',
+        params: {'id': id, 's': status},
+      );
+
+  static Future<void> delete(int id) =>
+      Db.execute('DELETE FROM tournaments WHERE id=@id', params: {'id': id});
+
+  static Future<List<Standing>> standings(int id) async {
+    final teams = await Team.forTournament(id);
+    final matches = await TournamentMatch.forTournament(id);
+    return Standing.compute(teams, matches);
+  }
+}
+
+class Team {
+  final int id;
+  final int tournamentId;
+  final String name;
+
+  Team({required this.id, required this.tournamentId, required this.name});
+
+  factory Team.fromMap(Map<String, dynamic> m) => Team(
+        id: m['id'] as int,
+        tournamentId: m['tournament_id'] as int,
+        name: m['name'] as String,
+      );
+
+  static Future<List<Team>> forTournament(int id) async {
+    final rows = await Db.query(
+      'SELECT * FROM teams WHERE tournament_id=@t ORDER BY id',
+      params: {'t': id},
+    );
+    return rows.map(Team.fromMap).toList();
+  }
+
+  /// Pemain per tim: {teamId: [Member...]}.
+  static Future<Map<int, List<Member>>> players(int tournamentId) async {
+    final rows = await Db.query(
+      '''SELECT tp.team_id, m.* FROM team_players tp
+         JOIN members m ON m.id = tp.member_id
+         JOIN teams t ON t.id = tp.team_id
+         WHERE t.tournament_id=@t ORDER BY m.name''',
+      params: {'t': tournamentId},
+    );
+    final out = <int, List<Member>>{};
+    for (final r in rows) {
+      (out[r['team_id'] as int] ??= []).add(Member.fromMap(r));
+    }
+    return out;
+  }
+
+  static Future<void> rename(int id, String name) => Db.execute(
+        'UPDATE teams SET name=@n WHERE id=@id',
+        params: {'id': id, 'n': name},
+      );
+
+  static Future<void> addPlayer(int teamId, int memberId) => Db.execute(
+        'INSERT INTO team_players (team_id, member_id) VALUES (@t, @m) ON CONFLICT DO NOTHING',
+        params: {'t': teamId, 'm': memberId},
+      );
+
+  static Future<void> removePlayer(int teamId, int memberId) => Db.execute(
+        'DELETE FROM team_players WHERE team_id=@t AND member_id=@m',
+        params: {'t': teamId, 'm': memberId},
+      );
+
+  static Future<void> delete(int id) =>
+      Db.execute('DELETE FROM teams WHERE id=@id', params: {'id': id});
+}
+
+class TournamentMatch {
+  final int id;
+  final int tournamentId;
+  final int round;
+  final int slot;
+  final int homeTeamId;
+  final int awayTeamId;
+  final DateTime kickoff;
+  final int? scoreHome;
+  final int? scoreAway;
+  final String status; // scheduled | done
+
+  TournamentMatch({
+    required this.id,
+    required this.tournamentId,
+    required this.round,
+    required this.slot,
+    required this.homeTeamId,
+    required this.awayTeamId,
+    required this.kickoff,
+    this.scoreHome,
+    this.scoreAway,
+    required this.status,
+  });
+
+  factory TournamentMatch.fromMap(Map<String, dynamic> m) => TournamentMatch(
+        id: m['id'] as int,
+        tournamentId: m['tournament_id'] as int,
+        round: (m['round'] as int?) ?? 1,
+        slot: (m['slot'] as int?) ?? 1,
+        homeTeamId: m['home_team_id'] as int,
+        awayTeamId: m['away_team_id'] as int,
+        kickoff: _dt(m['kickoff']),
+        scoreHome: m['score_home'] as int?,
+        scoreAway: m['score_away'] as int?,
+        status: (m['status'] as String?) ?? 'scheduled',
+      );
+
+  bool get done => status == 'done' && scoreHome != null && scoreAway != null;
+
+  static Future<List<TournamentMatch>> forTournament(int id) async {
+    final rows = await Db.query(
+      'SELECT * FROM tournament_matches WHERE tournament_id=@t ORDER BY slot',
+      params: {'t': id},
+    );
+    return rows.map(TournamentMatch.fromMap).toList();
+  }
+
+  Future<void> saveScore(int home, int away) async {
+    await Db.execute(
+      '''UPDATE tournament_matches SET score_home=@h, score_away=@a, status='done'
+         WHERE id=@id''',
+      params: {'id': id, 'h': home, 'a': away},
+    );
+    await Db.execute(
+      "UPDATE tournaments SET status='running' WHERE id=@t AND status='draft'",
+      params: {'t': tournamentId},
+    );
+  }
+
+  Future<void> clearScore() => Db.execute(
+        '''UPDATE tournament_matches SET score_home=NULL, score_away=NULL,
+           status='scheduled' WHERE id=@id''',
+        params: {'id': id},
+      );
+}
+
+class Standing {
+  final int teamId;
+  final String name;
+  int played = 0, won = 0, drawn = 0, lost = 0, goalsFor = 0, goalsAgainst = 0;
+
+  Standing(this.teamId, this.name);
+
+  int get goalDiff => goalsFor - goalsAgainst;
+  int get points => won * kPointsWin + drawn * kPointsDraw;
+
+  /// Klasemen dari daftar laga. Dipisah dari DB biar gampang dites.
+  static List<Standing> compute(List<Team> teams, List<TournamentMatch> matches) {
+    final map = {for (final t in teams) t.id: Standing(t.id, t.name)};
+    for (final m in matches) {
+      final h = map[m.homeTeamId], a = map[m.awayTeamId];
+      final hs = m.scoreHome, aw = m.scoreAway;
+      if (h == null || a == null || hs == null || aw == null) continue;
+      h.played++;
+      a.played++;
+      h.goalsFor += hs;
+      h.goalsAgainst += aw;
+      a.goalsFor += aw;
+      a.goalsAgainst += hs;
+      if (hs > aw) {
+        h.won++;
+        a.lost++;
+      } else if (hs < aw) {
+        a.won++;
+        h.lost++;
+      } else {
+        h.drawn++;
+        a.drawn++;
+      }
+    }
+    return map.values.toList()
+      ..sort((x, y) {
+        final p = y.points.compareTo(x.points);
+        if (p != 0) return p;
+        final g = y.goalDiff.compareTo(x.goalDiff);
+        if (g != 0) return g;
+        final f = y.goalsFor.compareTo(x.goalsFor);
+        if (f != 0) return f;
+        return x.name.compareTo(y.name);
+      });
+  }
+}
+
 /// Neon mengembalikan NUMERIC sebagai String (biar presisi).
 double _num(dynamic v) => switch (v) {
       null => 0,

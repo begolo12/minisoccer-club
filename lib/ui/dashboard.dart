@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
+import 'tournament.dart';
 import 'widgets.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -120,6 +121,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 }),
                 _QuickAction(Icons.event, 'Tanding', () async {
                   if (await showMatchForm(context)) _reload();
+                }),
+                _QuickAction(Icons.emoji_events_outlined, 'Turnamen', () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TournamentsPage()),
+                  );
+                  _reload();
                 }),
                 _QuickAction(Icons.payments, 'Iuran', () async {
                   if (await showPaymentForm(context)) _reload();

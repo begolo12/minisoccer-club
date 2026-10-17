@@ -16,4 +16,46 @@ void main() {
     expect(sessionWinner(0, 3), 'away');
     expect(sessionWinner(1, 1), 'draw');
   });
+
+  test('round-robin 4 tim = 6 laga, semua pasangan sekali', () {
+    final f = roundRobin([1, 2, 3, 4]);
+    expect(f.length, 6);
+    final pairs = f.map((e) => '${e.$2}-${e.$3}').toSet();
+    expect(pairs.length, 6);
+    for (final (_, h, a) in f) {
+      expect(h, isNot(a));
+    }
+    // Tiap tim main 3 kali.
+    for (final id in [1, 2, 3, 4]) {
+      expect(f.where((e) => e.$2 == id || e.$3 == id).length, 3);
+    }
+  });
+
+  test('klasemen: menang 3, seri 1, kalah 0 + GM/GK', () {
+    final teams = [
+      Team(id: 1, tournamentId: 1, name: 'A'),
+      Team(id: 2, tournamentId: 1, name: 'B'),
+    ];
+    final matches = [
+      TournamentMatch(
+        id: 1, tournamentId: 1, round: 1, slot: 1,
+        homeTeamId: 1, awayTeamId: 2, kickoff: DateTime(2026),
+        scoreHome: 3, scoreAway: 1, status: 'done',
+      ),
+      TournamentMatch(
+        id: 2, tournamentId: 1, round: 2, slot: 2,
+        homeTeamId: 2, awayTeamId: 1, kickoff: DateTime(2026),
+        scoreHome: 0, scoreAway: 0, status: 'done',
+      ),
+    ];
+    final s = Standing.compute(teams, matches);
+    expect(s.first.name, 'A');
+    expect(s.first.points, 4); // menang 3 + seri 1
+    expect(s.first.goalsFor, 3);
+    expect(s.first.goalsAgainst, 1);
+    expect(s.first.goalDiff, 2);
+    expect(s.last.points, 1);
+    expect(s.last.goalsFor, 1);
+    expect(s.last.goalsAgainst, 3);
+  });
 }

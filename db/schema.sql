@@ -129,3 +129,79 @@ SELECT m.id, m.name, m.position,
 FROM members m
 LEFT JOIN match_events e ON e.member_id = m.id
 GROUP BY m.id, m.name, m.position;
+
+-- =====================================================================
+-- Turnamen internal: 4 tim, round-robin (semua bertemu semua),
+-- dijadwalkan dalam satu blok waktu (mis. 2 jam).
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS tournaments (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  venue         TEXT,
+  starts_at     TIMESTAMPTZ NOT NULL,
+  match_minutes INT NOT NULL DEFAULT 20,  -- durasi 1 laga
+  break_minutes INT NOT NULL DEFAULT 0,   -- jeda antar laga
+  status        TEXT NOT NULL DEFAULT 'draft', -- draft | running | done
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+  id            SERIAL PRIMARY KEY,
+  tournament_id INT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  UNIQUE (tournament_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS team_players (
+  team_id   INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  member_id INT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  PRIMARY KEY (team_id, member_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_matches (
+  id            SERIAL PRIMARY KEY,
+  tournament_id INT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  round         INT NOT NULL DEFAULT 1,
+  slot          INT NOT NULL,             -- urutan main (1..n)
+  home_team_id  INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  away_team_id  INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  kickoff       TIMESTAMPTZ NOT NULL,
+  score_home    INT,                      -- NULL = belum dimainkan
+  score_away    INT,
+  status        TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | done
+  UNIQUE (tournament_id, slot)
+);
+
+CREATE INDEX IF NOT EXISTS idx_teams_tournament    ON teams(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_tm_tournament       ON tournament_matches(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_team_players_member ON team_players(member_id);
+
+-- Klasemen grup: menang 3, seri 1, kalah 0.
+CREATE OR REPLACE VIEW v_standings AS
+SELECT t.tournament_id,
+       t.id AS team_id,
+       t.name,
+       COUNT(m.id) FILTER (WHERE m.status = 'done') AS played,
+       COUNT(m.id) FILTER (WHERE m.status = 'done' AND (
+              (m.home_team_id = t.id AND m.score_home > m.score_away) OR
+              (m.away_team_id = t.id AND m.score_away > m.score_home))) AS won,
+       COUNT(m.id) FILTER (WHERE m.status = 'done' AND m.score_home = m.score_away) AS drawn,
+       COUNT(m.id) FILTER (WHERE m.status = 'done' AND (
+              (m.home_team_id = t.id AND m.score_home < m.score_away) OR
+              (m.away_team_id = t.id AND m.score_away < m.score_home))) AS lost,
+       COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.score_home
+                         WHEN m.away_team_id = t.id THEN m.score_away END)
+                FILTER (WHERE m.status = 'done'), 0) AS goals_for,
+       COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.score_away
+                         WHEN m.away_team_id = t.id THEN m.score_home END)
+                FILTER (WHERE m.status = 'done'), 0) AS goals_against,
+       3 * COUNT(m.id) FILTER (WHERE m.status = 'done' AND (
+              (m.home_team_id = t.id AND m.score_home > m.score_away) OR
+              (m.away_team_id = t.id AND m.score_away > m.score_home)))
+         + COUNT(m.id) FILTER (WHERE m.status = 'done' AND m.score_home = m.score_away) AS points
+FROM teams t
+LEFT JOIN tournament_matches m
+       ON m.tournament_id = t.tournament_id
+      AND (m.home_team_id = t.id OR m.away_team_id = t.id)
+GROUP BY t.tournament_id, t.id, t.name;

@@ -21,6 +21,7 @@ Versi web: **https://minisoccer-club.vercel.app**
 | **Beranda** | Jadwal terdekat, W/D/L, iuran bulan ini, aksi cepat, top skor, pengumuman |
 | **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif |
 | **Tanding** | Jadwal & hasil, sesi/babak dengan pemenang tiap sesi, catat gol / assist / kartu |
+| **Turnamen internal** | 4 tim round-robin (semua bertemu semua), jadwal otomatis per 20 menit dalam 2 jam, pembagian tim acak merata, klasemen grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin) |
 | **Iuran** | Bayar per bulan, siapa yang belum, riwayat, total terkumpul |
 | **Booking lapangan** | Jadwal sewa, durasi, biaya, status |
 | **Pengumuman** | Info klub untuk anggota |
