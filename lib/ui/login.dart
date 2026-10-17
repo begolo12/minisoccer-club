@@ -7,9 +7,10 @@ import 'widgets.dart';
 
 /// Layar masuk. Kalau belum ada user sama sekali, tampilkan form buat admin.
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, required this.onSignedIn});
+  const LoginPage({super.key, required this.onSignedIn, this.error});
 
   final VoidCallback onSignedIn;
+  final String? error;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -25,6 +26,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
+    _err = widget.error;
     _check();
   }
 

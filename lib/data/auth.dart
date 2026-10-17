@@ -3,13 +3,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/api.dart';
 import '../core/db.dart';
 
 /// Login/logout + simpan sesi.
 ///
-/// - Web  → POST /api/auth (server pegang kredensial DB), dapat token HMAC.
-/// - HP   → cek langsung ke Postgres pakai `crypt()` dari pgcrypto.
-///   Perangkat dipercaya (connection string tersimpan terenkripsi di HP).
+/// Semua platform memakai `POST /api/auth`: password dicek bcrypt oleh
+/// Postgres di server, klien hanya menerima token HMAC (berlaku 12 jam).
 class Auth {
   static String? username;
   static String? role;
@@ -20,8 +20,6 @@ class Auth {
 
   static bool get signedIn => username != null;
   static bool get isAdmin => role == 'admin';
-
-  static const _endpoint = String.fromEnvironment('API_URL', defaultValue: '/api/auth');
 
   /// Pulihkan sesi tersimpan saat app dibuka.
   static Future<void> restore() async {
@@ -38,45 +36,14 @@ class Auth {
 
   /// Apakah belum ada user sama sekali? (perlu buat admin pertama)
   static Future<bool> needsBootstrap() async {
-    if (!Db.needsUrl) {
-      // Web: /api/sql butuh token, jadi tanya endpoint auth.
-      final res = await http.post(
-        Uri.parse(_endpoint),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode({'action': 'status'}),
-      );
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      if (res.statusCode != 200) throw Exception(body['error'] ?? 'Gagal cek status');
-      return body['bootstrap'] == true;
-    }
-    final rows = await Db.query('SELECT count(*)::int AS n FROM users');
-    return (rows.first['n'] as int) == 0;
+    final body = await _post({'action': 'status'}, auth: false);
+    return body['bootstrap'] == true;
   }
 
   static Future<void> login(String user, String pass) async {
     final u = user.trim();
     if (u.isEmpty || pass.isEmpty) throw Exception('Username dan password wajib diisi');
-
-    if (Db.needsUrl) {
-      // HP: verifikasi langsung di Postgres (bcrypt oleh pgcrypto).
-      final rows = await Db.query(
-        '''SELECT username, role FROM users
-           WHERE username=@u AND active AND password_hash IS NOT NULL
-             AND password_hash = crypt(@p, password_hash)''',
-        params: {'u': u, 'p': pass},
-      );
-      if (rows.isEmpty) throw Exception('Username atau password salah');
-      await _save(rows.first['username'] as String, rows.first['role'] as String?, null);
-      return;
-    }
-
-    final res = await http.post(
-      Uri.parse(_endpoint),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode({'action': 'login', 'username': u, 'password': pass}),
-    );
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) throw Exception(body['error'] ?? 'Gagal login');
+    final body = await _post({'action': 'login', 'username': u, 'password': pass}, auth: false);
     await _save(body['username'] as String, body['role'] as String?, body['token'] as String?);
   }
 
@@ -84,25 +51,10 @@ class Auth {
   static Future<void> register(String user, String pass, {String role = 'admin'}) async {
     final u = user.trim();
     if (u.isEmpty || pass.length < 6) throw Exception('Password minimal 6 karakter');
-
-    if (Db.needsUrl) {
-      if (!await needsBootstrap()) throw Exception('Sudah ada user. Tambah lewat menu Pengguna.');
-      await Db.execute(
-        '''INSERT INTO users (username, role, password_hash)
-           VALUES (@u, @r, crypt(@p, gen_salt('bf', 10)))''',
-        params: {'u': u, 'r': role, 'p': pass},
-      );
-      await login(u, pass);
-      return;
-    }
-
-    final res = await http.post(
-      Uri.parse(_endpoint),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode({'action': 'register', 'username': u, 'password': pass, 'role': role}),
+    final body = await _post(
+      {'action': 'register', 'username': u, 'password': pass, 'role': role},
+      auth: false,
     );
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    if (res.statusCode != 200) throw Exception(body['error'] ?? 'Gagal daftar');
     await _save(body['username'] as String, body['role'] as String?, body['token'] as String?);
   }
 
@@ -127,4 +79,32 @@ class Auth {
     if (r != null) await SecureStore.write('auth_role', r);
     if (t != null) await SecureStore.write('auth_token', t);
   }
+
+  static Future<Map<String, dynamic>> _post(
+    Map<String, Object?> body, {
+    bool auth = true,
+  }) async {
+    final res = await http.post(
+      Uri.parse(kAuthEndpoint),
+      headers: {
+        'content-type': 'application/json',
+        if (auth && token != null) 'authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    );
+    final data = jsonDecode(res.body);
+    final map = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    if (res.statusCode != 200) throw Exception(map['error'] ?? 'Permintaan gagal (${res.statusCode})');
+    return map;
+  }
+
+  // ---------- Kelola pengguna (admin) ----------
+
+  static Future<void> createUser(String username, String role, String password) =>
+      _post({'action': 'create', 'username': username.trim(), 'role': role, 'password': password});
+
+  static Future<void> resetPassword(int id, String password) =>
+      _post({'action': 'reset', 'id': id, 'password': password});
+
+  static Future<void> deleteUser(int id) => _post({'action': 'delete', 'id': id});
 }

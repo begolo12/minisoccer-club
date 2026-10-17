@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "db:init": "node scripts/init-db.mjs"
+    "db:init": "node scripts/init-db.mjs",
+    "db:harden": "node scripts/harden-db.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"

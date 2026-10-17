@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ALTER COLUMN pin_hash DROP NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
+-- Anti brute force: kunci sementara setelah beberapa kali gagal login.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+
 -- Sesi pertandingan (1 match bisa beberapa sesi / babak; tiap sesi punya pemenang).
 CREATE TABLE IF NOT EXISTS matches (
   id            SERIAL PRIMARY KEY,

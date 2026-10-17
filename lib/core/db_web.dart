@@ -2,19 +2,17 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'api.dart';
 import 'db.dart';
 
-/// Driver web: browser tidak bisa buka TCP ke Postgres, jadi query dikirim
-/// ke Vercel Function `api/sql.js` (Neon HTTP driver).
+/// Satu-satunya jalur DB: Vercel Function `api/sql.js` (Neon HTTP driver).
+/// Dipakai web maupun APK — kredensial Postgres tidak pernah ada di klien.
 const usesProxy = true;
-
-/// Default same-origin — cocok saat di-host di Vercel.
-const _endpoint = String.fromEnvironment('API_URL', defaultValue: '/api/sql');
 
 Future<Map<String, dynamic>> _post(String sql, Map<String, Object?> params) async {
   final token = Db.authToken;
   final res = await http.post(
-    Uri.parse(_endpoint),
+    Uri.parse(kSqlEndpoint),
     headers: {
       'content-type': 'application/json',
       if (token != null) 'authorization': 'Bearer $token',
@@ -38,7 +36,6 @@ Future<Map<String, dynamic>> _post(String sql, Map<String, Object?> params) asyn
 
 Future<List<Map<String, dynamic>>> query(
   String sql, {
-  required String url,
   Map<String, Object?> params = const {},
 }) async {
   final body = await _post(sql, params);
@@ -47,7 +44,6 @@ Future<List<Map<String, dynamic>>> query(
 
 Future<int> execute(
   String sql, {
-  required String url,
   Map<String, Object?> params = const {},
 }) async {
   final body = await _post(sql, params);

@@ -2,6 +2,7 @@
 library;
 
 import '../core/db.dart';
+import 'auth.dart';
 
 // ---------- Members ----------
 
@@ -501,25 +502,22 @@ class AppUser {
   static const roles = ['admin', 'treasurer', 'member'];
 
   static Future<List<AppUser>> all() async {
-    final rows = await Db.query('SELECT * FROM users ORDER BY role, username');
+    // Kolom eksplisit: password_hash tidak pernah dikirim ke klien.
+    final rows = await Db.query('SELECT id, username, role, active FROM users ORDER BY role, username');
     return rows.map(AppUser.fromMap).toList();
   }
 
-  static Future<void> insert(String username, String role, {String? password}) => Db.execute(
-        '''INSERT INTO users (username, role, password_hash)
-           VALUES (@u, @r, CASE WHEN @p::text IS NULL THEN NULL
-                                ELSE crypt(@p, gen_salt('bf', 10)) END)''',
-        params: {'u': username.trim(), 'r': role, 'p': password},
-      );
+  static Future<void> insert(String username, String role, {String? password}) async {
+    if (password == null || password.isEmpty) {
+      throw Exception('Password wajib diisi');
+    }
+    await Auth.createUser(username, role, password);
+  }
 
   /// Atur ulang password (dipakai admin kalau anggota lupa).
-  static Future<void> setPassword(int id, String password) => Db.execute(
-        '''UPDATE users SET password_hash = crypt(@p, gen_salt('bf', 10)) WHERE id=@id''',
-        params: {'id': id, 'p': password},
-      );
+  static Future<void> setPassword(int id, String password) => Auth.resetPassword(id, password);
 
-  static Future<void> delete(int id) =>
-      Db.execute('DELETE FROM users WHERE id=@id', params: {'id': id});
+  static Future<void> delete(int id) => Auth.deleteUser(id);
 }
 
 // ---------- Top scorers ----------

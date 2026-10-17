@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'widgets.dart';
 
-/// Daftar akun pengguna app + role. Belum ada login; ini direktori akses.
+/// Daftar akun pengguna app + role. Hanya admin; server juga menolak
+/// permintaan dari role lain (lihat api/sql.js dan api/auth.js).
 class UsersPage extends StatefulWidget {
   const UsersPage({super.key});
 
@@ -31,6 +33,16 @@ class _UsersPageState extends State<UsersPage> {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
+    if (!Auth.isAdmin) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Pengguna'), backgroundColor: Colors.transparent),
+        body: EmptyState(
+          icon: Icons.lock_outline,
+          title: 'Khusus admin',
+          message: 'Akun ${Auth.username ?? ''} tidak punya akses ke daftar pengguna.',
+        ),
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Pengguna'),

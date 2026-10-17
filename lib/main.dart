@@ -5,7 +5,6 @@ import 'core/db.dart';
 import 'data/auth.dart';
 import 'ui/theme.dart';
 import 'ui/login.dart';
-import 'ui/onboarding.dart';
 import 'ui/shell.dart';
 
 void main() => runApp(const App());
@@ -76,18 +75,10 @@ class _BootstrapState extends State<Bootstrap> {
   }
 
   Future<void> _check() async {
-    if (Db.needsUrl) {
-      final saved = await SecureStore.read('neon_url');
-      if (saved == null || saved.trim().isEmpty) {
-        if (mounted) setState(() => _ready = false);
-        return;
-      }
-    }
-
     await Auth.restore();
 
-    // Web tanpa sesi: jangan sentuh DB (butuh token). Langsung ke login.
-    if (!Db.needsUrl && !Auth.signedIn) {
+    // Belum ada sesi: jangan sentuh DB (butuh token). Langsung ke login.
+    if (!Auth.signedIn) {
       if (mounted) {
         setState(() {
           _ready = true;
@@ -102,7 +93,7 @@ class _BootstrapState extends State<Bootstrap> {
       if (mounted) {
         setState(() {
           _ready = true;
-          _signedIn = Auth.signedIn;
+          _signedIn = true;
         });
       }
     } catch (e) {
@@ -125,11 +116,11 @@ class _BootstrapState extends State<Bootstrap> {
     if (_ready == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (_ready == false) {
-      return Onboarding(error: _error, onDone: () => setState(() => _ready = true));
-    }
     if (!_signedIn) {
-      return LoginPage(onSignedIn: () => setState(() => _signedIn = true));
+      return LoginPage(
+        onSignedIn: () => setState(() => _signedIn = true),
+        error: _error,
+      );
     }
     return const HomeShell();
   }

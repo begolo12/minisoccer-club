@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/api.dart';
 import '../core/db.dart';
 import '../data/auth.dart';
 import 'fmt.dart';
 import 'widgets.dart';
-import 'onboarding.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -16,7 +16,6 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool _dark = true;
-  String? _url;
 
   @override
   void initState() {
@@ -26,30 +25,13 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _load() async {
     final theme = await SecureStore.read('theme');
-    final url = await SecureStore.read('neon_url');
-    if (mounted) {
-      setState(() {
-        _dark = theme != 'light';
-        _url = url;
-      });
-    }
+    if (mounted) setState(() => _dark = theme != 'light');
   }
 
   Future<void> _setDark(bool v) async {
     setState(() => _dark = v);
     await SecureStore.write('theme', v ? 'dark' : 'light');
     toast(context, 'Tema ${v ? "gelap" : "terang"} — buka ulang app untuk terapkan');
-  }
-
-  /// Sembunyikan password pada connection string.
-  String _masked(String url) {
-    final i = url.indexOf('://');
-    final at = url.lastIndexOf('@');
-    if (i < 0 || at < 0) return url;
-    final userInfo = url.substring(i + 3, at);
-    final colon = userInfo.indexOf(':');
-    if (colon < 0) return url;
-    return url.replaceFirst(userInfo, '${userInfo.substring(0, colon)}:••••');
   }
 
   @override
@@ -77,7 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 22),
-          const SectionTitle('Database'),
+          const SectionTitle('Server'),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -91,45 +73,27 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text('Neon Postgres', style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 Text(
-                  _url == null ? 'Belum terhubung' : _masked(_url!),
+                  kApiBase.isEmpty ? 'Host web ini (same-origin)' : kApiBase,
                   style: t.textTheme.small,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  'Kredensial database hanya ada di server. Aplikasi tidak menyimpannya.',
+                  style: t.textTheme.small,
+                ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ShadButton.outline(
-                        onPressed: () async {
-                          await SecureStore.delete('neon_url');
-                          await Db.close();
-                          if (!context.mounted) return;
-                          Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) => Onboarding(onDone: () {
-                                Navigator.of(context).pop();
-                              }),
-                            ),
-                            (_) => false,
-                          );
-                        },
-                        child: const Text('Ganti koneksi'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ShadButton.ghost(
-                      onPressed: () async {
-                        try {
-                          await Db.query('SELECT 1');
-                          if (context.mounted) toast(context, 'Koneksi OK ✓');
-                        } catch (e) {
-                          if (context.mounted) toast(context, 'Gagal: $e');
-                        }
-                      },
-                      child: const Text('Tes'),
-                    ),
-                  ],
+                ShadButton.ghost(
+                  onPressed: () async {
+                    try {
+                      await Db.query('SELECT 1');
+                      if (context.mounted) toast(context, 'Koneksi OK ✓');
+                    } catch (e) {
+                      if (context.mounted) toast(context, 'Gagal: $e');
+                    }
+                  },
+                  child: const Text('Tes koneksi'),
                 ),
               ],
             ),
@@ -194,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Minisoccer Club v1.0.0', style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('Minisoccer Club v1.6.0', style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 Text(
                   'Dibuat dengan Flutter + shadcn UI + Neon Postgres.\n'

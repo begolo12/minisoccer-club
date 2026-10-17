@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import 'announcements.dart';
 import 'bookings.dart';
 import 'settings.dart';
@@ -47,12 +48,13 @@ class MorePage extends StatelessWidget {
               subtitle: 'Rekap hasil & top skor',
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StatsPage())),
             ),
-            _Tile(
-              icon: Icons.people_outline,
-              title: 'Pengguna',
-              subtitle: 'Akun & role admin/bendahara',
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersPage())),
-            ),
+            if (Auth.isAdmin)
+              _Tile(
+                icon: Icons.people_outline,
+                title: 'Pengguna',
+                subtitle: 'Akun & role admin/bendahara',
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const UsersPage())),
+              ),
             _Tile(
               icon: Icons.settings_outlined,
               title: 'Pengaturan',

@@ -11,8 +11,7 @@ Versi web: **https://minisoccer-club.vercel.app**
 
 1. Buka link di HP → download.
 2. Buka file → izinkan "Install unknown apps" untuk browser/file manager → **Install**.
-3. Buka app → tempel **connection string Neon** → **Hubungkan & siapkan**.
-   Tabel dibuat otomatis, tidak perlu SQL manual.
+3. Buka app → **Masuk** dengan akun dari admin. (Tanpa connection string; data lewat server.)
 
 ## Fitur
 
@@ -82,11 +81,15 @@ Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
 ```
 lib/
-  core/   config.dart · db.dart (router) · db_io.dart (native) · db_web.dart (web)
-  data/   models.dart — model + semua query
+  core/   api.dart (URL API) · db.dart (akses DB + secure storage) · db_web.dart (HTTP driver)
+  data/   models.dart (model + query) · auth.dart (login, sesi, kelola user)
   ui/     theme, fmt, widgets, forms, halaman per fitur
-api/sql.js                  Proxy SQL untuk versi web (Vercel Function)
-db/schema.sql               Schema Neon (juga dijalankan otomatis oleh app)
+api/sql.js                  Satu-satunya pintu SQL (role terbatas)
+api/auth.js                 Login, register admin pertama, kelola user
+api/_auth.js                Terbit/verifikasi token HMAC
+db/schema.sql               Schema Neon
+scripts/init-db.mjs         Jalankan schema (npm run db:init)
+scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:harden)
 .github/workflows/build.yml Build APK otomatis
 ```
 
@@ -100,6 +103,19 @@ db/schema.sql               Schema Neon (juga dijalankan otomatis oleh app)
 
 ## Keamanan
 
-APK konek langsung ke Neon (cocok untuk klub kecil). Versi web memakai proxy
-server sehingga kredensial DB tidak pernah dikirim ke browser.
-Kalau butuh multi-user dengan hak akses penuh, tambahkan auth di `api/sql.js`.
+| Lapis | Isi |
+|---|---|
+| Login | Password di-hash bcrypt oleh Postgres (`pgcrypto`), minimal 6 karakter |
+| Sesi | Token HMAC-SHA256, berlaku 12 jam, ditandatangani `AUTH_SECRET` |
+| Kunci akun | 5× salah password → terkunci 10 menit; maks 30 percobaan / 5 menit per IP |
+| Jalur data | Semua query lewat `/api/sql`, wajib `Authorization: Bearer <token>` |
+| Role DB | `app_web`: tanpa DDL, tanpa akses `password_hash` (dibuat `npm run db:harden`) |
+| Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE; `member` read-only |
+| Kelola user | Tambah/reset/hapus hanya lewat `/api/auth` (admin), bukan lewat SQL |
+| Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |
+
+APK tidak lagi menyimpan connection string Neon — kredensial DB hanya ada di env
+server. `APP_KEY` lama sudah tidak dipakai.
+
+Belum ada: reset password via email, 2FA, dan rate limit lintas instance
+(penghitung per instance). Tambahkan kalau app dipakai di luar klub sendiri.

@@ -1,0 +1,10 @@
+# Hanya build/web + api yang perlu di-upload.
+# Tanpa ini Vercel mengunggah ~180 MB (.dart_tool, android, APK).
+*
+!api
+!api/**
+!build
+!build/web
+!build/web/**
+!vercel.json
+!package.json
