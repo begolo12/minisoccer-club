@@ -62,10 +62,12 @@ class _BootstrapState extends State<Bootstrap> {
   }
 
   Future<void> _check() async {
-    final saved = await SecureStore.read('neon_url');
-    if (saved == null || saved.trim().isEmpty) {
-      if (mounted) setState(() => _ready = false);
-      return;
+    if (Db.needsUrl) {
+      final saved = await SecureStore.read('neon_url');
+      if (saved == null || saved.trim().isEmpty) {
+        if (mounted) setState(() => _ready = false);
+        return;
+      }
     }
     try {
       await Db.query('SELECT 1');

@@ -12,6 +12,7 @@ dependencies:
   shadcn_ui: ^0.57.2
   postgres: ^3.5.6
   flutter_secure_storage: ^9.2.4
+  http: ^1.2.2
   intl: ^0.20.2
 
 dev_dependencies:

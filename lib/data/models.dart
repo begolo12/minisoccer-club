@@ -396,9 +396,122 @@ class Announcement {
       Db.execute('DELETE FROM announcements WHERE id=@id', params: {'id': id});
 }
 
-// ---------- Top scorers ----------
+// ---------- Sessions (per-babak, ada pemenangnya) ----------
 
-class ScorerRow {
+class MatchSession {
+  final int id;
+  final int matchId;
+  final int sessionNo;
+  final int scoreHome;
+  final int scoreAway;
+  final String winner; // home | away | draw
+
+  MatchSession({
+    required this.id,
+    required this.matchId,
+    required this.sessionNo,
+    required this.scoreHome,
+    required this.scoreAway,
+    required this.winner,
+  });
+
+  factory MatchSession.fromMap(Map<String, dynamic> m) => MatchSession(
+        id: m['id'] as int,
+        matchId: m['match_id'] as int,
+        sessionNo: (m['session_no'] as int?) ?? 1,
+        scoreHome: (m['score_home'] as int?) ?? 0,
+        scoreAway: (m['score_away'] as int?) ?? 0,
+        winner: (m['winner'] as String?) ?? 'draw',
+      );
+
+  static const winnerLabels = {'home': 'Menang', 'away': 'Kalah', 'draw': 'Seri'};
+
+  static Future<List<MatchSession>> forMatch(int matchId) async {
+    final rows = await Db.query(
+      'SELECT * FROM match_sessions WHERE match_id=@m ORDER BY session_no',
+      params: {'m': matchId},
+    );
+    return rows.map(MatchSession.fromMap).toList();
+  }
+
+  /// Pemenang dihitung dari skor, bukan diinput manual.
+  static Future<void> save({
+    int? id,
+    required int matchId,
+    required int sessionNo,
+    required int home,
+    required int away,
+  }) async {
+    final winner = home > away ? 'home' : (away > home ? 'away' : 'draw');
+    if (id == null) {
+      await Db.execute(
+        '''INSERT INTO match_sessions (match_id, session_no, score_home, score_away, winner, ended_at)
+           VALUES (@m, @sn, @h, @a, @w, now())
+           ON CONFLICT (match_id, session_no) DO UPDATE SET
+             score_home=@h, score_away=@a, winner=@w, ended_at=now()''',
+        params: {'m': matchId, 'sn': sessionNo, 'h': home, 'a': away, 'w': winner},
+      );
+    } else {
+      await Db.execute(
+        '''UPDATE match_sessions SET score_home=@h, score_away=@a, winner=@w, ended_at=now()
+           WHERE id=@id''',
+        params: {'id': id, 'h': home, 'a': away, 'w': winner},
+      );
+    }
+    await _syncTotals(matchId);
+  }
+
+  static Future<void> delete(int id, int matchId) async {
+    await Db.execute('DELETE FROM match_sessions WHERE id=@id', params: {'id': id});
+    await _syncTotals(matchId);
+  }
+
+  /// Skor laga = jumlah semua sesi, biar ringkasan tetap konsisten.
+  static Future<void> _syncTotals(int matchId) => Db.execute(
+        '''UPDATE matches SET
+             goals_for = COALESCE((SELECT sum(score_home) FROM match_sessions WHERE match_id=@m), 0),
+             goals_against = COALESCE((SELECT sum(score_away) FROM match_sessions WHERE match_id=@m), 0),
+             status = CASE WHEN status='scheduled' THEN 'ongoing' ELSE status END
+           WHERE id=@m''',
+        params: {'m': matchId},
+      );
+}
+
+// ---------- Users ----------
+
+class AppUser {
+  final int id;
+  final String username;
+  final String role; // admin | treasurer | member
+  final bool active;
+
+  AppUser({required this.id, required this.username, required this.role, required this.active});
+
+  factory AppUser.fromMap(Map<String, dynamic> m) => AppUser(
+        id: m['id'] as int,
+        username: m['username'] as String,
+        role: (m['role'] as String?) ?? 'member',
+        active: (m['active'] as bool?) ?? true,
+      );
+
+  static const roles = ['admin', 'treasurer', 'member'];
+
+  static Future<List<AppUser>> all() async {
+    final rows = await Db.query('SELECT * FROM users ORDER BY role, username');
+    return rows.map(AppUser.fromMap).toList();
+  }
+
+  static Future<void> insert(String username, String role) => Db.execute(
+        'INSERT INTO users (username, role) VALUES (@u, @r)',
+        params: {'u': username.trim(), 'r': role},
+      );
+
+  static Future<void> delete(int id) =>
+      Db.execute('DELETE FROM users WHERE id=@id', params: {'id': id});
+}
+
+DateTime _dt(dynamic v) =>
+    v is DateTime ? v : DateTime.parse(v.toString()).toLocal();
   final String name;
   final int goals;
   final int assists;

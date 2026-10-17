@@ -1,35 +1,12 @@
-import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:postgres/postgres.dart';
+
 import 'config.dart';
+import 'db_io.dart' if (dart.library.js_interop) 'db_web.dart' as driver;
 
-/// Satu koneksi Neon per app lifecycle (lazy).
-/// ponytail: single shared connection — cukup untuk klub kecil (<10 user).
-/// Kalau nanti butuh request paralel tinggi, ganti ke Pool.
+/// Akses DB dari UI. Driver dipilih saat compile:
+/// - Android/desktop → koneksi TCP langsung ke Neon (`db_io.dart`)
+/// - Web → Vercel Function `/api/sql` (`db_web.dart`)
 class Db {
-  static Connection? _conn;
-  static Completer<Connection>? _connecting;
-
-  static Future<Connection> get instance async {
-    if (_conn != null) return _conn!;
-    if (_connecting != null) return _connecting!.future;
-
-    final completer = Completer<Connection>();
-    _connecting = completer;
-    try {
-      final url = await resolveUrl();
-      final c = await Connection.openFromUrl(url);
-      _conn = c;
-      completer.complete(c);
-      return c;
-    } catch (e, st) {
-      _connecting = null;
-      completer.completeError(e, st);
-      rethrow;
-    }
-  }
-
-  /// URL terbaik: setting lokal user > dart-define > placeholder.
   static Future<String> resolveUrl() async {
     final saved = await SecureStore.read('neon_url');
     final url = (saved?.trim().isNotEmpty ?? false) ? saved!.trim() : kNeonUrlPlaceholder;
@@ -37,35 +14,26 @@ class Db {
     return '$url${url.contains('?') ? '&' : '?'}sslmode=require';
   }
 
+  /// Web tidak butuh URL DB (server yang pegang kredensial).
+  static bool get needsUrl => !driver.usesProxy;
+
   static Future<List<Map<String, dynamic>>> query(
     String sql, {
     Map<String, Object?> params = const {},
-  }) async {
-    final c = await instance;
-    final result = await c.execute(Sql.named(sql), parameters: params);
-    return result.map((r) => r.toColumnMap()).toList();
-  }
+  }) async =>
+      driver.query(sql, url: await resolveUrl(), params: params);
 
   static Future<int> execute(
     String sql, {
     Map<String, Object?> params = const {},
-  }) async {
-    final c = await instance;
-    final result = await c.execute(Sql.named(sql), parameters: params);
-    return result.affectedRows;
-  }
+  }) async =>
+      driver.execute(sql, url: await resolveUrl(), params: params);
 
-  static Future<void> close() async {
-    try {
-      await _conn?.close();
-    } finally {
-      _conn = null;
-      _connecting = null;
-    }
-  }
+  static Future<void> close() => driver.close();
 }
 
 /// Wrapper secure storage sederhana biar import-nya di satu tempat.
+/// Web: aman-aman saja, nilainya cuma dipakai untuk preferensi.
 class SecureStore {
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
