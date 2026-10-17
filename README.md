@@ -7,6 +7,8 @@ Mobile-first, dark & light mode, plus versi web.
 
 **[Download APK terbaru](https://github.com/begolo12/minisoccer-club/releases/latest/download/app-release.apk)**
 
+Versi web: **https://minisoccer-club.vercel.app**
+
 1. Buka link di HP → download.
 2. Buka file → izinkan "Install unknown apps" untuk browser/file manager → **Install**.
 3. Buka app → tempel **connection string Neon** → **Hubungkan & siapkan**.
