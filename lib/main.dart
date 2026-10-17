@@ -7,10 +7,13 @@ import 'ui/theme.dart';
 import 'ui/login.dart';
 import 'ui/shell.dart';
 
-void main() => runApp(const App());
+void main({int initialTab = 0}) => runApp(App(initialTab: initialTab));
 
 class App extends StatefulWidget {
-  const App({super.key});
+  const App({super.key, this.initialTab = 0});
+
+  /// Tab awal saat dibuka. Dipakai preview UI; app normal selalu 0.
+  final int initialTab;
 
   @override
   State<App> createState() => _AppState();
@@ -39,14 +42,16 @@ class _AppState extends State<App> {
       theme: AppThemes.light,
       darkTheme: AppThemes.dark,
       themeMode: _mode,
-      home: const Bootstrap(),
+      home: ShadSonner(child: Bootstrap(initialTab: widget.initialTab)),
     );
   }
 }
 
 /// Cek koneksi DB, lalu gerbang login.
 class Bootstrap extends StatefulWidget {
-  const Bootstrap({super.key});
+  const Bootstrap({super.key, this.initialTab = 0});
+
+  final int initialTab;
 
   @override
   State<Bootstrap> createState() => _BootstrapState();
@@ -114,7 +119,11 @@ class _BootstrapState extends State<Bootstrap> {
   @override
   Widget build(BuildContext context) {
     if (_ready == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(
+          child: SizedBox(width: 180, child: ShadProgress(minHeight: 4)),
+        ),
+      );
     }
     if (!_signedIn) {
       return LoginPage(
@@ -122,6 +131,6 @@ class _BootstrapState extends State<Bootstrap> {
         error: _error,
       );
     }
-    return const HomeShell();
+    return HomeShell(initialTab: widget.initialTab);
   }
 }

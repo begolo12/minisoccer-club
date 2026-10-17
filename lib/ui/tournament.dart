@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/models.dart';
 import 'fmt.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 /// Turnamen internal: 4 tim, round-robin, semua laga dalam satu blok waktu
@@ -57,7 +58,7 @@ class _TournamentsPageState extends State<TournamentsPage> {
             ]);
           }
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
             children: [
               for (final t in items)
                 _TournamentTile(tournament: t, onChanged: _reload),
@@ -78,59 +79,19 @@ class _TournamentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    final running = tournament.status == 'running';
-    return OilCard(
-      highlight: running,
+    return RowItem(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: tournament)),
       ).then((_) => onChanged()),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: t.colorScheme.primary.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(Icons.emoji_events_outlined, size: 18, color: t.colorScheme.primary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tournament.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Pill(
-                      Tournament.statusLabels[tournament.status] ?? tournament.status,
-                      color: running ? t.colorScheme.primary : t.colorScheme.mutedForeground,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        [
-                          fmtDateTime(tournament.startsAt),
-                          if (tournament.venue?.isNotEmpty ?? false) tournament.venue!,
-                        ].join(' • '),
-                        style: t.textTheme.small,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right, size: 18, color: t.colorScheme.mutedForeground),
-        ],
-      ),
+      leading: Icon(Icons.emoji_events_outlined, size: 18, color: t.colorScheme.primary),
+      title: tournament.name,
+      subtitle: [
+        Tournament.statusLabels[tournament.status] ?? tournament.status,
+        fmtDateTime(tournament.startsAt),
+        if (tournament.venue?.isNotEmpty ?? false) tournament.venue!,
+      ].join(' • '),
+      trailing: Icon(Icons.chevron_right, size: 18, color: t.colorScheme.mutedForeground),
     );
   }
 }
@@ -218,7 +179,7 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
           final last = d.matches.isEmpty ? null : d.matches.last.kickoff;
           final end = last?.add(Duration(minutes: widget.tournament.matchMinutes));
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
             children: [
               Text(
                 '${d.teams.length} tim • ${d.matches.length} laga • '
@@ -270,68 +231,115 @@ class _StandingsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    final head = t.textTheme.small.copyWith(fontWeight: FontWeight.w700);
-    final cell = t.textTheme.small;
+    final head = t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 0.9);
+    final cell = t.textTheme.table;
+    // Di HP kolom ringkas (M, SG, Poin); di layar lebar semua kolom muat.
+    final wide = MediaQuery.sizeOf(context).width >= 640;
 
-    return OilCard(
-      padding: EdgeInsets.zero,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          headingRowHeight: 36,
-          dataRowMinHeight: 42,
-          dataRowMaxHeight: 46,
-          horizontalMargin: 12,
-          columnSpacing: 18,
-          headingTextStyle: head,
-          dataTextStyle: cell,
-          columns: const [
-            DataColumn(label: Text('#'), numeric: true),
-            DataColumn(label: Text('Tim')),
-            DataColumn(label: Text('M'), numeric: true),
-            DataColumn(label: Text('W'), numeric: true),
-            DataColumn(label: Text('D'), numeric: true),
-            DataColumn(label: Text('L'), numeric: true),
-            DataColumn(label: Text('GM'), numeric: true),
-            DataColumn(label: Text('GK'), numeric: true),
-            DataColumn(label: Text('SG'), numeric: true),
-            DataColumn(label: Text('Poin'), numeric: true),
-          ],
-          rows: [
-            for (var i = 0; i < standings.length; i++)
-              DataRow(
-                color: i == 0
-                    ? WidgetStatePropertyAll(t.colorScheme.primary.withValues(alpha: 0.08))
-                    : null,
-                cells: [
-                DataCell(Text('${i + 1}',
-                    style: cell.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: i == 0 ? t.colorScheme.primary : null,
-                    ))),
-                DataCell(Row(children: [
-                  if (i == 0) ...[
-                    Icon(Icons.emoji_events, size: 13, color: t.colorScheme.primary),
-                    const SizedBox(width: 4),
+    Widget num(String text, {TextStyle? style}) => Text(
+          text,
+          textAlign: TextAlign.right,
+          style: (style ?? cell).copyWith(fontFeatures: AppThemes.tabular),
+        );
+
+    Widget headCell(String text) => Text(text.toUpperCase(), style: head);
+
+    final cols = wide
+        ? ['#', 'Tim', 'M', 'W', 'D', 'L', 'GM', 'GK', 'SG', 'Poin']
+        : ['#', 'Tim', 'M', 'SG', 'Poin'];
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: t.colorScheme.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: t.colorScheme.border)),
+            ),
+            child: Row(
+              children: [
+                SizedBox(width: 22, child: headCell(cols[0])),
+                Expanded(child: headCell(cols[1])),
+                for (final c in cols.skip(2))
+                  SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: headCell(c))),
+              ],
+            ),
+          ),
+          for (var i = 0; i < standings.length; i++)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: i == 0 ? t.colorScheme.primary.withValues(alpha: 0.07) : null,
+                border: i == standings.length - 1
+                    ? null
+                    : Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.6))),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 22,
+                    child: Text(
+                      '${i + 1}',
+                      style: cell.copyWith(
+                        fontFamily: AppThemes.display,
+                        fontSize: 15,
+                        color: i == 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      standings[i].name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: cell.copyWith(fontWeight: i == 0 ? FontWeight.w600 : FontWeight.w500),
+                    ),
+                  ),
+                  SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: num('${standings[i].played}'))),
+                  if (wide) ...[
+                    SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: num('${standings[i].won}'))),
+                    SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: num('${standings[i].drawn}'))),
+                    SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: num('${standings[i].lost}'))),
+                    SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: num('${standings[i].goalsFor}'))),
+                    SizedBox(width: 42, child: Align(alignment: Alignment.centerRight, child: num('${standings[i].goalsAgainst}'))),
                   ],
-                  Text(standings[i].name,
-                      style: cell.copyWith(fontWeight: i == 0 ? FontWeight.w700 : null)),
-                ])),
-                DataCell(Text('${standings[i].played}')),
-                DataCell(Text('${standings[i].won}')),
-                DataCell(Text('${standings[i].drawn}')),
-                DataCell(Text('${standings[i].lost}')),
-                DataCell(Text('${standings[i].goalsFor}')),
-                DataCell(Text('${standings[i].goalsAgainst}')),
-                DataCell(Text('${standings[i].goalDiff}')),
-                DataCell(Text('${standings[i].points}',
-                    style: cell.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: t.colorScheme.primary,
-                    ))),
-              ]),
-          ],
-        ),
+                  SizedBox(
+                    width: 42,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: num(
+                        '${standings[i].goalDiff}',
+                        style: cell.copyWith(
+                          color: standings[i].goalDiff >= 0
+                              ? t.colorScheme.foreground
+                              : t.colorScheme.mutedForeground,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 42,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '${standings[i].points}',
+                        style: cell.copyWith(
+                          fontFamily: AppThemes.display,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: t.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -370,76 +378,69 @@ class _MatchTile extends StatelessWidget {
     final homeWin = done && match.scoreHome! > match.scoreAway!;
     final awayWin = done && match.scoreAway! > match.scoreHome!;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => _openScore(context),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.colorScheme.border),
-            ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 46,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(fmtTime(match.kickoff),
-                          style: t.textTheme.small.copyWith(fontWeight: FontWeight.w700)),
-                      Text('B${match.round}', style: t.textTheme.small),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    data.name(match.homeTeamId),
-                    textAlign: TextAlign.end,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: homeWin ? FontWeight.w800 : FontWeight.w500,
-                      color: homeWin ? t.colorScheme.primary : null,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openScore(context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7))),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 46,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fmtTime(match.kickoff),
+                      style: t.textTheme.table.copyWith(fontWeight: FontWeight.w600),
                     ),
+                    Text('B${match.round}', style: t.textTheme.small),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  data.name(match.homeTeamId),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: homeWin ? FontWeight.w600 : FontWeight.w500,
+                    color: homeWin ? t.colorScheme.primary : t.colorScheme.foreground,
                   ),
                 ),
-                Container(
-                  width: 58,
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: done ? t.colorScheme.primary.withValues(alpha: 0.14) : t.colorScheme.muted,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    done ? '${match.scoreHome} - ${match.scoreAway}' : 'vs',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: done ? 14 : 11,
-                      color: done ? t.colorScheme.primary : t.colorScheme.mutedForeground,
-                    ),
+              ),
+              SizedBox(
+                width: 62,
+                child: Text(
+                  done ? '${match.scoreHome}–${match.scoreAway}' : 'vs',
+                  textAlign: TextAlign.center,
+                  style: done
+                      ? t.textTheme.h2.copyWith(
+                          fontSize: 20,
+                          color: homeWin || awayWin ? t.colorScheme.foreground : t.colorScheme.mutedForeground,
+                        )
+                      : t.textTheme.small,
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  data.name(match.awayTeamId),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: awayWin ? FontWeight.w600 : FontWeight.w500,
+                    color: awayWin ? t.colorScheme.primary : t.colorScheme.foreground,
                   ),
                 ),
-                Expanded(
-                  child: Text(
-                    data.name(match.awayTeamId),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontWeight: awayWin ? FontWeight.w800 : FontWeight.w500,
-                      color: awayWin ? t.colorScheme.primary : null,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -480,6 +481,7 @@ class _TeamCard extends StatelessWidget {
 
   Future<void> _addPlayer(BuildContext context) async {
     final all = await Member.all(activeOnly: true);
+    if (!context.mounted) return;
     final taken = players.map((p) => p.id).toSet();
     final free = all.where((m) => !taken.contains(m.id)).toList();
     if (free.isEmpty) {
@@ -518,7 +520,7 @@ class _TeamCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return OilCard(
+    return Panel(
       padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

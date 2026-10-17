@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/models.dart';
 import 'fmt.dart';
+import 'theme.dart';
 import 'forms.dart';
 import 'widgets.dart';
 
@@ -31,20 +32,15 @@ class _BookingsPageState extends State<BookingsPage> {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Booking lapangan'),
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () async {
-              if (await showBookingForm(context)) _reload();
-            },
-          ),
-        ],
-      ),
-      body: AsyncView<List<Booking>>(
+    return PageScaffold(
+      title: 'Booking lapangan',
+      subtitle: 'Sewa lapangan & biaya',
+      actions: [
+        iconAction(context, Icons.add, () async {
+          if (await showBookingForm(context)) _reload();
+        }, tooltip: 'Booking baru'),
+      ],
+      child: AsyncView<List<Booking>>(
         future: _future,
         onRefresh: _reload,
         builder: (items) {
@@ -64,74 +60,81 @@ class _BookingsPageState extends State<BookingsPage> {
           }
           final total = items.where((b) => b.status != 'canceled').fold<double>(0, (s, b) => s + b.cost);
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
-              StatTile(label: 'Total biaya sewa', value: fmtMoney(total), icon: Icons.receipt_long_outlined),
-              const SizedBox(height: 16),
+              StatTile(
+                label: 'Total biaya sewa',
+                value: fmtMoney(total),
+                color: AppThemes.money(context),
+              ),
               for (final b in items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: t.colorScheme.card,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: t.colorScheme.border),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7)),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: Text(b.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text(
+                              b.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: t.textTheme.large,
                             ),
-                            ShadBadge.outline(
-                              child: Text(Booking.statusLabels[b.status] ?? b.status, style: t.textTheme.small),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${fmtDateTime(b.startsAt)} • ${b.durationMin} menit'
+                              ' • ${Booking.statusLabels[b.status] ?? b.status}',
+                              style: t.textTheme.small,
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        Text('${fmtDateTime(b.startsAt)} • ${b.durationMin} menit', style: t.textTheme.small),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Text(fmtMoney(b.cost), style: const TextStyle(fontWeight: FontWeight.w600)),
-                            const Spacer(),
-                            if (b.status == 'booked') ...[
-                              ShadButton.ghost(
-                                size: ShadButtonSize.sm,
-                                onPressed: () async {
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            fmtMoney(b.cost),
+                            style: t.textTheme.table.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: AppThemes.money(context),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (b.status == 'booked') ...[
+                                iconAction(context, Icons.check, () async {
                                   await b.setStatus('done');
                                   _reload();
-                                },
-                                child: const Text('Selesai'),
-                              ),
-                              ShadButton.ghost(
-                                size: ShadButtonSize.sm,
-                                onPressed: () async {
+                                }, tooltip: 'Tandai selesai'),
+                                const SizedBox(width: 6),
+                                iconAction(context, Icons.block, () async {
                                   await b.setStatus('canceled');
                                   _reload();
-                                },
-                                child: const Text('Batal'),
-                              ),
-                            ],
-                            IconButton(
-                              icon: Icon(Icons.delete_outline, size: 16, color: t.colorScheme.mutedForeground),
-                              onPressed: () async {
+                                }, tooltip: 'Batalkan'),
+                                const SizedBox(width: 6),
+                              ],
+                              iconAction(context, Icons.delete_outline, () async {
                                 if (await confirm(context, 'Hapus booking?', b.title)) {
                                   await Booking.delete(b.id);
                                   _reload();
                                 }
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                              }, tooltip: 'Hapus'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
             ],

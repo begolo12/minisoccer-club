@@ -107,89 +107,45 @@ class _MembersPageState extends State<MembersPage> {
                     ],
                   );
                 }
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    final m = filtered[i];
-                    return Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(14),
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                  children: [
+                    for (final m in filtered)
+                      RowItem(
                         onTap: () async {
                           if (await showMemberForm(context, member: m)) _reload();
                         },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
+                        leading: Container(
+                          width: 38,
+                          height: 38,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: t.colorScheme.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: t.colorScheme.border),
+                            border: Border.all(
+                              color: m.active
+                                  ? t.colorScheme.primary.withValues(alpha: 0.5)
+                                  : t.colorScheme.border,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 20,
-                                backgroundColor: m.active
-                                    ? t.colorScheme.primary.withValues(alpha: 0.16)
-                                    : t.colorScheme.muted,
-                                child: Text(
-                                  m.jersey?.toString() ?? m.name.characters.first.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: m.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Flexible(
-                                          child: Text(
-                                            m.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(fontWeight: FontWeight.w600),
-                                          ),
-                                        ),
-                                        if (!m.active) ...[
-                                          const SizedBox(width: 6),
-                                          ShadBadge.secondary(child: Text('nonaktif', style: t.textTheme.small)),
-                                        ],
-                                      ],
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${m.position}${m.phone != null ? " • ${m.phone}" : ""}',
-                                      style: t.textTheme.small,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Hapus',
-                                icon: Icon(Icons.delete_outline, size: 18, color: t.colorScheme.mutedForeground),
-                                onPressed: () async {
-                                  if (await confirm(context, 'Hapus anggota?', '${m.name} akan dihapus permanen.')) {
-                                    await Member.delete(m.id);
-                                    _reload();
-                                  }
-                                },
-                              ),
-                            ],
+                          child: Text(
+                            '${m.jersey ?? '-'}',
+                            style: t.textTheme.h2.copyWith(
+                              fontSize: 20,
+                              color: m.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                            ),
                           ),
                         ),
+                        title: m.name,
+                        subtitle: '${m.position}${m.phone != null ? " • ${m.phone}" : ""}'
+                            '${m.active ? '' : ' • nonaktif'}',
+                        trailing: iconAction(context, Icons.delete_outline, () async {
+                          if (await confirm(context, 'Hapus anggota?', '${m.name} akan dihapus permanen.')) {
+                            await Member.delete(m.id);
+                            _reload();
+                          }
+                        }, tooltip: 'Hapus'),
                       ),
-                    );
-                  },
+                  ],
                 );
               },
             ),

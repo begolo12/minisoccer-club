@@ -21,3 +21,22 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: BarlowCondensed
+      fonts:
+        - asset: assets/fonts/bc-Regular.ttf
+        - asset: assets/fonts/bc-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/bc-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/bc-Bold.ttf
+          weight: 700

@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 class MatchesPage extends StatefulWidget {
@@ -14,23 +15,28 @@ class MatchesPage extends StatefulWidget {
 }
 
 class _MatchesPageState extends State<MatchesPage> {
-  late Future<List<Match>> _future;
+  late Future<(List<Match>, List<int>)> _future;
+
+  Future<(List<Match>, List<int>)> _load() async {
+    final r = await Future.wait([Match.all(), Match.stats()]);
+    return (r[0] as List<Match>, r[1] as List<int>);
+  }
 
   @override
   void initState() {
     super.initState();
-    _future = Match.all();
+    _future = _load();
   }
 
   Future<void> _reload() async {
-    final f = Match.all();
+    final f = _load();
     setState(() => _future = f);
     await f;
   }
 
   @override
   Widget build(BuildContext context) {
-
+    final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Tanding',
       subtitle: 'Jadwal & hasil pertandingan',
@@ -39,10 +45,12 @@ class _MatchesPageState extends State<MatchesPage> {
           if (await showMatchForm(context)) _reload();
         }, tooltip: 'Jadwal baru'),
       ],
-      child: AsyncView<List<Match>>(
+      child: AsyncView<(List<Match>, List<int>)>(
         future: _future,
         onRefresh: _reload,
-        builder: (matches) {
+        builder: (data) {
+          final matches = data.$1;
+          final stats = data.$2;
           if (matches.isEmpty) {
             return ListView(children: [
               const SizedBox(height: 80),
@@ -60,8 +68,41 @@ class _MatchesPageState extends State<MatchesPage> {
           final scheduled = matches.where((m) => m.status == 'scheduled').toList();
           final finished = matches.where((m) => m.status == 'finished').toList();
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border.all(color: t.colorScheme.border),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: StatTile(
+                        label: 'Menang',
+                        value: '${stats[0]}',
+                        color: t.colorScheme.primary,
+                      ),
+                    ),
+                    _rule(t),
+                    Expanded(child: StatTile(label: 'Seri', value: '${stats[1]}')),
+                    _rule(t),
+                    Expanded(
+                      child: StatTile(
+                        label: 'Kalah',
+                        value: '${stats[2]}',
+                        color: AppThemes.bad(context),
+                      ),
+                    ),
+                    _rule(t),
+                    Expanded(child: StatTile(label: 'Gol', value: '${stats[3]}')),
+                    _rule(t),
+                    Expanded(child: StatTile(label: 'Bobol', value: '${stats[4]}')),
+                  ],
+                ),
+              ),
               if (scheduled.isNotEmpty) ...[
                 const SectionTitle('Akan datang'),
                 ...scheduled.map((m) => _MatchTile(match: m, onChanged: _reload)),
@@ -79,6 +120,13 @@ class _MatchesPageState extends State<MatchesPage> {
   }
 }
 
+Widget _rule(ShadThemeData t) => Container(
+      width: 1,
+      height: 40,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      color: t.colorScheme.border,
+    );
+
 class _MatchTile extends StatelessWidget {
   const _MatchTile({required this.match, required this.onChanged});
 
@@ -92,80 +140,40 @@ class _MatchTile extends StatelessWidget {
     final win = finished && match.goalsFor > match.goalsAgainst;
     final draw = finished && match.goalsFor == match.goalsAgainst;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MatchDetailPage(match: match)),
-          ).then((_) => onChanged()),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: finished && win ? t.colorScheme.primary.withValues(alpha: 0.5) : t.colorScheme.border,
+    return RowItem(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => MatchDetailPage(match: match)),
+      ).then((_) => onChanged()),
+      leading: finished
+          ? SizedBox(
+              width: 52,
+              child: Text(
+                '${match.goalsFor}–${match.goalsAgainst}',
+                style: t.textTheme.h1.copyWith(
+                  fontSize: 26,
+                  color: win
+                      ? t.colorScheme.primary
+                      : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)),
+                ),
               ),
+            )
+          : const SizedBox(
+              width: 52,
+              child: Icon(Icons.schedule, size: 18),
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: finished
-                        ? (win
-                            ? t.colorScheme.primary.withValues(alpha: 0.16)
-                            : t.colorScheme.muted)
-                        : t.colorScheme.secondary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: finished
-                      ? Text(
-                          '${match.goalsFor}-${match.goalsAgainst}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: win ? t.colorScheme.primary : t.colorScheme.mutedForeground,
-                          ),
-                        )
-                      : Icon(Icons.schedule, size: 18, color: t.colorScheme.mutedForeground),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'vs ${match.opponent}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${fmtDateTime(match.playedAt)}${match.venue != null ? " • ${match.venue}" : ""}',
-                        style: t.textTheme.small,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (finished)
-                  ShadBadge.outline(
-                    child: Text(win ? 'Menang' : (draw ? 'Draw' : 'Kalah'), style: t.textTheme.small),
-                  )
-                else
-                  ShadBadge.secondary(child: Text(match.isHome ? 'Kandang' : 'Tandang', style: t.textTheme.small)),
-              ],
-            ),
-          ),
+      title: 'vs ${match.opponent}',
+      subtitle: '${fmtDateTime(match.playedAt)}${match.venue != null ? " • ${match.venue}" : ""}',
+      trailing: Text(
+        finished ? (win ? 'MENANG' : (draw ? 'SERI' : 'KALAH')) : (match.isHome ? 'KANDANG' : 'TANDANG'),
+        style: TextStyle(
+          fontFamily: AppThemes.display,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1.2,
+          color: finished
+              ? (win ? t.colorScheme.primary : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)))
+              : t.colorScheme.mutedForeground,
         ),
       ),
     );
@@ -207,29 +215,45 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
     final t = ShadTheme.of(context);
     final m = widget.match;
     final finished = m.status == 'finished';
-    return Scaffold(
-      appBar: AppBar(title: Text('vs ${m.opponent}'), backgroundColor: Colors.transparent),
-      body: ListView(
+    return PageScaffold(
+      title: 'vs ${m.opponent}',
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
             decoration: BoxDecoration(
               color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: t.colorScheme.border),
             ),
             child: Column(
               children: [
-                Text('${fmtDateTime(m.playedAt)}${m.venue != null ? "\n${m.venue}" : ""}',
+                Text('${fmtDateTime(m.playedAt)}${m.venue != null ? " • ${m.venue}" : ""}',
                     textAlign: TextAlign.center, style: t.textTheme.small),
-                const SizedBox(height: 14),
+                const SizedBox(height: 10),
                 Text(
-                  finished ? '${m.goalsFor} — ${m.goalsAgainst}' : 'VS',
-                  style: t.textTheme.h1Large,
+                  finished ? '${m.goalsFor}–${m.goalsAgainst}' : 'VS',
+                  style: t.textTheme.h1Large.copyWith(
+                    fontSize: 56,
+                    color: finished
+                        ? (m.goalsFor > m.goalsAgainst
+                            ? t.colorScheme.primary
+                            : (m.goalsFor == m.goalsAgainst
+                                ? t.colorScheme.mutedForeground
+                                : AppThemes.bad(context)))
+                        : t.colorScheme.foreground,
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Text(finished ? m.resultLabel : 'Belum dimainkan', style: t.textTheme.muted),
+                const SizedBox(height: 2),
+                Text(
+                  finished
+                      ? (m.goalsFor > m.goalsAgainst
+                          ? 'Menang'
+                          : (m.goalsFor == m.goalsAgainst ? 'Seri' : 'Kalah'))
+                      : 'Belum dimainkan',
+                  style: t.textTheme.muted,
+                ),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -237,6 +261,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       child: ShadButton.outline(
                         onPressed: () async {
                           if (await showFinishMatch(context, m)) {
+                            if (!context.mounted) return;
                             Navigator.pop(context, true);
                           }
                         },
@@ -244,15 +269,12 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    ShadButton.destructive(
-                      onPressed: () async {
-                        if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
-                          await Match.delete(m.id);
-                          if (context.mounted) Navigator.pop(context, true);
-                        }
-                      },
-                      child: const Icon(Icons.delete_outline, size: 16),
-                    ),
+                    iconAction(context, Icons.delete_outline, () async {
+                      if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
+                        await Match.delete(m.id);
+                        if (context.mounted) Navigator.pop(context, true);
+                      }
+                    }, tooltip: 'Hapus pertandingan'),
                   ],
                 ),
               ],
@@ -292,50 +314,31 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 children: [
                   Row(
                     children: [
-                      ShadBadge.secondary(child: Text('$won menang', style: t.textTheme.small)),
-                      const SizedBox(width: 6),
-                      ShadBadge.secondary(child: Text('$drew seri', style: t.textTheme.small)),
-                      const SizedBox(width: 6),
-                      ShadBadge.secondary(child: Text('$lost kalah', style: t.textTheme.small)),
+                      Pill('$won menang', color: t.colorScheme.primary),
+                      const SizedBox(width: 12),
+                      Pill('$drew seri'),
+                      const SizedBox(width: 12),
+                      Pill('$lost kalah', color: AppThemes.bad(context)),
                     ],
                   ),
                   const SizedBox(height: 10),
                   for (final s in sessions)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () async {
-                            if (await _sessionForm(context, session: s)) _reload();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: t.colorScheme.card,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: t.colorScheme.border),
-                            ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 34,
-                                  child: Text('S${s.sessionNo}',
-                                      style: t.textTheme.small.copyWith(fontWeight: FontWeight.w700)),
-                                ),
-                                Text('${s.scoreHome} — ${s.scoreAway}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                                const Spacer(),
-                                ShadBadge.outline(
-                                  child: Text(
-                                    MatchSession.winnerLabels[s.winner] ?? s.winner,
-                                    style: t.textTheme.small,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                    RowItem(
+                      onTap: () async {
+                        if (await _sessionForm(context, session: s)) _reload();
+                      },
+                      leading: Text('S${s.sessionNo}', style: t.textTheme.h4.copyWith(fontSize: 12)),
+                      title: '${s.scoreHome}–${s.scoreAway}',
+                      trailing: Text(
+                        (MatchSession.winnerLabels[s.winner] ?? s.winner).toUpperCase(),
+                        style: TextStyle(
+                          fontFamily: AppThemes.display,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                          color: s.winner == 'home'
+                              ? t.colorScheme.primary
+                              : (s.winner == 'away' ? AppThemes.bad(context) : t.colorScheme.mutedForeground),
                         ),
                       ),
                     ),
@@ -371,35 +374,21 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
               return Column(
                 children: [
                   for (final e in events)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: t.colorScheme.card,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: t.colorScheme.border),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(_icon(e.type), size: 16, color: _color(e.type, t)),
-                            const SizedBox(width: 10),
-                            Expanded(child: Text(e.memberName)),
-                            if (e.minute != null)
-                              Text("${e.minute}'", style: t.textTheme.small),
-                            const SizedBox(width: 8),
-                            ShadBadge.outline(
-                              child: Text(MatchEvent.typeLabels[e.type] ?? e.type, style: t.textTheme.small),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 15),
-                              onPressed: () async {
-                                await MatchEvent.delete(e.id);
-                                _reload();
-                              },
-                            ),
-                          ],
-                        ),
+                    RowItem(
+                      leading: Icon(_icon(e.type), size: 16, color: _color(e.type, t)),
+                      title: e.memberName,
+                      subtitle: MatchEvent.typeLabels[e.type] ?? e.type,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (e.minute != null)
+                            Text("${e.minute}'", style: t.textTheme.table),
+                          const SizedBox(width: 8),
+                          iconAction(context, Icons.close, () async {
+                            await MatchEvent.delete(e.id);
+                            _reload();
+                          }, tooltip: 'Hapus catatan'),
+                        ],
                       ),
                     ),
                 ],
@@ -427,6 +416,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
 
   Future<bool> _sessionForm(BuildContext context, {MatchSession? session}) async {
     final existing = await MatchSession.forMatch(widget.match.id);
+    if (!context.mounted) return false;
     final nextNo = session?.sessionNo ??
         (existing.isEmpty
             ? 1
@@ -518,6 +508,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
 
   Future<bool> _addEvent(BuildContext context) async {
     final members = await Member.all();
+    if (!context.mounted) return false;
     if (members.isEmpty) {
       toast(context, 'Tambah anggota dulu');
       return false;

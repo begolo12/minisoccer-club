@@ -3,16 +3,17 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'theme.dart';
 
-/// Kartu dasar app: permukaan card + garis tipis gradien "oil".
-/// Semua kartu pakai ini supaya radius, border, dan sheen-nya seragam.
-class OilCard extends StatelessWidget {
-  const OilCard({
+/// Permukaan datar: satu bidang + garis rambut. Tanpa gradien, tanpa bayangan.
+/// Dipakai untuk kelompok data yang memang butuh wadah; baris biasa cukup
+/// garis pemisah.
+class Panel extends StatelessWidget {
+  const Panel({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(14),
+    this.padding = const EdgeInsets.all(16),
     this.onTap,
     this.highlight = false,
-    this.radius = 16,
+    this.radius = 12,
     this.background,
   });
 
@@ -20,7 +21,7 @@ class OilCard extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final VoidCallback? onTap;
 
-  /// Versi lebih terang: border gradien penuh + sheen. Untuk item terpilih/juara.
+  /// Versi bertanda: garis aksen hijau. Untuk laga berikutnya / juara.
   final bool highlight;
   final double radius;
   final Color? background;
@@ -28,54 +29,23 @@ class OilCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    final dark = t.brightness == Brightness.dark;
-
-    final body = Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: background ?? t.colorScheme.card,
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      child: child,
-    );
-
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: Colors.transparent,
+        color: background ?? t.colorScheme.card,
+        borderRadius: BorderRadius.circular(radius),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(radius),
           child: Container(
+            padding: padding,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(radius),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: highlight
-                    ? [
-                        AppThemes.oilA.withValues(alpha: dark ? 0.75 : 0.9),
-                        AppThemes.oilB.withValues(alpha: dark ? 0.55 : 0.7),
-                        AppThemes.oilC.withValues(alpha: dark ? 0.45 : 0.6),
-                      ]
-                    : [
-                        (dark ? Colors.white : Colors.black).withValues(alpha: dark ? 0.10 : 0.07),
-                        t.colorScheme.border,
-                        (dark ? Colors.white : Colors.black).withValues(alpha: dark ? 0.04 : 0.03),
-                      ],
+              border: Border.all(
+                color: highlight ? t.colorScheme.primary.withValues(alpha: 0.55) : t.colorScheme.border,
               ),
-              boxShadow: highlight
-                  ? [
-                      BoxShadow(
-                        color: AppThemes.oilA.withValues(alpha: dark ? 0.18 : 0.14),
-                        blurRadius: 18,
-                        offset: const Offset(0, 6),
-                      ),
-                    ]
-                  : null,
             ),
-            padding: const EdgeInsets.all(1), // tebal garis
-            child: body,
+            child: child,
           ),
         ),
       ),
@@ -83,43 +53,36 @@ class OilCard extends StatelessWidget {
   }
 }
 
-/// Chip kecil untuk status/metadata. Lebih ringan dari ShadBadge.
+/// Label status/metadata. Huruf besar sempit, bukan badge berwarna-warni.
 class Pill extends StatelessWidget {
-  const Pill(this.text, {super.key, this.color, this.icon});
+  const Pill(this.text, {super.key, this.color});
 
   final String text;
   final Color? color;
-  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     final c = color ?? t.colorScheme.mutedForeground;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: c.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 11, color: c),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            text,
-            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c, letterSpacing: 0.2),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          text.toUpperCase(),
+          style: TextStyle(
+            fontFamily: AppThemes.display,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: c,
+            letterSpacing: 1.2,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// Placeholder loading berbentuk kartu — hindari layar kosong + spinner.
+/// Placeholder loading berbentuk baris — hindari layar kosong + spinner.
 class SkeletonList extends StatefulWidget {
   const SkeletonList({super.key, this.count = 4, this.height = 64});
 
@@ -144,18 +107,18 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
       children: [
         for (var i = 0; i < widget.count; i++)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: AnimatedBuilder(
               animation: _c,
-              builder: (_, __) => Container(
+              builder: (_, _) => Container(
                 height: widget.height,
                 decoration: BoxDecoration(
                   color: t.colorScheme.card.withValues(alpha: 0.55 + 0.35 * _c.value),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: t.colorScheme.border.withValues(alpha: 0.6)),
                 ),
               ),
@@ -165,7 +128,6 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
     );
   }
 }
-
 
 /// Empty state — selalu kasih aksi biar user nggak bingung.
 class EmptyState extends StatelessWidget {
@@ -194,12 +156,12 @@ class EmptyState extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: t.colorScheme.muted,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 30, color: t.colorScheme.mutedForeground),
+              child: Icon(icon, size: 26, color: t.colorScheme.mutedForeground),
             ),
             const SizedBox(height: 16),
             Text(title, style: t.textTheme.large, textAlign: TextAlign.center),
@@ -233,7 +195,7 @@ class ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_rounded, size: 36, color: t.colorScheme.mutedForeground),
+            Icon(Icons.cloud_off_rounded, size: 32, color: t.colorScheme.mutedForeground),
             const SizedBox(height: 12),
             Text('Gagal memuat data', style: t.textTheme.large),
             const SizedBox(height: 6),
@@ -253,29 +215,34 @@ class ErrorState extends StatelessWidget {
   }
 }
 
+/// Judul bagian: label kecil huruf besar + garis tipis sampai tepi kanan.
+/// Menggantikan judul tebal yang bersaing dengan judul halaman.
 class SectionTitle extends StatelessWidget {
-  const SectionTitle(this.text, {super.key, this.action});
+  const SectionTitle(this.text, {super.key, this.action, this.top = 18});
 
   final String text;
   final Widget? action;
+  final double top;
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10, top: 4),
+      padding: EdgeInsets.only(bottom: 10, top: top),
       child: Row(
         children: [
-          Text(text, style: t.textTheme.large),
-          const Spacer(),
-          if (action != null) action!,
+          Text(text.toUpperCase(), style: t.textTheme.h4),
+          const SizedBox(width: 10),
+          Expanded(child: Container(height: 1, color: t.colorScheme.border)),
+          if (action != null) ...[const SizedBox(width: 8), action!],
         ],
       ),
     );
   }
 }
 
-/// Kartu statistik ringkas.
+/// Angka besar untuk ringkasan: label di atas, nilai sempit di bawah.
+/// Tanpa wadah sendiri supaya tiga angka bisa berbagi satu strip.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -295,39 +262,96 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return OilCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 14, color: color ?? t.colorScheme.mutedForeground),
-                const SizedBox(width: 6),
-              ],
-              Expanded(
-                child: Text(
-                  label,
-                  style: t.textTheme.small,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 12, color: t.colorScheme.mutedForeground),
+              const SizedBox(width: 5),
             ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: t.textTheme.h3.copyWith(color: color),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (hint != null) ...[
-            const SizedBox(height: 2),
-            Text(hint!, style: t.textTheme.small, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Expanded(
+              child: Text(
+                label.toUpperCase(),
+                style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 0.9),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
+        ),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: t.textTheme.h1.copyWith(
+              fontSize: 34,
+              color: color ?? t.colorScheme.foreground,
+            ),
+            maxLines: 1,
+          ),
+        ),
+        if (hint != null)
+          Text(hint!, style: t.textTheme.small.copyWith(fontFeatures: AppThemes.tabular)),
+      ],
+    );
+  }
+}
+
+/// Satu baris data: label kiri, nilai kanan, garis pemisah rambut.
+/// Dipakai untuk daftar apa pun yang lebih penting dibandingkan daripada
+/// dibaca sebagai kartu.
+class RowItem extends StatelessWidget {
+  const RowItem({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.leading,
+    this.onTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Widget? leading;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          if (leading != null) ...[leading!, const SizedBox(width: 12)],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: t.textTheme.large, maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(subtitle!, style: t.textTheme.small, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[const SizedBox(width: 12), trailing!],
         ],
       ),
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7))),
+      ),
+      child: onTap == null
+          ? row
+          : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8), child: row),
     );
   }
 }
@@ -367,7 +391,11 @@ class AsyncView<T> extends StatelessWidget {
   }
 }
 
-/// Scaffold halaman tab dengan judul besar + aksi.
+/// Lebar baca maksimum. Di layar lebar isi tidak melar sampai 1400px.
+const kContentMax = 980.0;
+
+/// Scaffold semua halaman: judul, subjudul, aksi, garis pemisah, isi.
+/// Otomatis menaruh tombol kembali saat halaman ditumpuk.
 class PageScaffold extends StatelessWidget {
   const PageScaffold({
     super.key,
@@ -385,51 +413,48 @@ class PageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    final dark = t.brightness == Brightness.dark;
+    final canPop = Navigator.canPop(context);
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              dark
-                  ? t.colorScheme.primary.withValues(alpha: 0.06)
-                  : t.colorScheme.primary.withValues(alpha: 0.05),
-              t.colorScheme.background,
-              t.colorScheme.background,
-            ],
-            stops: const [0, 0.28, 1],
-          ),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title, style: t.textTheme.h3),
-                          if (subtitle != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 3),
-                              child: Text(subtitle!, style: t.textTheme.small),
-                            ),
-                        ],
+      body: SafeArea(
+        bottom: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: kContentMax),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 14, 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (canPop)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: iconAction(context, Icons.arrow_back_rounded,
+                              () => Navigator.pop(context), tooltip: 'Kembali'),
+                        ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: t.textTheme.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            if (subtitle != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(subtitle!, style: t.textTheme.small),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                    ...actions,
-                  ],
+                      ...actions,
+                    ],
+                  ),
                 ),
-              ),
-              Expanded(child: child),
-            ],
+                Container(height: 1, color: t.colorScheme.border),
+                Expanded(child: child),
+              ],
+            ),
           ),
         ),
       ),
@@ -437,23 +462,30 @@ class PageScaffold extends StatelessWidget {
   }
 }
 
-/// Tombol ikon bulat untuk app bar.
-Widget iconAction(BuildContext context, IconData icon, VoidCallback onTap, {String? tooltip}) {
+/// Tombol ikon untuk header. Persegi, garis rambut, tanpa isi warna.
+Widget iconAction(
+  BuildContext context,
+  IconData icon,
+  VoidCallback onTap, {
+  String? tooltip,
+}) {
   final t = ShadTheme.of(context);
-  return Padding(
-    padding: const EdgeInsets.only(left: 4),
-    child: Tooltip(
-      message: tooltip ?? '',
+  final color = t.colorScheme.mutedForeground;
+  return Tooltip(
+    message: tooltip ?? '',
+    child: Material(
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.all(9),
+          width: 34,
+          height: 34,
           decoration: BoxDecoration(
-            color: t.colorScheme.secondary,
-            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: t.colorScheme.border),
+            borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 18, color: t.colorScheme.secondaryForeground),
+          child: Icon(icon, size: 17, color: color),
         ),
       ),
     ),

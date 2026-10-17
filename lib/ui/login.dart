@@ -6,6 +6,9 @@ import 'theme.dart';
 import 'widgets.dart';
 
 /// Layar masuk. Kalau belum ada user sama sekali, tampilkan form buat admin.
+///
+/// Arah "Papan skor": wordmark sempit besar di kiri, form di panel bergaris
+/// di kanan. Latar cuma garis lapangan tipis, tanpa cahaya dan gradien.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.onSignedIn, this.error});
 
@@ -19,7 +22,9 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _user = TextEditingController();
   final _pass = TextEditingController();
+  final _userFocus = FocusNode();
   bool _busy = false;
+  bool _showPass = false;
   bool? _bootstrap;
   String? _err;
 
@@ -34,6 +39,7 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _user.dispose();
     _pass.dispose();
+    _userFocus.dispose();
     super.dispose();
   }
 
@@ -47,6 +53,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     setState(() {
       _busy = true;
       _err = null;
@@ -67,124 +74,342 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    final dark = t.brightness == Brightness.dark;
     final firstRun = _bootstrap == true;
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              t.colorScheme.primary.withValues(alpha: dark ? 0.10 : 0.08),
-              t.colorScheme.background,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 60,
-                        height: 60,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [AppThemes.oilA, Color(0xFF0F7A3D)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppThemes.oilA.withValues(alpha: 0.35),
-                              blurRadius: 22,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.sports_soccer, color: Colors.white, size: 30),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Center(child: Text('Minisoccer Club', style: t.textTheme.h2)),
-                    const SizedBox(height: 6),
-                    Center(
-                      child: Text(
-                        firstRun ? 'Buat akun admin pertama' : 'Masuk untuk mengelola klub',
-                        style: t.textTheme.small,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    const SizedBox(height: 26),
-                    if (_bootstrap == null && _err == null)
-                      const Center(child: CircularProgressIndicator())
-                    else
-                      OilCard(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
+      body: Stack(
+        children: [
+          Positioned.fill(child: CustomPaint(painter: _PitchPainter(_lineColor(context)))),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 940),
+                  child: LayoutBuilder(
+                    builder: (context, c) {
+                      final wide = c.maxWidth >= 800;
+                      final form = _FormPanel(
+                        firstRun: firstRun,
+                        busy: _busy,
+                        showPass: _showPass,
+                        error: _err,
+                        user: _user,
+                        pass: _pass,
+                        userFocus: _userFocus,
+                        onTogglePass: () => setState(() => _showPass = !_showPass),
+                        onSubmit: _submit,
+                      );
+
+                      if (!wide) {
+                        return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            ShadInput(
-                              controller: _user,
-                              placeholder: const Text('Username'),
-                              autocorrect: false,
-                              enabled: !_busy,
-                            ),
-                            const SizedBox(height: 10),
-                            ShadInput(
-                              controller: _pass,
-                              placeholder: Text(firstRun ? 'Password (min. 6 karakter)' : 'Password'),
-                              obscureText: true,
-                              enabled: !_busy,
-                              onSubmitted: (_) => _busy ? null : _submit(),
-                            ),
-                            if (_err != null) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                _err!,
-                                style: TextStyle(color: t.colorScheme.destructive, fontSize: 12.5),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            ShadButton(
-                              onPressed: _busy ? null : _submit,
-                              child: _busy
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : Text(firstRun ? 'Buat akun & masuk' : 'Masuk'),
-                            ),
+                            const _Brand(compact: true),
+                            const SizedBox(height: 20),
+                            form,
                           ],
-                        ),
-                      ),
-                    const SizedBox(height: 18),
-                    Text(
-                      firstRun
-                          ? 'Akun ini jadi admin. Password disimpan sebagai hash bcrypt di database — '
-                              'tidak pernah dikirim ke mana pun selain server.'
-                          : 'Lupa password? Minta admin mengatur ulang lewat menu Pengguna.',
-                      style: t.textTheme.small,
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                        );
+                      }
+
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Expanded(flex: 6, child: _Brand(compact: false)),
+                          const SizedBox(width: 48),
+                          Expanded(flex: 4, child: form),
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+}
+
+Color _lineColor(BuildContext context) {
+  final t = ShadTheme.of(context);
+  return t.brightness == Brightness.dark
+      ? Colors.white.withValues(alpha: 0.05)
+      : Colors.black.withValues(alpha: 0.05);
+}
+
+/// Garis lapangan: satu garis tengah + lingkaran tengah, sangat tipis.
+class _PitchPainter extends CustomPainter {
+  const _PitchPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = color;
+
+    final cx = size.width * 0.24;
+    canvas.drawCircle(Offset(cx, size.height * 0.42), size.width * 0.17, paint);
+    canvas.drawLine(Offset(0, size.height * 0.42), Offset(size.width, size.height * 0.42), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _Brand extends StatelessWidget {
+  const _Brand({required this.compact});
+
+  final bool compact;
+
+  static const _points = [
+    ('01', 'Jadwal & hasil', 'Sesi per babak, pemenang dihitung dari skor'),
+    ('02', 'Kas klub', 'Iuran bulanan, siapa yang belum, total terkumpul'),
+    ('03', 'Turnamen internal', 'Empat tim round-robin, klasemen otomatis'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Column(
+      crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border.all(color: t.colorScheme.primary, width: 1.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.sports_soccer, size: 18, color: t.colorScheme.primary),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'MINISOCCER CLUB',
+              style: TextStyle(
+                fontFamily: AppThemes.display,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 2.4,
+                color: t.colorScheme.mutedForeground,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: compact ? 18 : 26),
+        Text(
+          'Kelola klub\ndalam satu papan.',
+          textAlign: compact ? TextAlign.center : TextAlign.start,
+          style: t.textTheme.h1Large.copyWith(
+            fontSize: compact ? 44 : 62,
+            height: 0.95,
+            color: t.colorScheme.foreground,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Anggota, jadwal tanding, iuran, dan turnamen internal.',
+          textAlign: compact ? TextAlign.center : TextAlign.start,
+          style: t.textTheme.muted,
+        ),
+        if (!compact) ...[
+          const SizedBox(height: 30),
+          for (final p in _points)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.$1,
+                    style: TextStyle(
+                      fontFamily: AppThemes.display,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: t.colorScheme.primary,
+                      fontFeatures: AppThemes.tabular,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(p.$2, style: t.textTheme.large),
+                        const SizedBox(height: 1),
+                        Text(p.$3, style: t.textTheme.small),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Form masuk / buat admin pertama.
+class _FormPanel extends StatelessWidget {
+  const _FormPanel({
+    required this.firstRun,
+    required this.busy,
+    required this.showPass,
+    required this.error,
+    required this.user,
+    required this.pass,
+    required this.userFocus,
+    required this.onTogglePass,
+    required this.onSubmit,
+  });
+
+  final bool firstRun;
+  final bool busy;
+  final bool showPass;
+  final String? error;
+  final TextEditingController user;
+  final TextEditingController pass;
+  final FocusNode userFocus;
+  final VoidCallback onTogglePass;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: t.colorScheme.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.colorScheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Pill(firstRun ? 'Admin pertama' : 'Masuk', color: t.colorScheme.primary),
+          const SizedBox(height: 8),
+          Text(
+            firstRun ? 'Belum ada akun' : 'Masuk ke klub',
+            style: t.textTheme.h3.copyWith(fontSize: 24),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            firstRun
+                ? 'Buat admin pertama untuk mulai mengelola klub.'
+                : 'Pakai akun yang diberikan admin klub.',
+            style: t.textTheme.small,
+          ),
+          const SizedBox(height: 20),
+          _Field(
+            label: 'Username',
+            child: ShadInput(
+              controller: user,
+              focusNode: userFocus,
+              enabled: !busy,
+              autocorrect: false,
+              textInputAction: TextInputAction.next,
+              placeholder: const Text('mis. admin'),
+              onSubmitted: (_) {
+                if (pass.text.isNotEmpty) onSubmit();
+              },
+            ),
+          ),
+          const SizedBox(height: 14),
+          _Field(
+            label: 'Password',
+            child: ShadInput(
+              controller: pass,
+              enabled: !busy,
+              obscureText: !showPass,
+              placeholder: Text(firstRun ? 'Minimal 6 karakter' : 'Password'),
+              onSubmitted: (_) => onSubmit(),
+              trailing: IconButton(
+                splashRadius: 18,
+                tooltip: showPass ? 'Sembunyikan' : 'Tampilkan',
+                icon: Icon(
+                  showPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  size: 17,
+                  color: t.colorScheme.mutedForeground,
+                ),
+                onPressed: onTogglePass,
+              ),
+            ),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 14),
+            ShadAlert.destructive(
+              icon: const Icon(Icons.error_outline, size: 16),
+              description: Text(error!, style: const TextStyle(fontSize: 12.5, height: 1.45)),
+            ),
+          ],
+          const SizedBox(height: 20),
+          ShadButton(
+            height: 42,
+            onPressed: busy ? null : onSubmit,
+            child: busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        firstRun ? 'Buat akun & masuk' : 'Masuk',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 16),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            firstRun
+                ? 'Password disimpan sebagai hash bcrypt di database.'
+                : 'Lupa password? Minta admin mengatur ulang lewat menu Pengguna.',
+            textAlign: TextAlign.start,
+            style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Label kecil huruf besar di atas field.
+class _Field extends StatelessWidget {
+  const _Field({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 6),
+          child: Text(
+            label.toUpperCase(),
+            style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 1),
+          ),
+        ),
+        child,
+      ],
     );
   }
 }

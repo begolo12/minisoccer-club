@@ -3,6 +3,10 @@
 Aplikasi manajemen klub mini soccer: **Flutter** + **shadcn UI** + **Neon Postgres** (database dari Vercel).
 Mobile-first, dark & light mode, plus versi web.
 
+Tema "papan skor": angka Barlow Condensed, teks Inter, hijau lapangan di atas
+hitam, daftar ber-garis alih-alih tumpukan kartu. Rail kiri di layar lebar,
+bottom nav di HP. Detail token dan tooling preview: [`design/README.md`](design/README.md).
+
 ## 📲 Download APK
 
 **[Download APK terbaru](https://github.com/begolo12/minisoccer-club/releases/latest/download/app-release.apk)**
@@ -28,8 +32,11 @@ Versi web: **https://minisoccer-club.vercel.app**
 | **Pengguna** | Akun + role admin / bendahara / anggota |
 | **Pengaturan** | Tema, ganti koneksi DB, tes koneksi |
 
-QoL: pull-to-refresh, empty state yang mengarahkan, konfirmasi hapus, koneksi DB
-disimpan terenkripsi di HP, tabel auto-dibuat saat pertama konek, error state + retry.
+QoL: pull-to-refresh, empty state yang mengarahkan, konfirmasi hapus, error
+state + retry, skeleton loading, layout menyesuaikan lebar layar.
+
+Catatan: APK sekarang selalu lewat `/api` (token sesi). Connection string DB
+hanya ada di env server, tidak lagi disimpan di HP.
 
 ## Setup database Neon (Vercel)
 
@@ -83,11 +90,14 @@ Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 lib/
   core/   api.dart (URL API) · db.dart (akses DB + secure storage) · db_web.dart (HTTP driver)
   data/   models.dart (model + query) · auth.dart (login, sesi, kelola user)
-  ui/     theme, fmt, widgets, forms, halaman per fitur
+  ui/     theme (token warna/font), widgets (RowItem, Panel, PageScaffold),
+          fmt, forms, halaman per fitur
 api/sql.js                  Satu-satunya pintu SQL (role terbatas)
 api/auth.js                 Login, register admin pertama, kelola user
 api/_auth.js                Terbit/verifikasi token HMAC
 db/schema.sql               Schema Neon
+design/                     catatan desain + mock server & preview (dev saja)
+lib/preview_main.dart       entrypoint preview tanpa DB (dev saja)
 scripts/init-db.mjs         Jalankan schema (npm run db:init)
 scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:harden)
 .github/workflows/build.yml Build APK otomatis

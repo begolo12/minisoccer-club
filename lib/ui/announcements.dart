@@ -31,20 +31,14 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pengumuman'),
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () async {
-              if (await showAnnouncementForm(context)) _reload();
-            },
-          ),
-        ],
-      ),
-      body: AsyncView<List<Announcement>>(
+    return PageScaffold(
+      title: 'Pengumuman',
+      actions: [
+        iconAction(context, Icons.add, () async {
+          if (await showAnnouncementForm(context)) _reload();
+        }, tooltip: 'Buat pengumuman'),
+      ],
+      child: AsyncView<List<Announcement>>(
         future: _future,
         onRefresh: _reload,
         builder: (items) {
@@ -62,45 +56,47 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
               ),
             ]);
           }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final a = items[i];
-              return Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: t.colorScheme.card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: t.colorScheme.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(a.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.delete_outline, size: 16, color: t.colorScheme.mutedForeground),
-                          onPressed: () async {
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            children: [
+              for (final a in items)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7)),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(a.title, style: t.textTheme.large),
+                                const SizedBox(height: 2),
+                                Text(fmtDate(a.createdAt), style: t.textTheme.small),
+                              ],
+                            ),
+                          ),
+                          iconAction(context, Icons.delete_outline, () async {
                             if (await confirm(context, 'Hapus pengumuman?', a.title)) {
                               await Announcement.delete(a.id);
                               _reload();
                             }
-                          },
-                        ),
-                      ],
-                    ),
-                    Text(fmtDate(a.createdAt), style: t.textTheme.small),
-                    const SizedBox(height: 8),
-                    Text(a.body),
-                  ],
+                          }, tooltip: 'Hapus'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(a.body, style: t.textTheme.muted),
+                    ],
+                  ),
                 ),
-              );
-            },
+            ],
           );
         },
       ),

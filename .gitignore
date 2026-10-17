@@ -23,3 +23,6 @@ node_modules/
 .vercel
 .env.production
 .env.local
+
+# Screenshot pembanding milik produk lain — jangan ikut repo.
+design/ref/

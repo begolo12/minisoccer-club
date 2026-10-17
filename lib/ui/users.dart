@@ -34,29 +34,23 @@ class _UsersPageState extends State<UsersPage> {
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     if (!Auth.isAdmin) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Pengguna'), backgroundColor: Colors.transparent),
-        body: EmptyState(
+      return PageScaffold(
+        title: 'Pengguna',
+        child: EmptyState(
           icon: Icons.lock_outline,
           title: 'Khusus admin',
           message: 'Akun ${Auth.username ?? ''} tidak punya akses ke daftar pengguna.',
         ),
       );
     }
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pengguna'),
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_add_alt),
-            onPressed: () async {
-              if (await _form(context)) _reload();
-            },
-          ),
-        ],
-      ),
-      body: AsyncView<List<AppUser>>(
+    return PageScaffold(
+      title: 'Pengguna',
+      actions: [
+        iconAction(context, Icons.person_add_alt, () async {
+          if (await _form(context)) _reload();
+        }, tooltip: 'Tambah pengguna'),
+      ],
+      child: AsyncView<List<AppUser>>(
         future: _future,
         onRefresh: _reload,
         builder: (users) {
@@ -74,53 +68,42 @@ class _UsersPageState extends State<UsersPage> {
               ),
             ]);
           }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-            itemCount: users.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (context, i) {
-              final u = users[i];
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: t.colorScheme.card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: t.colorScheme.border),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      u.role == 'admin' ? Icons.shield_outlined : Icons.person_outline,
-                      size: 18,
-                      color: t.colorScheme.mutedForeground,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(u.username, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                    ShadBadge.secondary(child: Text(u.role, style: t.textTheme.small)),
-                    IconButton(
-                      tooltip: 'Atur ulang password',
-                      icon: Icon(Icons.key_outlined,
-                          size: 16, color: t.colorScheme.mutedForeground),
-                      onPressed: () async {
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+            children: [
+              for (final u in users)
+                RowItem(
+                  leading: Icon(
+                    u.role == 'admin' ? Icons.shield_outlined : Icons.person_outline,
+                    size: 17,
+                    color: u.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                  ),
+                  title: u.username,
+                  subtitle: [
+                    switch (u.role) {
+                      'admin' => 'Admin',
+                      'treasurer' => 'Bendahara',
+                      _ => 'Anggota',
+                    },
+                    if (!u.active) 'nonaktif',
+                  ].join(' • '),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      iconAction(context, Icons.key_outlined, () async {
                         if (await _resetPassword(context, u)) _reload();
-                      },
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.delete_outline,
-                          size: 16, color: t.colorScheme.mutedForeground),
-                      onPressed: () async {
+                      }, tooltip: 'Atur ulang password'),
+                      const SizedBox(width: 6),
+                      iconAction(context, Icons.delete_outline, () async {
                         if (await confirm(context, 'Hapus pengguna?', u.username)) {
                           await AppUser.delete(u.id);
                           _reload();
                         }
-                      },
-                    ),
-                  ],
+                      }, tooltip: 'Hapus'),
+                    ],
+                  ),
                 ),
-              );
-            },
+            ],
           );
         },
       ),

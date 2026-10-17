@@ -5,6 +5,7 @@ import '../core/api.dart';
 import '../core/db.dart';
 import '../data/auth.dart';
 import 'fmt.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -31,42 +32,32 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _setDark(bool v) async {
     setState(() => _dark = v);
     await SecureStore.write('theme', v ? 'dark' : 'light');
+    if (!mounted) return;
     toast(context, 'Tema ${v ? "gelap" : "terang"} — buka ulang app untuk terapkan');
   }
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pengaturan'), backgroundColor: Colors.transparent),
-      body: ListView(
+    return PageScaffold(
+      title: 'Pengaturan',
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
         children: [
           const SectionTitle('Tampilan'),
-          Container(
-            decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.colorScheme.border),
-            ),
+          Panel(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             child: ShadSwitch(
               value: _dark,
               label: const Text('Mode gelap'),
               sublabel: const Text('Nyaman dipakai malam hari'),
               onChanged: _setDark,
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsetsDirectional.only(start: 12),
             ),
           ),
           const SizedBox(height: 22),
           const SectionTitle('Server'),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.colorScheme.border),
-            ),
+          Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -84,29 +75,26 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: t.textTheme.small,
                 ),
                 const SizedBox(height: 12),
-                ShadButton.ghost(
-                  onPressed: () async {
-                    try {
-                      await Db.query('SELECT 1');
-                      if (context.mounted) toast(context, 'Koneksi OK ✓');
-                    } catch (e) {
-                      if (context.mounted) toast(context, 'Gagal: $e');
-                    }
-                  },
-                  child: const Text('Tes koneksi'),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ShadButton.outline(
+                    onPressed: () async {
+                      try {
+                        await Db.query('SELECT 1');
+                        if (context.mounted) toast(context, 'Koneksi OK');
+                      } catch (e) {
+                        if (context.mounted) toast(context, 'Gagal: $e');
+                      }
+                    },
+                    child: const Text('Tes koneksi'),
+                  ),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 22),
           const SectionTitle('Akun'),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.colorScheme.border),
-            ),
+          Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -130,7 +118,20 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                     ),
-                    ShadBadge.secondary(child: Text(Auth.role ?? 'member')),
+                    Text(
+                      switch (Auth.role) {
+                        'admin' => 'ADMIN',
+                        'treasurer' => 'BENDAHARA',
+                        _ => 'ANGGOTA',
+                      },
+                      style: TextStyle(
+                        fontFamily: AppThemes.display,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.2,
+                        color: t.colorScheme.primary,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -148,13 +149,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 22),
           const SectionTitle('Tentang'),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: t.colorScheme.card,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: t.colorScheme.border),
-            ),
+          Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

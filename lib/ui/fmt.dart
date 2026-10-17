@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shadcn_ui/shadcn_ui.dart';
 
 /// Format tanggal/jam Indonesia tanpa dependensi locale intl tambahan.
 String fmtDate(DateTime d) {
@@ -40,19 +41,26 @@ String periodLabel(String p) {
   return '${bulan[m - 1]} ${parts[0]}';
 }
 
-/// Dialog konfirmasi destruktif. Return true kalau user setuju.
-Future<bool> confirm(BuildContext context, String title, String message) async {
-  final ok = await showDialog<bool>(
+/// Dialog konfirmasi destruktif (shadcn). Return true kalau user setuju.
+Future<bool> confirm(
+  BuildContext context,
+  String title,
+  String message, {
+  String confirmLabel = 'Hapus',
+}) async {
+  final ok = await showShadDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => ShadDialog(
       title: Text(title),
-      content: Text(message),
+      description: Text(message),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-        FilledButton(
+        ShadButton.outline(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Batal'),
+        ),
+        ShadButton.destructive(
           onPressed: () => Navigator.pop(ctx, true),
-          style: FilledButton.styleFrom(backgroundColor: Colors.red),
-          child: const Text('Hapus'),
+          child: Text(confirmLabel),
         ),
       ],
     ),
@@ -60,8 +68,16 @@ Future<bool> confirm(BuildContext context, String title, String message) async {
   return ok ?? false;
 }
 
-/// Snackbar pendek — feedback QoL.
+/// Toast pendek gaya shadcn. Jatuh ke SnackBar kalau Sonner tidak terpasang.
 void toast(BuildContext context, String msg) {
+  final sonner = ShadSonner.maybeOf(context);
+  if (sonner != null) {
+    sonner.show(ShadToast(
+      title: Text(msg),
+      duration: const Duration(seconds: 2),
+    ));
+    return;
+  }
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(

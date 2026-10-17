@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/models.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 class _Stats {
@@ -41,95 +42,100 @@ class _StatsPageState extends State<StatsPage> {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Statistik'), backgroundColor: Colors.transparent),
-      body: AsyncView<_Stats>(
+    return PageScaffold(
+      title: 'Statistik',
+      subtitle: 'Rekap hasil & top skor',
+      child: AsyncView<_Stats>(
         future: _future,
         onRefresh: _reload,
         builder: (s) {
           final played = s.overall[0] + s.overall[1] + s.overall[2];
           final pts = s.overall[0] * 3 + s.overall[1];
+          final diff = s.overall[3] - s.overall[4];
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
-              Row(
-                children: [
-                  Expanded(child: StatTile(label: 'Main', value: '$played', icon: Icons.sports_soccer)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatTile(
-                      label: 'Poin',
-                      value: '$pts',
-                      hint: '3 poin / kemenangan',
-                      color: t.colorScheme.primary,
-                      icon: Icons.military_tech_outlined,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border.all(color: t.colorScheme.border),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: StatTile(label: 'Main', value: '$played')),
+                    Expanded(
+                      child: StatTile(
+                        label: 'Poin',
+                        value: '$pts',
+                        hint: '3 poin per menang',
+                        color: t.colorScheme.primary,
+                      ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: StatTile(
+                        label: 'Selisih gol',
+                        value: diff > 0 ? '+$diff' : '$diff',
+                        color: diff >= 0 ? t.colorScheme.primary : AppThemes.bad(context),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(child: StatTile(label: 'Menang', value: '${s.overall[0]}', color: t.colorScheme.primary)),
-                  const SizedBox(width: 10),
-                  Expanded(child: StatTile(label: 'Draw', value: '${s.overall[1]}')),
-                  const SizedBox(width: 10),
-                  Expanded(child: StatTile(label: 'Kalah', value: '${s.overall[2]}', color: t.colorScheme.destructive)),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(child: StatTile(label: 'Gol kita', value: '${s.overall[3]}')),
-                  const SizedBox(width: 10),
-                  Expanded(child: StatTile(label: 'Gol lawan', value: '${s.overall[4]}')),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: StatTile(
-                      label: 'Selisih',
-                      value: '${s.overall[3] - s.overall[4]}',
-                      color: s.overall[3] >= s.overall[4] ? t.colorScheme.primary : t.colorScheme.destructive,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  border: Border.all(color: t.colorScheme.border),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: StatTile(
+                        label: 'Menang',
+                        value: '${s.overall[0]}',
+                        color: t.colorScheme.primary,
+                      ),
                     ),
-                  ),
-                ],
+                    Expanded(child: StatTile(label: 'Seri', value: '${s.overall[1]}')),
+                    Expanded(
+                      child: StatTile(
+                        label: 'Kalah',
+                        value: '${s.overall[2]}',
+                        color: AppThemes.bad(context),
+                      ),
+                    ),
+                    Expanded(child: StatTile(label: 'Gol', value: '${s.overall[3]}')),
+                    Expanded(child: StatTile(label: 'Bobol', value: '${s.overall[4]}')),
+                  ],
+                ),
               ),
-              const SizedBox(height: 22),
               const SectionTitle('Pencetak gol'),
               if (s.scorers.isEmpty)
                 Text('Belum ada catatan gol. Isi lewat detail pertandingan.', style: t.textTheme.muted)
               else
-                Container(
-                  decoration: BoxDecoration(
-                    color: t.colorScheme.card,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: t.colorScheme.border),
-                  ),
-                  child: Column(
-                    children: [
-                      for (var i = 0; i < s.scorers.length; i++)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                          decoration: BoxDecoration(
-                            border: i == s.scorers.length - 1
-                                ? null
-                                : Border(bottom: BorderSide(color: t.colorScheme.border)),
-                          ),
-                          child: Row(
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                child: Text('${i + 1}', style: t.textTheme.small),
-                              ),
-                              Expanded(child: Text(s.scorers[i].name)),
-                              Text('${s.scorers[i].goals} gol', style: const TextStyle(fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 10),
-                              Text('${s.scorers[i].assists} assist', style: t.textTheme.small),
-                            ],
-                          ),
+                for (var i = 0; i < s.scorers.length; i++)
+                  RowItem(
+                    leading: SizedBox(
+                      width: 20,
+                      child: Text(
+                        '${i + 1}',
+                        style: t.textTheme.h2.copyWith(
+                          fontSize: 20,
+                          color: i == 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
                         ),
-                    ],
+                      ),
+                    ),
+                    title: s.scorers[i].name,
+                    subtitle: '${s.scorers[i].assists} assist',
+                    trailing: Text(
+                      '${s.scorers[i].goals} gol',
+                      style: t.textTheme.h2.copyWith(fontSize: 20),
+                    ),
                   ),
-                ),
             ],
           );
         },

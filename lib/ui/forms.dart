@@ -276,6 +276,7 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
 
 Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberId}) async {
   var members = await Member.all();
+  if (!context.mounted) return false;
   if (members.isEmpty) {
     toast(context, 'Tambah anggota dulu');
     return false;
