@@ -88,6 +88,14 @@ class _UsersPageState extends State<UsersPage> {
                     ),
                     ShadBadge.secondary(child: Text(u.role, style: t.textTheme.small)),
                     IconButton(
+                      tooltip: 'Atur ulang password',
+                      icon: Icon(Icons.key_outlined,
+                          size: 16, color: t.colorScheme.mutedForeground),
+                      onPressed: () async {
+                        if (await _resetPassword(context, u)) _reload();
+                      },
+                    ),
+                    IconButton(
                       icon: Icon(Icons.delete_outline,
                           size: 16, color: t.colorScheme.mutedForeground),
                       onPressed: () async {
@@ -105,6 +113,37 @@ class _UsersPageState extends State<UsersPage> {
         },
       ),
     );
+  }
+
+  Future<bool> _resetPassword(BuildContext context, AppUser u) async {
+    final ctrl = TextEditingController();
+    final ok = await showShadDialog<bool>(
+      context: context,
+      builder: (ctx) => ShadDialog(
+        title: Text('Password baru — ${u.username}'),
+        description: const Text('Minimal 6 karakter. Beri tahu pemiliknya setelah disimpan.'),
+        actions: [
+          ShadButton.outline(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          ShadButton(
+            onPressed: () async {
+              if (ctrl.text.length < 6) {
+                toast(ctx, 'Password minimal 6 karakter');
+                return;
+              }
+              await AppUser.setPassword(u.id, ctrl.text);
+              if (ctx.mounted) Navigator.pop(ctx, true);
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+        child: ShadInput(
+          controller: ctrl,
+          placeholder: const Text('Password baru'),
+          obscureText: true,
+        ),
+      ),
+    );
+    return ok ?? false;
   }
 
   Future<bool> _form(BuildContext context) async {
