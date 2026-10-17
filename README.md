@@ -1,103 +1,90 @@
 # Minisoccer Club ⚽
 
-Aplikasi manajemen klub mini soccer — **Flutter** + **shadcn UI** + **Neon Postgres** (database dari Vercel).
-Mobile-first, dark & light mode, siap di-install sebagai APK.
+Aplikasi manajemen klub mini soccer: **Flutter** + **shadcn UI** + **Neon Postgres** (database dari Vercel).
+Mobile-first, dark & light mode, plus versi web.
+
+## 📲 Download APK
+
+**[Download APK terbaru](https://github.com/begolo12/minisoccer-club/releases/latest/download/app-release.apk)**
+
+1. Buka link di HP → download.
+2. Buka file → izinkan "Install unknown apps" untuk browser/file manager → **Install**.
+3. Buka app → tempel **connection string Neon** → **Hubungkan & siapkan**.
+   Tabel dibuat otomatis, tidak perlu SQL manual.
 
 ## Fitur
 
 | Fitur | Isi |
 |---|---|
-| **Beranda** | Jadwal terdekat, statistik W/D/L, total iuran bulan ini, aksi cepat, top skor, pengumuman |
-| **Anggota** | CRUD pemain (posisi, nomor punggung, HP), pencarian, filter aktif/nonaktif |
-| **Tanding** | Jadwal & hasil, detail pertandingan, **sesi/babak dengan pemenang otomatis**, catat gol / assist / kartu per pemain |
-| **Iuran** | Catat pembayaran per bulan, siapa yang belum bayar, riwayat, total terkumpul |
-| **Booking lapangan** | Jadwal sewa, durasi, biaya, status (dipesan/selesai/batal) |
-| **Pengumuman** | Info klub untuk semua anggota |
-| **Pengguna** | Daftar akun & role (admin / bendahara / anggota) |
-| **Statistik** | Rekap main/menang/draw/kalah, gol, poin, top skor & assist |
-| **Pengaturan** | Ganti tema, ganti koneksi database, tes koneksi |
+| **Beranda** | Jadwal terdekat, W/D/L, iuran bulan ini, aksi cepat, top skor, pengumuman |
+| **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif |
+| **Tanding** | Jadwal & hasil, sesi/babak dengan pemenang tiap sesi, catat gol / assist / kartu |
+| **Iuran** | Bayar per bulan, siapa yang belum, riwayat, total terkumpul |
+| **Booking lapangan** | Jadwal sewa, durasi, biaya, status |
+| **Pengumuman** | Info klub untuk anggota |
+| **Statistik** | Main/menang/draw/kalah, gol, poin, top skor & assist |
+| **Pengguna** | Akun + role admin / bendahara / anggota |
+| **Pengaturan** | Tema, ganti koneksi DB, tes koneksi |
 
-QoL: pull-to-refresh di semua halaman, empty state yang mengarahkan, konfirmasi sebelum hapus,
-koneksi database disimpan terenkripsi di HP, tabel dibuat otomatis saat pertama konek.
+QoL: pull-to-refresh, empty state yang mengarahkan, konfirmasi hapus, koneksi DB
+disimpan terenkripsi di HP, tabel auto-dibuat saat pertama konek, error state + retry.
 
-## Mulai (5 menit)
+## Setup database Neon (Vercel)
 
-### 1. Siapkan database Neon
-
-1. Buka [Vercel Dashboard](https://vercel.com/dashboard) → **Storage** → database Neon kamu → **Open in Neon**, atau langsung [console.neon.tech](https://console.neon.tech).
-2. Copy **Connection string**, formatnya:
+1. [Vercel Dashboard](https://vercel.com/dashboard) → **Storage** → database Neon → **Open in Neon**
+   (atau langsung [console.neon.tech](https://console.neon.tech)).
+2. Copy **Connection string**:
    ```
    postgresql://user:password@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
    ```
+3. Tempel di aplikasi saat onboarding. Selesai.
 
-### 2. Install APK di HP
-
-1. Buka tab **Releases** di repo ini: https://github.com/begolo12/minisoccer-club/releases
-2. Download `app-release.apk` dari rilis terbaru.
-3. Buka file di HP → izinkan "Install unknown apps" untuk aplikasi file manager/browser kamu → Install.
-
-### 3. Hubungkan aplikasi ke Neon
-
-Buka app → tempel connection string → **Hubungkan & siapkan**.
-Tabel dibuat otomatis. Selesai — mulai tambah anggota.
-
-> Connection string hanya disimpan di HP kamu (encrypted storage), tidak masuk repo.
+Connection string hanya tersimpan di HP (encrypted), tidak masuk repo.
 
 ## Development
 
 ```bash
 flutter pub get
-flutter run
+flutter run                       # Android (konek TCP langsung ke Neon)
+flutter build apk --release       # APK
+flutter build web --release       # versi web
 ```
 
-Build APK sendiri:
+## Deploy versi web (opsional)
+
+Web tidak bisa buka TCP ke Postgres, jadi lewat Vercel Function `api/sql.js` (Neon HTTP driver).
 
 ```bash
-flutter build apk --release
-# atau isi URL default saat build:
-flutter build apk --release --dart-define=NEON_URL="postgresql://..."
+flutter build web --release
+vercel deploy --prod
 ```
 
-Tanpa `--dart-define`, app memakai placeholder di `lib/core/config.dart` dan meminta URL lewat layar onboarding.
+Set env di Vercel:
+- `DATABASE_URL` — connection string Neon (wajib)
+- `APP_KEY` — opsional, dikirim app lewat header `x-app-key`
 
-### Struktur
+## Struktur
 
 ```
 lib/
-  core/       config.dart (URL default), db.dart (koneksi + secure storage)
-  data/       models.dart (model + semua query SQL)
-  ui/         theme, fmt, widgets, forms, dan halaman per fitur
-db/schema.sql Schema Neon (juga dijalankan otomatis oleh app)
-.github/workflows/build.yml  Build APK otomatis
+  core/   config.dart · db.dart (router) · db_io.dart (native) · db_web.dart (web)
+  data/   models.dart — model + semua query
+  ui/     theme, fmt, widgets, forms, halaman per fitur
+api/sql.js                  Proxy SQL untuk versi web (Vercel Function)
+db/schema.sql               Schema Neon (juga dijalankan otomatis oleh app)
+.github/workflows/build.yml Build APK otomatis
 ```
 
-### CI/CD
+## CI/CD
 
-- Push ke `main` → APK di-build, tersedia sebagai artifact di tab **Actions**.
-- Push tag `v*` → APK otomatis diunggah ke **Releases**.
+- Push ke `main` → APK jadi artifact di tab **Actions**.
+- Push tag `v*` → APK otomatis masuk **Releases**:
   ```bash
-  git tag v1.0.1 && git push origin v1.0.1
+  git tag v1.0.3 && git push origin v1.0.3
   ```
-
-## Web (Vercel)
-
-Browser tidak bisa membuka TCP ke Postgres, jadi versi web memakai satu pintu:
-`api/sql.js` (Neon HTTP driver). Kredensial DB tetap di server.
-
-```bash
-flutter build web --release --dart-define=APP_KEY=<kunci-rahasia>
-vercel --prod
-```
-
-- `vercel.json` sudah menunjuk `build/web` sebagai output (build web dijalankan lokal/CI).
-- Set env di Vercel → Settings → Environment Variables:
-  - `DATABASE_URL` = connection string Neon
-  - `APP_KEY` = sama dengan nilai `--dart-define=APP_KEY` di atas (kalau dikosongkan, endpoint terbuka — jangan untuk produksi)
-- Endpoint default `API_URL=/api/sql` (same-origin), tidak perlu diubah kalau web dan function satu domain.
 
 ## Keamanan
 
-Aplikasi Android konek langsung ke Neon (cocok untuk klub kecil, satu admin).
-Versi web lewat `api/sql.js`; function itu menerima SQL mentah, jadi **wajib** set `APP_KEY`
-kalau di-deploy publik. Kalau nanti butuh multi-user dengan hak akses per role,
-ganti endpoint generik itu dengan endpoint per-fitur.
+APK konek langsung ke Neon (cocok untuk klub kecil). Versi web memakai proxy
+server sehingga kredensial DB tidak pernah dikirim ke browser.
+Kalau butuh multi-user dengan hak akses penuh, tambahkan auth di `api/sql.js`.
