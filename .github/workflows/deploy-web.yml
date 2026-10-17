@@ -1,0 +1,31 @@
+name: Deploy Web
+
+# Butuh 4 secret di repo (Settings -> Secrets -> Actions):
+#   VERCEL_TOKEN      token dari vercel.com/account/tokens
+#   VERCEL_ORG_ID     dari .vercel/project.json setelah `vercel link`
+#   VERCEL_PROJECT_ID sama seperti di atas
+#   APP_KEY           kunci rahasia untuk /api/sql (harus sama di env Vercel)
+# DATABASE_URL tidak di-build ke web — diset di env Vercel saja.
+
+on:
+  # Sengaja manual: kalau dijalankan otomatis sebelum secret diisi, run-nya merah.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+      - run: flutter build web --release --dart-define=APP_KEY=${{ secrets.APP_KEY }}
+
+      - name: Deploy ke Vercel
+        run: npx vercel@latest deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

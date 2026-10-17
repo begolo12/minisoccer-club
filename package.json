@@ -2,6 +2,9 @@
   "name": "minisoccer-club",
   "private": true,
   "type": "module",
+  "scripts": {
+    "db:init": "node scripts/init-db.mjs"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"
   }

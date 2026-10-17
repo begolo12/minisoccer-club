@@ -15,3 +15,8 @@ android/key.properties
 
 # OS
 .DS_Store
+
+# Node / Vercel
+node_modules/
+.env
+.vercel/

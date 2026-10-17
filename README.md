@@ -55,13 +55,23 @@ flutter build web --release       # versi web
 Web tidak bisa buka TCP ke Postgres, jadi lewat Vercel Function `api/sql.js` (Neon HTTP driver).
 
 ```bash
-flutter build web --release
-vercel deploy --prod
+npm install
+cp .env.example .env                 # isi DATABASE_URL + APP_KEY
+set -a && . ./.env && set +a
+npm run db:init                      # buat tabel di Neon (sekali saja)
+
+npx vercel link                      # sekali saja
+npx vercel env add DATABASE_URL production
+npx vercel env add APP_KEY production
+
+flutter build web --release --dart-define=APP_KEY=<kunci-yang-sama>
+npx vercel --prod
 ```
 
-Set env di Vercel:
-- `DATABASE_URL` — connection string Neon (wajib)
-- `APP_KEY` — opsional, dikirim app lewat header `x-app-key`
+Setelah itu, deploy berikutnya cukup lewat GitHub Actions **Deploy Web** (Run workflow).
+Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `APP_KEY`.
+
+> Tanpa `APP_KEY`, endpoint `/api/sql` menerima SQL dari siapa pun. Wajib diisi untuk produksi.
 
 ## Struktur
 
