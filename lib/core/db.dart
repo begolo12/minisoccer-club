@@ -3,11 +3,20 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'config.dart';
 import 'db_io.dart' if (dart.library.js_interop) 'db_web.dart' as driver;
 
+/// Dilempar driver web saat token ditolak server (sesi habis).
+class Unauthorized implements Exception {
+  @override
+  String toString() => 'Sesi habis, silakan login ulang';
+}
+
 /// Akses DB dari UI. Driver dipilih saat compile:
 /// - Android/desktop → TCP langsung ke Neon (`db_io.dart`)
 /// - Web → Vercel Function `/api/sql` (`db_web.dart`)
 class Db {
   static String? _url;
+
+  /// Token sesi (web). Diisi oleh `Auth` setelah login.
+  static String? authToken;
 
   /// Web tidak perlu URL: kredensial dipegang server.
   static bool get needsUrl => !driver.usesProxy;

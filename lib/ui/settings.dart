@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/db.dart';
+import '../data/auth.dart';
 import 'fmt.dart';
 import 'widgets.dart';
 import 'onboarding.dart';
@@ -129,6 +130,54 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: const Text('Tes'),
                     ),
                   ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const SectionTitle('Akun'),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: t.colorScheme.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: t.colorScheme.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(Auth.username ?? '—',
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                            switch (Auth.role) {
+                              'admin' => 'Admin',
+                              'treasurer' => 'Bendahara',
+                              _ => 'Anggota',
+                            },
+                            style: t.textTheme.small,
+                          ),
+                        ],
+                      ),
+                    ),
+                    ShadBadge.secondary(child: Text(Auth.role ?? 'member')),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                ShadButton.outline(
+                  onPressed: () async {
+                    if (!await confirm(context, 'Keluar?', 'Kamu perlu login lagi untuk masuk.')) return;
+                    await Auth.logout();
+                    if (!context.mounted) return;
+                    Navigator.of(context).popUntil((r) => r.isFirst);
+                  },
+                  child: const Text('Keluar'),
                 ),
               ],
             ),

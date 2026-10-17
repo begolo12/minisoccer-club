@@ -1,16 +1,17 @@
 import { neon } from '@neondatabase/serverless';
+import { bearer, verifyToken } from './_auth.js';
 
 // POST /api/sql  { sql, params }
 // Satu-satunya pintu DB untuk versi web (browser tidak bisa buka TCP ke Postgres).
-// Dilindungi header `x-app-key` yang harus sama dengan env APP_KEY.
+// Wajib header `Authorization: Bearer <token>` dari /api/auth.
 
 const sql = neon(process.env.DATABASE_URL);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  if (process.env.APP_KEY && req.headers['x-app-key'] !== process.env.APP_KEY) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+
+  const session = verifyToken(bearer(req));
+  if (!session) return res.status(401).json({ error: 'Sesi habis, silakan login ulang' });
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
   const { sql: text, params = {} } = body;

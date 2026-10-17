@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'db.dart';
+
 /// Driver web: browser tidak bisa buka TCP ke Postgres, jadi query dikirim
 /// ke Vercel Function `api/sql.js` (Neon HTTP driver).
 const usesProxy = true;
@@ -9,15 +11,13 @@ const usesProxy = true;
 /// Default same-origin — cocok saat di-host di Vercel.
 const _endpoint = String.fromEnvironment('API_URL', defaultValue: '/api/sql');
 
-/// Harus sama dengan env `APP_KEY` di Vercel (opsional).
-const _appKey = String.fromEnvironment('APP_KEY');
-
 Future<Map<String, dynamic>> _post(String sql, Map<String, Object?> params) async {
+  final token = Db.authToken;
   final res = await http.post(
     Uri.parse(_endpoint),
     headers: {
       'content-type': 'application/json',
-      if (_appKey.isNotEmpty) 'x-app-key': _appKey,
+      if (token != null) 'authorization': 'Bearer $token',
     },
     // Neon HTTP tidak kenal tipe DateTime; kirim sebagai ISO-8601.
     body: jsonEncode({
@@ -28,6 +28,7 @@ Future<Map<String, dynamic>> _post(String sql, Map<String, Object?> params) asyn
       },
     }),
   );
+  if (res.statusCode == 401) throw Unauthorized();
   final body = jsonDecode(res.body);
   if (res.statusCode != 200) {
     throw Exception(body is Map ? (body['error'] ?? res.statusCode) : res.statusCode);

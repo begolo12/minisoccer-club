@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'core/db.dart';
+import 'data/auth.dart';
 import 'ui/theme.dart';
+import 'ui/login.dart';
 import 'ui/onboarding.dart';
 import 'ui/shell.dart';
 
@@ -43,7 +45,7 @@ class _AppState extends State<App> {
   }
 }
 
-/// Cek apakah koneksi DB sudah dikonfigurasi & hidup.
+/// Cek koneksi DB, lalu gerbang login.
 class Bootstrap extends StatefulWidget {
   const Bootstrap({super.key});
 
@@ -53,12 +55,24 @@ class Bootstrap extends StatefulWidget {
 
 class _BootstrapState extends State<Bootstrap> {
   bool? _ready;
+  bool _signedIn = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    Auth.session.addListener(_onSession);
     _check();
+  }
+
+  @override
+  void dispose() {
+    Auth.session.removeListener(_onSession);
+    super.dispose();
+  }
+
+  void _onSession() {
+    if (mounted) setState(() => _signedIn = Auth.session.value);
   }
 
   Future<void> _check() async {
@@ -71,7 +85,13 @@ class _BootstrapState extends State<Bootstrap> {
     }
     try {
       await Db.query('SELECT 1');
-      if (mounted) setState(() => _ready = true);
+      await Auth.restore();
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _signedIn = Auth.signedIn;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -84,6 +104,9 @@ class _BootstrapState extends State<Bootstrap> {
     }
     if (_ready == false) {
       return Onboarding(error: _error, onDone: () => setState(() => _ready = true));
+    }
+    if (!_signedIn) {
+      return LoginPage(onSignedIn: () => setState(() => _signedIn = true));
     }
     return const HomeShell();
   }
