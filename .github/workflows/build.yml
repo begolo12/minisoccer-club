@@ -24,8 +24,14 @@ jobs:
         with:
           channel: stable
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: node --test "api/*.test.mjs"
       - run: flutter pub get
-      - run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
+      - run: flutter analyze
+      - run: flutter test
       - run: flutter build apk --release --dart-define=API_BASE=https://minisoccer-club.vercel.app
 
       - name: Upload artifact (setiap push)

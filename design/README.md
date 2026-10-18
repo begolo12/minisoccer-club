@@ -35,9 +35,11 @@ node design/mock/server.mjs            # http://localhost:8099
 Parameter URL:
 
 - `?tab=0..4` — tab awal (beranda, anggota, tanding, iuran, lainnya)
-- `?page=bookings|announcements|stats|users|settings|tournaments|match|tournament`
+- `?page=bookings|announcements|stats|users|settings|tournaments|match|tournament|finance`
 - `?theme=light|dark`
 - `?login=1` — tampilkan layar masuk, bukan langsung sebagai admin
+- `?role=member|treasurer` — lihat tampilan tanpa hak tulis (tombol tulis
+  harus hilang)
 
 `design/mock/check.mjs <url> <lebar> <tinggi> <keluaran.png>` mengambil
 screenshot lewat Chrome DevTools Protocol dan mencetak error console.
@@ -49,11 +51,12 @@ produksi tetap `lib/main.dart`. `design/` tidak diunggah ke Vercel
 ## Bukti
 
 `design/current/` — tangkapan layar 390x844 (1440x900 untuk beranda, login,
-turnamen) dari semua halaman: `beranda-hp`, `beranda-desktop`,
-`beranda-terang`, `anggota`, `tanding`, `iuran`, `iuran-terang`, `lainnya`,
+turnamen, kas; 320x800 untuk cek layar sempit) dari semua halaman:
+`beranda-hp`, `beranda-320`, `beranda-desktop`,
+`beranda-terang`, `anggota`, `anggota-terang`, `anggota-member`, `tanding`, `iuran`, `iuran-terang`, `lainnya`,
 `login-hp`, `login-desktop`, `detail-laga`, `detail-turnamen`,
 `detail-turnamen-desktop`, `turnamen-desktop`, `statistik`, `pengguna`,
-`booking`, `pengumuman`, `pengaturan`.
+`booking`, `kas`, `kas-terang`, `kas-desktop`, `pengumuman`, `pengaturan`.
 
 ## Catatan ronde review
 
@@ -76,3 +79,59 @@ lewat `?page=` (memang tidak ditumpuk); di app normal halaman itu selalu
 ditumpuk jadi tombolnya ada.
 
 `design/ref/` — pembanding (FotMob, SofaScore) yang dipakai saat memilih arah.
+
+## Ronde kas klub
+
+Halaman `Kas klub` menyatukan iuran (`payments`) dan transaksi manual
+(`transactions`, sudah ada di schema tapi belum dipakai). Keputusan:
+
+- Dua sumber tetap terpisah di DB; penggabungan dan saldo dihitung di klien
+  (`mergeCashLedger`, `CashSummary`) supaya bisa dites tanpa DB.
+- Satu ringkasan tiga angka (masuk / keluar / saldo) dengan garis rambut,
+  sama seperti strip di beranda — bukan kartu bertumpuk.
+- Chip periode: `Semua` di depan, lalu enam bulan terakhir. Bulan kosong
+  memakai empty state yang sama dengan halaman lain.
+- Baris iuran dan transaksi berbagi satu pola `RowItem`; hanya transaksi
+  manual yang punya tombol hapus, karena iuran dikelola di halaman Iuran.
+- Beranda dapat blok "Kas bulan ini" yang menaut ke halaman ini; admin dan
+  bendahara melihat tombol tambah, member hanya membaca (`Auth.canWrite`).
+
+## Ronde kualitas (UI, frontend, backend)
+
+Perbaikan yang mengubah perilaku, bukan hanya tampilan:
+
+- **Tulis mengikuti role di semua layar.** Tombol tambah/hapus/sunting
+  disembunyikan untuk `member`; server tetap menolak sebagai lapis kedua.
+  Sebelumnya tombolnya tetap muncul dan baru gagal di server.
+- **Laga berjalan tidak hilang.** `Match.upcoming()` kini menyertakan status
+  `ongoing`, dan daftar Tanding memisahkan "Berlangsung & akan datang" dari
+  "Selesai". Tombol beranda membuka detail laga, bukan dialog skor, supaya
+  sesi dan catatan gol tetap bisa diisi.
+- **Nominal iuran tidak lagi ditulis mati.** Form iuran terisi dari nominal
+  yang paling sering dibayar (`Payment.standardAmount`), dan label tunggakan
+  di beranda memakai angka yang sama; tanpa riwayat, label jadi "Belum bayar".
+- **Hitungan lunas benar.** Angka "Lunas" memakai anggota aktif yang belum
+  bayar, bukan jumlah baris pembayaran (yang bisa melebihi jumlah anggota
+  kalau ada catatan ganda).
+- **Sesi habis kembali ke login.** Token yang ditolak (`401`) memicu logout
+  lokal lewat `Db.onSessionExpired`, bukan error di tiap halaman.
+- **Jaringan buruk tidak menggantung.** Semua permintaan punya batas 20 detik
+  dan pesan Indonesia; layar bootstrap punya tombol coba lagi + keluar akun.
+- **Tema langsung berubah.** `ThemeController` mengganti `themeMode` tanpa
+  membuka ulang app; manifest dan latar `index.html` memakai warna dasar gelap
+  yang sama supaya tidak ada kilatan putih saat web dimuat.
+- **Tab dimuat saat dibuka.** `HomeShell` hanya membangun tab yang pernah
+  dibuka, lalu memuat ulang tab itu kalau ada tulisan sejak terakhir dilihat.
+- **Aksi cepat tidak meluber di 320px.** Kisi tiga kolom memakai `Expanded`,
+  jadi lebar tombol selalu pas; label panjang dipotong dengan elipsis.
+- **Daftar pendek tetap bisa ditarik.** `AppScrollBehavior` memaksa
+  `AlwaysScrollableScrollPhysics`, jadi pull-to-refresh bekerja di halaman
+  yang baru berisi satu baris.
+- **Input lebih aman.** Username/password punya batas panjang di server,
+  body `/api/auth` dibatasi 8 KB, dan `Retry-After` dikirim saat dibatasi.
+- **Filter SQL diuji.** `api/_guard.js` menormalkan komentar dan string dulu,
+  menolak tulis tanpa target yang terbaca, menolak `public.users`, dan
+  mengikat parameter hanya di luar string. `api/_guard.test.mjs` menguji
+  filter & pengikat, `api/_app-queries.test.mjs` memastikan semua query yang
+  dipakai app tetap lolos untuk role yang berhak (17 tes).
+

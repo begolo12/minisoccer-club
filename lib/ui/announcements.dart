@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
@@ -34,27 +35,33 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
     return PageScaffold(
       title: 'Pengumuman',
       actions: [
-        iconAction(context, Icons.add, () async {
-          if (await showAnnouncementForm(context)) _reload();
-        }, tooltip: 'Buat pengumuman'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.add, () async {
+            if (await showAnnouncementForm(context)) _reload();
+          }, tooltip: 'Buat pengumuman'),
       ],
       child: AsyncView<List<Announcement>>(
         future: _future,
         onRefresh: _reload,
         builder: (items) {
           if (items.isEmpty) {
-            return ListView(children: [
-              const SizedBox(height: 80),
-              EmptyState(
-                icon: Icons.campaign_outlined,
-                title: 'Belum ada pengumuman',
-                message: 'Bagikan info latihan, iuran, atau acara klub.',
-                actionLabel: 'Buat pengumuman',
-                onAction: () async {
-                  if (await showAnnouncementForm(context)) _reload();
-                },
-              ),
-            ]);
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                const SizedBox(height: 80),
+                EmptyState(
+                  icon: Icons.campaign_outlined,
+                  title: 'Belum ada pengumuman',
+                  message: 'Bagikan info latihan, iuran, atau acara klub.',
+                  actionLabel: Auth.canWrite ? 'Buat pengumuman' : null,
+                  onAction: Auth.canWrite
+                      ? () async {
+                          if (await showAnnouncementForm(context)) _reload();
+                        }
+                      : null,
+                ),
+              ],
+            );
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
@@ -83,12 +90,15 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                               ],
                             ),
                           ),
-                          iconAction(context, Icons.delete_outline, () async {
-                            if (await confirm(context, 'Hapus pengumuman?', a.title)) {
-                              await Announcement.delete(a.id);
-                              _reload();
-                            }
-                          }, tooltip: 'Hapus'),
+                          if (Auth.canWrite)
+                            iconAction(context, Icons.delete_outline, () async {
+                              if (await confirm(context, 'Hapus pengumuman?', a.title)) {
+                                if (!context.mounted) return;
+                                if (await attempt(context, () => Announcement.delete(a.id), fail: 'Gagal menghapus')) {
+                                  _reload();
+                                }
+                              }
+                            }, tooltip: 'Hapus'),
                         ],
                       ),
                       const SizedBox(height: 8),

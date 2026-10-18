@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
@@ -41,9 +42,10 @@ class _MatchesPageState extends State<MatchesPage> {
       title: 'Tanding',
       subtitle: 'Jadwal & hasil pertandingan',
       actions: [
-        iconAction(context, Icons.add, () async {
-          if (await showMatchForm(context)) _reload();
-        }, tooltip: 'Jadwal baru'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.add, () async {
+            if (await showMatchForm(context)) _reload();
+          }, tooltip: 'Jadwal baru'),
       ],
       child: AsyncView<(List<Match>, List<int>)>(
         future: _future,
@@ -52,21 +54,28 @@ class _MatchesPageState extends State<MatchesPage> {
           final matches = data.$1;
           final stats = data.$2;
           if (matches.isEmpty) {
-            return ListView(children: [
-              const SizedBox(height: 80),
-              EmptyState(
-                icon: Icons.sports_soccer_outlined,
-                title: 'Belum ada pertandingan',
-                message: 'Buat jadwal tanding pertama.',
-                actionLabel: 'Buat jadwal',
-                onAction: () async {
-                  if (await showMatchForm(context)) _reload();
-                },
-              ),
-            ]);
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                const SizedBox(height: 80),
+                EmptyState(
+                  icon: Icons.sports_soccer_outlined,
+                  title: 'Belum ada pertandingan',
+                  message: 'Buat jadwal tanding pertama.',
+                  actionLabel: Auth.canWrite ? 'Buat jadwal' : null,
+                  onAction: Auth.canWrite
+                      ? () async {
+                          if (await showMatchForm(context)) _reload();
+                        }
+                      : null,
+                ),
+              ],
+            );
           }
-          final scheduled = matches.where((m) => m.status == 'scheduled').toList();
+          final upcoming = matches.where((m) => m.status != 'finished').toList()
+            ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
           final finished = matches.where((m) => m.status == 'finished').toList();
+          final hasOngoing = upcoming.any((m) => m.status == 'ongoing');
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
@@ -103,9 +112,9 @@ class _MatchesPageState extends State<MatchesPage> {
                   ],
                 ),
               ),
-              if (scheduled.isNotEmpty) ...[
-                const SectionTitle('Akan datang'),
-                ...scheduled.map((m) => _MatchTile(match: m, onChanged: _reload)),
+              if (upcoming.isNotEmpty) ...[
+                SectionTitle(hasOngoing ? 'Berlangsung & akan datang' : 'Akan datang'),
+                ...upcoming.map((m) => _MatchTile(match: m, onChanged: _reload)),
                 const SizedBox(height: 18),
               ],
               if (finished.isNotEmpty) ...[
@@ -165,7 +174,11 @@ class _MatchTile extends StatelessWidget {
       title: 'vs ${match.opponent}',
       subtitle: '${fmtDateTime(match.playedAt)}${match.venue != null ? " • ${match.venue}" : ""}',
       trailing: Text(
-        finished ? (win ? 'MENANG' : (draw ? 'SERI' : 'KALAH')) : (match.isHome ? 'KANDANG' : 'TANDANG'),
+        finished
+            ? (win ? 'MENANG' : (draw ? 'SERI' : 'KALAH'))
+            : (match.status == 'ongoing'
+                ? 'BERLANGSUNG'
+                : (match.isHome ? 'KANDANG' : 'TANDANG')),
         style: TextStyle(
           fontFamily: AppThemes.display,
           fontSize: 12,
@@ -173,7 +186,7 @@ class _MatchTile extends StatelessWidget {
           letterSpacing: 1.2,
           color: finished
               ? (win ? t.colorScheme.primary : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)))
-              : t.colorScheme.mutedForeground,
+              : (match.status == 'ongoing' ? t.colorScheme.primary : t.colorScheme.mutedForeground),
         ),
       ),
     );
@@ -251,47 +264,52 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       ? (m.goalsFor > m.goalsAgainst
                           ? 'Menang'
                           : (m.goalsFor == m.goalsAgainst ? 'Seri' : 'Kalah'))
-                      : 'Belum dimainkan',
+                      : (m.status == 'ongoing' ? 'Sedang berlangsung' : 'Belum dimainkan'),
                   style: t.textTheme.muted,
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ShadButton.outline(
-                        onPressed: () async {
-                          if (await showFinishMatch(context, m)) {
-                            if (!context.mounted) return;
-                            Navigator.pop(context, true);
-                          }
-                        },
-                        child: Text(finished ? 'Ubah skor' : 'Isi hasil'),
+                if (Auth.canWrite)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ShadButton.outline(
+                          onPressed: () async {
+                            if (await showFinishMatch(context, m)) {
+                              if (!context.mounted) return;
+                              Navigator.pop(context, true);
+                            }
+                          },
+                          child: Text(finished ? 'Ubah skor' : 'Isi hasil'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    iconAction(context, Icons.delete_outline, () async {
-                      if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
-                        await Match.delete(m.id);
-                        if (context.mounted) Navigator.pop(context, true);
-                      }
-                    }, tooltip: 'Hapus pertandingan'),
-                  ],
-                ),
+                      const SizedBox(width: 10),
+                      iconAction(context, Icons.delete_outline, () async {
+                        if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
+                          if (!context.mounted) return;
+                          if (await attempt(context, () => Match.delete(m.id), fail: 'Gagal menghapus')) {
+                            if (context.mounted) Navigator.pop(context, true);
+                          }
+                        }
+                      }, tooltip: 'Hapus pertandingan'),
+                    ],
+                  ),
               ],
             ),
           ),
           const SizedBox(height: 20),
           SectionTitle(
             'Sesi & pemenang',
-            action: ShadButton.ghost(
-              size: ShadButtonSize.sm,
-              onPressed: () async {
-                if (await _sessionForm(context)) _reload();
-              },
-              child: const Row(
-                children: [Icon(Icons.add, size: 14), SizedBox(width: 4), Text('Sesi')],
-              ),
-            ),
+            action: Auth.canWrite
+                ? ShadButton.ghost(
+                    size: ShadButtonSize.sm,
+                    onPressed: () async {
+                      if (await _sessionForm(context)) _reload();
+                    },
+                    child: const Row(
+                      children: [Icon(Icons.add, size: 14), SizedBox(width: 4), Text('Sesi')],
+                    ),
+                  )
+                : null,
           ),
           AsyncView<List<MatchSession>>(
             future: _sessions,
@@ -324,9 +342,11 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                   const SizedBox(height: 10),
                   for (final s in sessions)
                     RowItem(
-                      onTap: () async {
-                        if (await _sessionForm(context, session: s)) _reload();
-                      },
+                      onTap: Auth.canWrite
+                          ? () async {
+                              if (await _sessionForm(context, session: s)) _reload();
+                            }
+                          : null,
                       leading: Text('S${s.sessionNo}', style: t.textTheme.h4.copyWith(fontSize: 12)),
                       title: '${s.scoreHome}–${s.scoreAway}',
                       trailing: Text(
@@ -349,15 +369,17 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
           const SizedBox(height: 20),
           SectionTitle(
             'Catatan pertandingan',
-            action: ShadButton.ghost(
-              size: ShadButtonSize.sm,
-              onPressed: () async {
-                if (await _addEvent(context)) _reload();
-              },
-              child: const Row(
-                children: [Icon(Icons.add, size: 14), SizedBox(width: 4), Text('Tambah')],
-              ),
-            ),
+            action: Auth.canWrite
+                ? ShadButton.ghost(
+                    size: ShadButtonSize.sm,
+                    onPressed: () async {
+                      if (await _addEvent(context)) _reload();
+                    },
+                    child: const Row(
+                      children: [Icon(Icons.add, size: 14), SizedBox(width: 4), Text('Tambah')],
+                    ),
+                  )
+                : null,
           ),
           AsyncView<List<MatchEvent>>(
             future: _events,
@@ -383,11 +405,14 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                         children: [
                           if (e.minute != null)
                             Text("${e.minute}'", style: t.textTheme.table),
-                          const SizedBox(width: 8),
-                          iconAction(context, Icons.close, () async {
-                            await MatchEvent.delete(e.id);
-                            _reload();
-                          }, tooltip: 'Hapus catatan'),
+                          if (Auth.canWrite) ...[
+                            const SizedBox(width: 8),
+                            iconAction(context, Icons.close, () async {
+                              if (await attempt(context, () => MatchEvent.delete(e.id), fail: 'Gagal menghapus')) {
+                                _reload();
+                              }
+                            }, tooltip: 'Hapus catatan'),
+                          ],
                         ],
                       ),
                     ),
@@ -440,8 +465,12 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                     ? null
                     : () async {
                         setLocal(() => saving = true);
-                        await MatchSession.delete(session.id, widget.match.id);
-                        if (ctx.mounted) Navigator.pop(ctx, true);
+                        final ok = await attempt(
+                          ctx,
+                          () => MatchSession.delete(session.id, widget.match.id),
+                          fail: 'Gagal menghapus sesi',
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx, ok);
                       },
                 child: const Text('Hapus'),
               ),

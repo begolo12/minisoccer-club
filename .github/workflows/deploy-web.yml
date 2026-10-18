@@ -21,7 +21,14 @@ jobs:
         with:
           channel: stable
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: node --test "api/*.test.mjs"
       - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
       - run: flutter build web --release --no-web-resources-cdn
 
       - name: Deploy ke Vercel

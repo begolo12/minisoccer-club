@@ -58,4 +58,57 @@ void main() {
     expect(s.last.goalsFor, 1);
     expect(s.last.goalsAgainst, 3);
   });
+
+  test('buku kas: iuran + transaksi, saldo dan urutan', () {
+    final payments = [
+      Payment(
+        id: 1,
+        memberId: 1,
+        memberName: 'Rizky',
+        amount: 75000,
+        period: '2026-10',
+        paidAt: DateTime(2026, 10, 5),
+      ),
+      Payment(
+        id: 2,
+        memberId: 2,
+        memberName: 'Bagas',
+        amount: 75000,
+        period: '2026-10',
+        paidAt: DateTime(2026, 10, 6),
+      ),
+    ];
+    final txs = [
+      Transaction(
+        id: 1,
+        kind: 'expense',
+        category: 'sewa',
+        amount: 350000,
+        occurredAt: DateTime(2026, 10, 7),
+        note: 'Sewa lapangan',
+      ),
+      Transaction(
+        id: 2,
+        kind: 'income',
+        category: 'sponsor',
+        amount: 500000,
+        occurredAt: DateTime(2026, 10, 8),
+        note: 'Sponsor',
+      ),
+    ];
+
+    final entries = mergeCashLedger(payments: payments, transactions: txs);
+    expect(entries.length, 4);
+    expect(entries.first.label, 'Sponsor'); // terbaru di atas
+    expect(entries.first.amount, 500000);
+    expect(entries[1].amount, -350000);
+    expect(entries.last.date, DateTime(2026, 10, 5));
+
+    final s = CashSummary.fromEntries(entries);
+    expect(s.dues, 150000);
+    expect(s.otherIncome, 500000);
+    expect(s.expense, 350000);
+    expect(s.income, 650000);
+    expect(s.balance, 300000);
+  });
 }

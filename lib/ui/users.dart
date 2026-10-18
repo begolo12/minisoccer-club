@@ -18,6 +18,8 @@ class UsersPage extends StatefulWidget {
 class _UsersPageState extends State<UsersPage> {
   late Future<List<AppUser>> _future;
 
+  static const roleLabels = {'admin': 'Admin', 'treasurer': 'Bendahara', 'member': 'Anggota'};
+
   @override
   void initState() {
     super.initState();
@@ -78,13 +80,9 @@ class _UsersPageState extends State<UsersPage> {
                     size: 17,
                     color: u.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
                   ),
-                  title: u.username,
+                  title: u.username == Auth.username ? '${u.username} (kamu)' : u.username,
                   subtitle: [
-                    switch (u.role) {
-                      'admin' => 'Admin',
-                      'treasurer' => 'Bendahara',
-                      _ => 'Anggota',
-                    },
+                    roleLabels[u.role] ?? u.role,
                     if (!u.active) 'nonaktif',
                   ].join(' • '),
                   trailing: Row(
@@ -93,13 +91,17 @@ class _UsersPageState extends State<UsersPage> {
                       iconAction(context, Icons.key_outlined, () async {
                         if (await _resetPassword(context, u)) _reload();
                       }, tooltip: 'Atur ulang password'),
-                      const SizedBox(width: 6),
-                      iconAction(context, Icons.delete_outline, () async {
-                        if (await confirm(context, 'Hapus pengguna?', u.username)) {
-                          await AppUser.delete(u.id);
-                          _reload();
-                        }
-                      }, tooltip: 'Hapus'),
+                      if (u.username != Auth.username) ...[
+                        const SizedBox(width: 6),
+                        iconAction(context, Icons.delete_outline, () async {
+                          if (await confirm(context, 'Hapus pengguna?', u.username)) {
+                            if (!context.mounted) return;
+                            if (await attempt(context, () => AppUser.delete(u.id), fail: 'Gagal menghapus')) {
+                              _reload();
+                            }
+                          }
+                        }, tooltip: 'Hapus'),
+                      ],
                     ],
                   ),
                 ),
@@ -125,8 +127,12 @@ class _UsersPageState extends State<UsersPage> {
                 toast(ctx, 'Password minimal 6 karakter');
                 return;
               }
-              await AppUser.setPassword(u.id, ctrl.text);
-              if (ctx.mounted) Navigator.pop(ctx, true);
+              try {
+                await AppUser.setPassword(u.id, ctrl.text);
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              } catch (e) {
+                if (ctx.mounted) toast(ctx, 'Gagal: $e');
+              }
             },
             child: const Text('Simpan'),
           ),
@@ -203,9 +209,9 @@ class _UsersPageState extends State<UsersPage> {
                 placeholder: const Text('Role'),
                 initialValue: role,
                 options: AppUser.roles
-                    .map((r) => ShadOption(value: r, child: Text(r)))
+                    .map((r) => ShadOption(value: r, child: Text(roleLabels[r] ?? r)))
                     .toList(),
-                selectedOptionBuilder: (c, v) => Text(v),
+                selectedOptionBuilder: (c, v) => Text(roleLabels[v] ?? v),
                 onChanged: (v) => setLocal(() => role = v ?? 'member'),
               ),
             ],

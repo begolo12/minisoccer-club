@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/auth.dart';
 import 'announcements.dart';
 import 'bookings.dart';
+import 'finance.dart';
 import 'settings.dart';
 import 'stats.dart';
 import 'tournament.dart';
@@ -24,7 +25,7 @@ class MorePage extends StatelessWidget {
           _Tile(
             icon: Icons.emoji_events_outlined,
             title: 'Turnamen internal',
-            subtitle: '4 tim, jadwal & klasemen grup',
+            subtitle: 'Round-robin, klasemen grup',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TournamentsPage())),
           ),
           _Tile(
@@ -32,6 +33,12 @@ class MorePage extends StatelessWidget {
             title: 'Booking lapangan',
             subtitle: 'Jadwal sewa & biaya',
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookingsPage())),
+          ),
+          _Tile(
+            icon: Icons.account_balance_wallet_outlined,
+            title: 'Kas klub',
+            subtitle: 'Pemasukan, pengeluaran & saldo',
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FinancePage())),
           ),
           _Tile(
             icon: Icons.campaign_outlined,

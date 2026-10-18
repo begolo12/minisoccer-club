@@ -17,14 +17,17 @@ String fmtTime(DateTime d) =>
 
 String fmtDateTime(DateTime d) => '${fmtDay(d)}, ${fmtDate(d)} • ${fmtTime(d)}';
 
-String fmtMoney(num v) {
+String fmtMoney(num v) => 'Rp ${fmtNumber(v)}';
+
+/// Angka ribuan tanpa awalan "Rp" — dipakai di label sempit.
+String fmtNumber(num v) {
   final s = v.toStringAsFixed(0);
   final buf = StringBuffer();
   for (var i = 0; i < s.length; i++) {
     if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
     buf.write(s[i]);
   }
-  return 'Rp $buf';
+  return buf.toString();
 }
 
 String periodNow() {
@@ -85,4 +88,20 @@ void toast(BuildContext context, String msg) {
       behavior: SnackBarBehavior.floating,
       duration: const Duration(seconds: 2),
     ));
+}
+
+/// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
+/// tidak berhenti sebagai exception tanpa penjelasan.
+Future<bool> attempt(
+  BuildContext context,
+  Future<void> Function() action, {
+  String fail = 'Gagal menyimpan',
+}) async {
+  try {
+    await action();
+    return true;
+  } catch (e) {
+    if (context.mounted) toast(context, '$fail: $e');
+    return false;
+  }
 }

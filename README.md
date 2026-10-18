@@ -26,14 +26,18 @@ Versi web: **https://minisoccer-club.vercel.app**
 | **Tanding** | Jadwal & hasil, sesi/babak dengan pemenang tiap sesi, catat gol / assist / kartu |
 | **Turnamen internal** | 4 tim round-robin (semua bertemu semua), jadwal otomatis per 20 menit dalam 2 jam, pembagian tim acak merata, klasemen grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin) |
 | **Iuran** | Bayar per bulan, siapa yang belum, riwayat, total terkumpul |
+| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu |
 | **Booking lapangan** | Jadwal sewa, durasi, biaya, status |
 | **Pengumuman** | Info klub untuk anggota |
 | **Statistik** | Main/menang/draw/kalah, gol, poin, top skor & assist |
 | **Pengguna** | Akun + role admin / bendahara / anggota |
-| **Pengaturan** | Tema, ganti koneksi DB, tes koneksi |
+| **Pengaturan** | Tema terang/gelap (langsung), info server, tes koneksi, keluar |
 
-QoL: pull-to-refresh, empty state yang mengarahkan, konfirmasi hapus, error
-state + retry, skeleton loading, layout menyesuaikan lebar layar.
+QoL: pull-to-refresh (termasuk daftar pendek), empty state yang mengarahkan,
+konfirmasi hapus, error state + retry, skeleton loading, layout menyesuaikan
+lebar layar, tema bisa diganti tanpa membuka ulang app, tab dimuat saat dibuka
+dan disegarkan setelah ada perubahan data, tombol tulis disembunyikan untuk
+role anggota.
 
 Catatan: APK sekarang selalu lewat `/api` (token sesi). Connection string DB
 hanya ada di env server, tidak lagi disimpan di HP.
@@ -46,17 +50,23 @@ hanya ada di env server, tidak lagi disimpan di HP.
    ```
    postgresql://user:password@ep-xxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
    ```
-3. Tempel di aplikasi saat onboarding. Selesai.
+3. Isi `DATABASE_URL` di `.env` lokal dan di env Vercel, lalu jalankan
+   `npm run db:init` (schema) dan `npm run db:harden` (role `app_web`).
+4. Buka app → layar masuk → akun pertama dibuat lewat form **Admin pertama**,
+   lalu tambah akun lain dari menu **Pengguna**.
 
-Connection string hanya tersimpan di HP (encrypted), tidak masuk repo.
+Connection string hanya ada di env server, tidak pernah di HP maupun browser.
 
 ## Development
 
 ```bash
 flutter pub get
-flutter run                       # Android (konek TCP langsung ke Neon)
-flutter build apk --release       # APK
-flutter build web --release       # versi web
+npm install
+cp .env.example .env              # isi DATABASE_URL, DATABASE_URL_WEB, AUTH_SECRET
+flutter run -d chrome --dart-define=API_BASE=http://localhost:3000   # perlu `vercel dev`
+flutter run                       # Android, lewat API yang sama
+flutter build apk --release --dart-define=API_BASE=https://minisoccer-club.vercel.app
+flutter build web --release
 ```
 
 ## Deploy versi web (opsional)
@@ -90,9 +100,13 @@ Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 lib/
   core/   api.dart (URL API) · db.dart (akses DB + secure storage) · db_web.dart (HTTP driver)
   data/   models.dart (model + query) · auth.dart (login, sesi, kelola user)
-  ui/     theme (token warna/font), widgets (RowItem, Panel, PageScaffold),
-          fmt, forms, halaman per fitur
+  ui/     theme (token warna/font + ThemeController), widgets (RowItem, Panel,
+          PageScaffold, AppScrollBehavior), fmt, forms, finance (buku kas),
+          halaman per fitur
 api/sql.js                  Satu-satunya pintu SQL (role terbatas)
+api/_guard.js               Filter statement + pengikat parameter `@nama`
+api/_guard.test.mjs         Uji filter & parameter (node --test)
+api/_app-queries.test.mjs   Semua query app harus lolos filter untuk role yang berhak
 api/auth.js                 Login, register admin pertama, kelola user
 api/_auth.js                Terbit/verifikasi token HMAC
 db/schema.sql               Schema Neon
@@ -100,8 +114,22 @@ design/                     catatan desain + mock server & preview (dev saja)
 lib/preview_main.dart       entrypoint preview tanpa DB (dev saja)
 scripts/init-db.mjs         Jalankan schema (npm run db:init)
 scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:harden)
+scripts/security-check.mjs  Uji endpoint live (npm run check:live)
 .github/workflows/build.yml Build APK otomatis
 ```
+
+## Tes
+
+```bash
+npm test                 # filter SQL, pengikat parameter, semua query app
+flutter analyze          # wajib bersih
+flutter test             # unit: format, round-robin, klasemen, buku kas
+npm run check:live       # endpoint produksi; butuh ADMIN_USER/ADMIN_PASS
+```
+
+`check:live` membuat akun member sementara, menguji batas baca/tulis, lalu
+menghapusnya lagi. Jalankan setelah deploy, bukan di CI biasa (menyentuh data
+produksi).
 
 ## CI/CD
 
@@ -115,12 +143,13 @@ scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:hard
 
 | Lapis | Isi |
 |---|---|
-| Login | Password di-hash bcrypt oleh Postgres (`pgcrypto`), minimal 6 karakter |
-| Sesi | Token HMAC-SHA256, berlaku 12 jam, ditandatangani `AUTH_SECRET` |
+| Login | Password di-hash bcrypt oleh Postgres (`pgcrypto`), 6–200 karakter, username maks 40 |
+| Sesi | Token HMAC-SHA256, berlaku 12 jam, ditandatangani `AUTH_SECRET`; token ditolak → app otomatis kembali ke layar masuk |
 | Kunci akun | 5× salah password → terkunci 10 menit; maks 30 percobaan / 5 menit per IP |
 | Jalur data | Semua query lewat `/api/sql`, wajib `Authorization: Bearer <token>` |
 | Role DB | `app_web`: tanpa DDL, tanpa akses `password_hash` (dibuat `npm run db:harden`) |
-| Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE; `member` read-only |
+| Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `member` read-only dan tidak bisa membaca daftar pengguna |
+| Parameter | `@nama` → positional hanya di luar string/komentar; parameter yang tidak dikirim ditolak (bukan NULL diam-diam) |
 | Kelola user | Tambah/reset/hapus hanya lewat `/api/auth` (admin), bukan lewat SQL |
 | Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |
 

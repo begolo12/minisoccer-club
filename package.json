@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "db:init": "node scripts/init-db.mjs",
-    "db:harden": "node scripts/harden-db.mjs"
+    "db:harden": "node scripts/harden-db.mjs",
+    "test": "node --test \"api/*.test.mjs\"",
+    "check:live": "node scripts/security-check.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"

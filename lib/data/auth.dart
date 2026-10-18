@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/api.dart';
 import '../core/db.dart';
+import '../core/db_web.dart' show ApiException;
 
 /// Login/logout + simpan sesi.
 ///
@@ -20,6 +22,9 @@ class Auth {
 
   static bool get signedIn => username != null;
   static bool get isAdmin => role == 'admin';
+
+  /// Admin dan bendahara boleh menulis data klub; member hanya membaca.
+  static bool get canWrite => role == 'admin' || role == 'treasurer';
 
   /// Pulihkan sesi tersimpan saat app dibuka.
   static Future<void> restore() async {
@@ -69,6 +74,13 @@ class Auth {
     await SecureStore.delete('auth_token');
   }
 
+  /// Dipanggil dari [Db] saat server menolak token: sesi dibuang tanpa
+  /// menyentuh jaringan, lalu root kembali ke layar masuk.
+  static Future<void> expire() async {
+    if (username == null && token == null) return;
+    await logout();
+  }
+
   static Future<void> _save(String u, String? r, String? t) async {
     username = u;
     role = r;
@@ -84,17 +96,37 @@ class Auth {
     Map<String, Object?> body, {
     bool auth = true,
   }) async {
-    final res = await http.post(
-      Uri.parse(kAuthEndpoint),
-      headers: {
-        'content-type': 'application/json',
-        if (auth && token != null) 'authorization': 'Bearer $token',
-      },
-      body: jsonEncode(body),
-    );
-    final data = jsonDecode(res.body);
+    late final http.Response res;
+    try {
+      res = await http
+          .post(
+            Uri.parse(kAuthEndpoint),
+            headers: {
+              'content-type': 'application/json',
+              if (auth && token != null) 'authorization': 'Bearer $token',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      throw ApiException('Server tidak merespons. Periksa koneksi lalu coba lagi.');
+    } on http.ClientException {
+      throw ApiException('Tidak bisa menghubungi server. Periksa koneksi internet.');
+    }
+
+    dynamic data;
+    try {
+      data = jsonDecode(res.body);
+    } catch (_) {
+      data = null;
+    }
     final map = data is Map<String, dynamic> ? data : <String, dynamic>{};
-    if (res.statusCode != 200) throw Exception(map['error'] ?? 'Permintaan gagal (${res.statusCode})');
+    if (res.statusCode != 200) {
+      final message = map['error'];
+      throw ApiException(
+        message is String && message.isNotEmpty ? message : 'Permintaan gagal (${res.statusCode})',
+      );
+    }
     return map;
   }
 

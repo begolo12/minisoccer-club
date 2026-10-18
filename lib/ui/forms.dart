@@ -281,7 +281,15 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
     toast(context, 'Tambah anggota dulu');
     return false;
   }
-  final amount = TextEditingController();
+  // Isi awal memakai nominal yang paling sering dibayar, bukan angka mati.
+  double? standard;
+  try {
+    standard = await Payment.standardAmount();
+  } catch (_) {
+    standard = null;
+  }
+  if (!context.mounted) return false;
+  final amount = TextEditingController(text: standard == null ? '' : fmtNumber(standard));
   final note = TextEditingController();
   var selected = memberId ?? members.first.id;
   var per = period ?? periodNow();
@@ -342,6 +350,145 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
               ),
               const SizedBox(height: 10),
               ShadInput(controller: note, placeholder: const Text('Catatan (opsional)')),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+  return ok ?? false;
+}
+
+Future<bool> showTransactionForm(BuildContext context) async {
+  final amount = TextEditingController();
+  final note = TextEditingController();
+  var kind = 'expense';
+  var category = Transaction.expenseCategories.keys.first;
+  var date = DateTime.now();
+  var saving = false;
+
+  final ok = await showShadDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) {
+        final categories = Transaction.categoriesFor(kind);
+
+        Future<void> save() async {
+          final amt =
+              double.tryParse(
+                amount.text.replaceAll('.', '').replaceAll(',', '.'),
+              ) ??
+              0;
+          if (amt <= 0) {
+            toast(ctx, 'Nominal harus lebih dari 0');
+            return;
+          }
+          setLocal(() => saving = true);
+          try {
+            await Transaction.insert(
+              kind: kind,
+              category: category,
+              amount: amt,
+              occurredAt: date,
+              note: _nullIfEmpty(note.text),
+            );
+            if (ctx.mounted) Navigator.pop(ctx, true);
+          } catch (e) {
+            if (ctx.mounted) toast(ctx, 'Gagal simpan: $e');
+          } finally {
+            if (ctx.mounted) setLocal(() => saving = false);
+          }
+        }
+
+        return ShadDialog(
+          title: const Text('Catat transaksi'),
+          description: const Text(
+            'Pemasukan atau pengeluaran di luar iuran anggota.',
+          ),
+          actions: [
+            ShadButton.outline(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            ShadButton(
+              onPressed: saving ? null : save,
+              child: const Text('Simpan'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ShadSelect<String>(
+                placeholder: const Text('Jenis'),
+                initialValue: kind,
+                options: const [
+                  ShadOption(value: 'income', child: Text('Pemasukan')),
+                  ShadOption(value: 'expense', child: Text('Pengeluaran')),
+                ],
+                selectedOptionBuilder: (c, v) =>
+                    Text(v == 'income' ? 'Pemasukan' : 'Pengeluaran'),
+                onChanged: (v) => setLocal(() {
+                  kind = v ?? 'expense';
+                  category = Transaction.categoriesFor(kind).keys.first;
+                }),
+              ),
+              const SizedBox(height: 10),
+              ShadSelect<String>(
+                key: ValueKey(kind),
+                placeholder: const Text('Kategori'),
+                initialValue: category,
+                options: categories.entries
+                    .map((e) => ShadOption(value: e.key, child: Text(e.value)))
+                    .toList(),
+                selectedOptionBuilder: (c, v) => Text(categories[v] ?? v),
+                onChanged: (v) => setLocal(() => category = v ?? category),
+              ),
+              const SizedBox(height: 10),
+              ShadInput(
+                controller: amount,
+                placeholder: const Text('Nominal, misal 350000'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: ShadButton.outline(
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: ctx,
+                          initialDate: date,
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365),
+                          ),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 30),
+                          ),
+                        );
+                        if (d != null) setLocal(() => date = d);
+                      },
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.calendar_today_outlined, size: 15),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              fmtDate(date),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ShadInput(
+                controller: note,
+                placeholder: const Text('Catatan (opsional)'),
+              ),
             ],
           ),
         );

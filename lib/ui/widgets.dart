@@ -181,10 +181,18 @@ class EmptyState extends StatelessWidget {
 }
 
 class ErrorState extends StatelessWidget {
-  const ErrorState({super.key, required this.error, required this.onRetry});
+  const ErrorState({
+    super.key,
+    required this.error,
+    required this.onRetry,
+    this.title = 'Gagal memuat data',
+    this.extra,
+  });
 
   final Object error;
   final VoidCallback onRetry;
+  final String title;
+  final Widget? extra;
 
   @override
   Widget build(BuildContext context) {
@@ -197,7 +205,7 @@ class ErrorState extends StatelessWidget {
           children: [
             Icon(Icons.cloud_off_rounded, size: 32, color: t.colorScheme.mutedForeground),
             const SizedBox(height: 12),
-            Text('Gagal memuat data', style: t.textTheme.large),
+            Text(title, style: t.textTheme.large, textAlign: TextAlign.center),
             const SizedBox(height: 6),
             Text(
               '$error',
@@ -208,6 +216,7 @@ class ErrorState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             ShadButton.outline(onPressed: onRetry, child: const Text('Coba lagi')),
+            ?extra,
           ],
         ),
       ),
@@ -272,11 +281,14 @@ class StatTile extends StatelessWidget {
               const SizedBox(width: 5),
             ],
             Expanded(
-              child: Text(
-                label.toUpperCase(),
-                style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 0.9),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 0.9),
+                ),
               ),
             ),
           ],
@@ -393,6 +405,16 @@ class AsyncView<T> extends StatelessWidget {
 
 /// Lebar baca maksimum. Di layar lebar isi tidak melar sampai 1400px.
 const kContentMax = 980.0;
+
+/// Semua daftar tetap bisa ditarik walau isinya pendek, supaya
+/// pull-to-refresh bekerja juga di halaman yang baru berisi satu baris.
+class AppScrollBehavior extends ScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      AlwaysScrollableScrollPhysics(parent: super.getScrollPhysics(context));
+}
 
 /// Scaffold semua halaman: judul, subjudul, aksi, garis pemisah, isi.
 /// Otomatis menaruh tombol kembali saat halaman ditumpuk.

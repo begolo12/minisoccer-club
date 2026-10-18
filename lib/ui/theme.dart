@@ -1,6 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/db.dart';
+
+/// Tema aplikasi yang bisa diganti tanpa membuka ulang app.
+class ThemeController {
+  static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.dark);
+
+  static Future<void> load() async {
+    final v = await SecureStore.read('theme');
+    mode.value = v == 'light' ? ThemeMode.light : ThemeMode.dark;
+  }
+
+  static Future<void> setDark(bool dark) async {
+    mode.value = dark ? ThemeMode.dark : ThemeMode.light;
+    await SecureStore.write('theme', dark ? 'dark' : 'light');
+  }
+}
+
 /// Tema "Papan Skor": papan LED stadion, bukan dashboard SaaS.
 ///
 /// Aturan yang dipakai di seluruh app:

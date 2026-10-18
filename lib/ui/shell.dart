@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/db.dart';
 import 'dashboard.dart';
 import 'members.dart';
 import 'matches.dart';
@@ -10,6 +11,10 @@ import 'theme.dart';
 
 /// Navigasi utama. Di HP: bar bawah. Di layar lebar: rail kiri, karena bar
 /// bawah yang melar 1400px adalah tanda layout mobile yang tidak disesuaikan.
+///
+/// Tab dibangun saat pertama kali dibuka (bukan semuanya saat start), dan
+/// dimuat ulang saat dibuka lagi setelah ada data yang berubah — jadi tab
+/// lain tidak menampilkan angka lama.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, this.initialTab = 0});
 
@@ -20,8 +25,6 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  late int _index = widget.initialTab.clamp(0, _pages.length - 1);
-
   static const _pages = [
     DashboardPage(),
     MembersPage(),
@@ -38,12 +41,44 @@ class _HomeShellState extends State<HomeShell> {
     (Icons.grid_view_outlined, Icons.grid_view_rounded, 'Lainnya'),
   ];
 
+  late int _index = widget.initialTab.clamp(0, _pages.length - 1);
+  final Set<int> _built = {};
+  final List<int> _version = List.filled(_pages.length, 0);
+  int _seenWrites = Db.writes.value;
+
+  @override
+  void initState() {
+    super.initState();
+    _built.add(_index);
+  }
+
+  void _select(int i) {
+    setState(() {
+      // Ada tulis di tab lain? Muat ulang tab yang akan dibuka.
+      if (Db.writes.value != _seenWrites) {
+        _version[i]++;
+        _seenWrites = Db.writes.value;
+      }
+      _index = i;
+      _built.add(i);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
-    final body = IndexedStack(index: _index, children: _pages);
+    final body = IndexedStack(
+      index: _index,
+      children: [
+        for (var i = 0; i < _pages.length; i++)
+          if (_built.contains(i))
+            KeyedSubtree(key: ValueKey('page-$i-${_version[i]}'), child: _pages[i])
+          else
+            const SizedBox.shrink(),
+      ],
+    );
 
     if (wide) {
       return Scaffold(
@@ -78,13 +113,14 @@ class _HomeShellState extends State<HomeShell> {
                         ],
                       ),
                     ),
-                    for (var i = 0; i < _dest.length; i++) _RailItem(
-                      icon: _dest[i].$1,
-                      selectedIcon: _dest[i].$2,
-                      label: _dest[i].$3,
-                      selected: _index == i,
-                      onTap: () => setState(() => _index = i),
-                    ),
+                    for (var i = 0; i < _dest.length; i++)
+                      _RailItem(
+                        icon: _dest[i].$1,
+                        selectedIcon: _dest[i].$2,
+                        label: _dest[i].$3,
+                        selected: _index == i,
+                        onTap: () => _select(i),
+                      ),
                   ],
                 ),
               ),
@@ -131,7 +167,7 @@ class _HomeShellState extends State<HomeShell> {
             height: 60,
             labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
+            onDestinationSelected: _select,
             destinations: [
               for (final d in _dest)
                 NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: d.$3),

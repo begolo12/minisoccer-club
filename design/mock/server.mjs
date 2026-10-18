@@ -10,6 +10,12 @@ const PORT = 8099;
 const now = Date.now();
 const iso = (msAgo) => new Date(now - msAgo).toISOString();
 const day = 86_400_000;
+// Jam tetap supaya screenshot tidak menampilkan jadwal jam 01.29.
+const at = (daysFromNow, hour, minute = 0) => {
+  const d = new Date(now + daysFromNow * day);
+  d.setHours(hour, minute, 0, 0);
+  return d.toISOString();
+};
 
 const members = [
   ['Rizky Pratama', 'Striker', 9], ['Bagas Saputra', 'Gelandang', 8],
@@ -26,11 +32,12 @@ const members = [
 }));
 
 const matches = [
-  { id: 1, opponent: 'Garuda FC', played_at: iso(-day * 2), venue: 'Lapangan Cimahi', is_home: true, status: 'scheduled', goals_for: 0, goals_against: 0, notes: null },
-  { id: 2, opponent: 'Putra Mandiri', played_at: iso(day * 6), venue: 'Mini Soccer Arcamanik', is_home: false, status: 'finished', goals_for: 5, goals_against: 3, notes: null },
-  { id: 3, opponent: 'Bintang Timur', played_at: iso(day * 13), venue: 'Lapangan Cimahi', is_home: true, status: 'finished', goals_for: 2, goals_against: 2, notes: null },
-  { id: 4, opponent: 'SSB Jayakarta', played_at: iso(day * 20), venue: 'Lapangan UPI', is_home: false, status: 'finished', goals_for: 1, goals_against: 4, notes: null },
-  { id: 5, opponent: 'Anak Kolong FC', played_at: iso(day * 27), venue: 'Lapangan Cimahi', is_home: true, status: 'finished', goals_for: 4, goals_against: 1, notes: null },
+  { id: 1, opponent: 'Garuda FC', played_at: at(2, 20), venue: 'Lapangan Cimahi', is_home: true, status: 'scheduled', goals_for: 0, goals_against: 0, notes: null },
+  { id: 6, opponent: 'Cimahi United', played_at: at(0, 20), venue: 'Lapangan Cimahi', is_home: true, status: 'ongoing', goals_for: 1, goals_against: 1, notes: null },
+  { id: 2, opponent: 'Putra Mandiri', played_at: at(-6, 20), venue: 'Mini Soccer Arcamanik', is_home: false, status: 'finished', goals_for: 5, goals_against: 3, notes: null },
+  { id: 3, opponent: 'Bintang Timur', played_at: at(-13, 20), venue: 'Lapangan Cimahi', is_home: true, status: 'finished', goals_for: 2, goals_against: 2, notes: null },
+  { id: 4, opponent: 'SSB Jayakarta', played_at: at(-20, 16), venue: 'Lapangan UPI', is_home: false, status: 'finished', goals_for: 1, goals_against: 4, notes: null },
+  { id: 5, opponent: 'Anak Kolong FC', played_at: at(-27, 20), venue: 'Lapangan Cimahi', is_home: true, status: 'finished', goals_for: 4, goals_against: 1, notes: null },
 ];
 
 const events = [
@@ -39,12 +46,14 @@ const events = [
   [3, 6, 18, 'goal'], [3, 14, 66, 'goal'], [3, 10, 22, 'assist'],
   [4, 13, 9, 'goal'], [5, 1, 14, 'goal'], [5, 1, 44, 'goal'], [5, 9, 70, 'goal'],
   [5, 5, 81, 'goal'], [5, 5, 30, 'assist'], [5, 1, 55, 'assist'],
+  [6, 1, 8, 'goal'], [6, 6, 17, 'assist'],
 ].map(([match_id, member_id, minute, type], i) => ({
   id: i + 1, match_id, member_id, minute, type,
 }));
 
 const sessions = [
   [2, 1, 2, 1], [2, 2, 3, 2], [3, 1, 1, 1], [3, 2, 1, 1], [4, 1, 1, 4], [5, 1, 4, 1],
+  [6, 1, 1, 1],
 ].map(([match_id, session_no, score_home, score_away], i) => ({
   id: i + 1, match_id, session_no, score_home, score_away,
   winner: score_home > score_away ? 'home' : score_home < score_away ? 'away' : 'draw',
@@ -60,11 +69,11 @@ const payments = [
 }));
 
 const bookings = [
-  ['Sewa lapangan — latihan rutin', -day * 1, 90, 350000, 'booked'],
-  ['Sewa lapangan — uji coba', -day * 4, 120, 450000, 'booked'],
-  ['Sewa lapangan — latihan rutin', day * 3, 90, 350000, 'done'],
-].map(([title, ago, duration_min, cost, status], i) => ({
-  id: i + 1, title, starts_at: iso(ago), duration_min, cost, status,
+  ['Sewa lapangan — latihan rutin', at(1, 20), 90, 350000, 'booked'],
+  ['Sewa lapangan — uji coba', at(4, 19, 30), 120, 450000, 'booked'],
+  ['Sewa lapangan — latihan rutin', at(-5, 20), 90, 350000, 'done'],
+].map(([title, starts_at, duration_min, cost, status], i) => ({
+  id: i + 1, title, starts_at, duration_min, cost, status,
 }));
 
 const announcements = [
@@ -72,6 +81,16 @@ const announcements = [
   ['Iuran Oktober sudah dibuka', 'Iuran bulan ini Rp 75.000. Bisa transfer ke bendahara atau bayar langsung setelah latihan.'],
 ].map(([title, body], i) => ({
   id: i + 1, title, body, created_at: iso(day * (3 + i * 4)),
+}));
+
+const transactions = [
+  ['expense', 'sewa', 350000, 2, 'Sewa lapangan latihan rutin'],
+  ['expense', 'wasit', 200000, 4, 'Wasit laga vs Putra Mandiri'],
+  ['income', 'sponsor', 1500000, 8, 'Sponsor kaos musim ini'],
+  ['expense', 'perlengkapan', 480000, 12, 'Bola baru + rompi'],
+  ['income', 'lain', 250000, 16, 'Hasil penjualan minuman'],
+].map(([kind, category, amount, daysAgo, note], i) => ({
+  id: i + 1, kind, category, amount, occurred_at: iso(day * daysAgo).slice(0, 10), note,
 }));
 
 const users = [
@@ -83,7 +102,7 @@ const users = [
 
 const tournaments = [{
   id: 1, name: 'Turnamen Internal Oktober', venue: 'Lapangan Cimahi',
-  starts_at: iso(-day * 1), match_minutes: 20, break_minutes: 0, status: 'running',
+  starts_at: at(0, 19), match_minutes: 20, break_minutes: 0, status: 'running',
 }];
 const teams = ['Tim A', 'Tim B', 'Tim C', 'Tim D'].map((name, i) => ({
   id: i + 1, tournament_id: 1, name,
@@ -99,7 +118,7 @@ const tmatches = [
   [1, 2, 4, 2, 4, 1, 2], [1, 3, 5, 1, 4, null, null], [1, 3, 6, 2, 3, null, null],
 ].map(([tournament_id, round, slot, home_team_id, away_team_id, score_home, score_away], i) => ({
   id: i + 1, tournament_id, round, slot, home_team_id, away_team_id,
-  kickoff: iso(-day + i * 20 * 60_000), score_home, score_away,
+  kickoff: at(0, 19, i * 20), score_home, score_away,
   status: score_home == null ? 'scheduled' : 'done',
 }));
 
@@ -135,12 +154,31 @@ function rowsFor(sql, params = {}) {
   if (/from matches where status='scheduled'/.test(q)) {
     return matches.filter((m) => m.status === 'scheduled').sort((a, b) => a.played_at.localeCompare(b.played_at));
   }
+  if (/from matches where status in \('scheduled', 'ongoing'\)/.test(q)) {
+    return matches
+      .filter((m) => m.status === 'scheduled' || m.status === 'ongoing')
+      .sort((a, b) => a.played_at.localeCompare(b.played_at))
+      .slice(0, limit);
+  }
+  if (/from matches where status='finished'/.test(q)) {
+    return matches
+      .filter((m) => m.status === 'finished')
+      .sort((a, b) => b.played_at.localeCompare(a.played_at))
+      .slice(0, limit);
+  }
   if (/from matches/.test(q)) return [...matches].sort((a, b) => b.played_at.localeCompare(a.played_at)).slice(0, limit);
   if (/from payments/.test(q)) {
+    if (/group by amount/.test(q)) {
+      const counts = new Map();
+      for (const p of payments) counts.set(p.amount, (counts.get(p.amount) ?? 0) + 1);
+      const [amount, n] = [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0] ?? [0, 0];
+      return [{ amount, n }];
+    }
     if (/coalesce\(sum\(amount\)/.test(q)) {
       return [{ total: payments.reduce((s, p) => s + p.amount, 0) }];
     }
-    return payments.map((p) => ({
+    const rows = params.p == null ? payments : payments.filter((p) => p.period === params.p);
+    return rows.map((p) => ({
       ...p, member_name: members.find((m) => m.id === p.member_id)?.name ?? '',
     }));
   }
@@ -148,6 +186,11 @@ function rowsFor(sql, params = {}) {
     return bookings.filter((b) => b.status === 'booked');
   }
   if (/from bookings/.test(q)) return bookings;
+  if (/from transactions/.test(q)) {
+    return params.p == null
+      ? transactions
+      : transactions.filter((t) => t.occurred_at.startsWith(params.p));
+  }
   if (/from announcements/.test(q)) return announcements;
   if (/from users/.test(q)) return users.map(({ id, username, role, active }) => ({ id, username, role, active }));
   if (/from team_players/.test(q)) {
@@ -165,6 +208,28 @@ function rowsFor(sql, params = {}) {
 }
 
 const writeCount = (sql) => (/^\s*(insert|update|delete)/i.test(sql) ? 1 : 0);
+
+/// Tulis minimal supaya preview bisa membuktikan alur simpan/hapus.
+/// Hanya tabel transaksi; sisanya tetap read-only.
+function applyWrite(sql, params) {
+  if (/^\s*insert\s+into\s+transactions/i.test(sql)) {
+    transactions.unshift({
+      id: transactions.length + 1,
+      kind: params.kind,
+      category: params.category,
+      amount: params.amount,
+      occurred_at: params.date,
+      note: params.note,
+    });
+    return 1;
+  }
+  if (/^\s*delete\s+from\s+transactions/i.test(sql)) {
+    const i = transactions.findIndex((t) => t.id === params.id);
+    if (i >= 0) transactions.splice(i, 1);
+    return i >= 0 ? 1 : 0;
+  }
+  return writeCount(sql);
+}
 
 const json = (res, code, body) => {
   res.writeHead(code, { 'content-type': 'application/json', 'cache-control': 'no-store' });
@@ -197,7 +262,7 @@ createServer(async (req, res) => {
   }
   if (req.method === 'POST' && req.url.startsWith('/api/sql')) {
     const { sql = '', params = {} } = await readBody(req);
-    return json(res, 200, { rows: rowsFor(sql, params), rowCount: writeCount(sql) });
+    return json(res, 200, { rows: rowsFor(sql, params), rowCount: applyWrite(sql, params) });
   }
   const path = normalize(decodeURIComponent(req.url.split('?')[0]));
   const file = join(ROOT, path === '/' ? 'index.html' : path);

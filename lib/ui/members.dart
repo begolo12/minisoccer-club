@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
@@ -42,11 +43,12 @@ class _MembersPageState extends State<MembersPage> {
     final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Anggota',
-      subtitle: '${_activeOnly ? "Aktif" : "Semua"} • ketuk untuk edit',
+      subtitle: '${_activeOnly ? "Aktif" : "Semua"} • ${Auth.canWrite ? "ketuk untuk edit" : "hanya baca"}',
       actions: [
-        iconAction(context, Icons.person_add_alt_1, () async {
-          if (await showMemberForm(context)) _reload();
-        }, tooltip: 'Tambah anggota'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.person_add_alt_1, () async {
+            if (await showMemberForm(context)) _reload();
+          }, tooltip: 'Tambah anggota'),
       ],
       child: Column(
         children: [
@@ -97,8 +99,8 @@ class _MembersPageState extends State<MembersPage> {
                         message: _query.isEmpty
                             ? 'Tambahkan pemain pertama klub kamu.'
                             : 'Coba kata kunci lain.',
-                        actionLabel: _query.isEmpty ? 'Tambah anggota' : null,
-                        onAction: _query.isEmpty
+                        actionLabel: _query.isEmpty && Auth.canWrite ? 'Tambah anggota' : null,
+                        onAction: _query.isEmpty && Auth.canWrite
                             ? () async {
                                 if (await showMemberForm(context)) _reload();
                               }
@@ -112,9 +114,11 @@ class _MembersPageState extends State<MembersPage> {
                   children: [
                     for (final m in filtered)
                       RowItem(
-                        onTap: () async {
-                          if (await showMemberForm(context, member: m)) _reload();
-                        },
+                        onTap: Auth.canWrite
+                            ? () async {
+                                if (await showMemberForm(context, member: m)) _reload();
+                              }
+                            : null,
                         leading: Container(
                           width: 38,
                           height: 38,
@@ -138,12 +142,17 @@ class _MembersPageState extends State<MembersPage> {
                         title: m.name,
                         subtitle: '${m.position}${m.phone != null ? " • ${m.phone}" : ""}'
                             '${m.active ? '' : ' • nonaktif'}',
-                        trailing: iconAction(context, Icons.delete_outline, () async {
-                          if (await confirm(context, 'Hapus anggota?', '${m.name} akan dihapus permanen.')) {
-                            await Member.delete(m.id);
-                            _reload();
-                          }
-                        }, tooltip: 'Hapus'),
+                        trailing: Auth.canWrite
+                            ? iconAction(context, Icons.delete_outline, () async {
+                                if (await confirm(context, 'Hapus anggota?',
+                                    '${m.name} beserta riwayat iuran dan catatan pertandingannya akan dihapus permanen.')) {
+                                  if (!context.mounted) return;
+                                  if (await attempt(context, () => Member.delete(m.id), fail: 'Gagal menghapus')) {
+                                    _reload();
+                                  }
+                                }
+                              }, tooltip: 'Hapus')
+                            : null,
                       ),
                   ],
                 );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
@@ -54,9 +55,10 @@ class _PaymentsPageState extends State<PaymentsPage> {
       title: 'Iuran',
       subtitle: periodLabel(_period),
       actions: [
-        iconAction(context, Icons.add, () async {
-          if (await showPaymentForm(context, period: _period)) _reload();
-        }, tooltip: 'Catat iuran'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.add, () async {
+            if (await showPaymentForm(context, period: _period)) _reload();
+          }, tooltip: 'Catat iuran'),
       ],
       child: Column(
         children: [
@@ -113,6 +115,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 final total = d.payments.fold<double>(0, (s, p) => s + p.amount);
                 final paidIds = d.payments.map((p) => p.memberId).toSet();
                 final unpaid = d.members.where((m) => !paidIds.contains(m.id)).toList();
+                final paid = d.members.length - unpaid.length;
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -144,7 +147,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                             flex: 2,
                             child: StatTile(
                               label: 'Lunas',
-                              value: '${paidIds.length}/${d.members.length}',
+                              value: '$paid/${d.members.length}',
                               hint: unpaid.isEmpty ? 'semua lunas' : '${unpaid.length} belum',
                             ),
                           ),
@@ -164,9 +167,14 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               borderRadius: BorderRadius.circular(7),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(7),
-                                onTap: () async {
-                                  if (await showPaymentForm(context, period: _period, memberId: m.id)) _reload();
-                                },
+                                onTap: Auth.canWrite
+                                    ? () async {
+                                        if (await showPaymentForm(context,
+                                            period: _period, memberId: m.id)) {
+                                          _reload();
+                                        }
+                                      }
+                                    : null,
                                 child: Container(
                                   height: 32,
                                   padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -180,8 +188,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(m.name, style: const TextStyle(fontSize: 12.5)),
-                                      const SizedBox(width: 6),
-                                      Icon(Icons.check, size: 13, color: AppThemes.bad(context)),
+                                      if (Auth.canWrite) ...[
+                                        const SizedBox(width: 6),
+                                        Tooltip(
+                                          message: 'Tandai sudah bayar',
+                                          child: Icon(Icons.check, size: 13, color: AppThemes.bad(context)),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -199,10 +212,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
                           icon: Icons.account_balance_wallet_outlined,
                           title: 'Belum ada iuran tercatat',
                           message: 'Catat pembayaran pertama untuk ${periodLabel(_period)}.',
-                          actionLabel: 'Catat iuran',
-                          onAction: () async {
-                            if (await showPaymentForm(context, period: _period)) _reload();
-                          },
+                          actionLabel: Auth.canWrite ? 'Catat iuran' : null,
+                          onAction: Auth.canWrite
+                              ? () async {
+                                  if (await showPaymentForm(context, period: _period)) _reload();
+                                }
+                              : null,
                         ),
                       )
                     else
@@ -221,13 +236,17 @@ class _PaymentsPageState extends State<PaymentsPage> {
                                   color: AppThemes.money(context),
                                 ),
                               ),
-                              const SizedBox(width: 6),
-                              iconAction(context, Icons.delete_outline, () async {
-                                if (await confirm(context, 'Hapus iuran?', 'Catatan ${p.memberName} dihapus.')) {
-                                  await Payment.delete(p.id);
-                                  _reload();
-                                }
-                              }, tooltip: 'Hapus'),
+                              if (Auth.canWrite) ...[
+                                const SizedBox(width: 6),
+                                iconAction(context, Icons.delete_outline, () async {
+                                  if (await confirm(context, 'Hapus iuran?', 'Catatan ${p.memberName} dihapus.')) {
+                                    if (!context.mounted) return;
+                                    if (await attempt(context, () => Payment.delete(p.id), fail: 'Gagal menghapus')) {
+                                      _reload();
+                                    }
+                                  }
+                                }, tooltip: 'Hapus'),
+                              ],
                             ],
                           ),
                         ),

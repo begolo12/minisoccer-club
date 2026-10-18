@@ -1,5 +1,8 @@
-// Uji keamanan endpoint live. Jalankan: node scratch/security-check.mjs
+// Uji keamanan endpoint live. Jalankan: node scripts/security-check.mjs
+// Butuh akun admin yang sudah ada (env ADMIN_USER/ADMIN_PASS, default admin/admin123).
 const base = process.env.BASE || 'https://minisoccer-club.vercel.app';
+const adminUser = process.env.ADMIN_USER || 'admin';
+const adminPass = process.env.ADMIN_PASS || 'admin123';
 
 const post = async (path, body, headers = {}) => {
   const res = await fetch(base + path, {
@@ -27,7 +30,7 @@ let r = await post('/api/sql', { sql: 'SELECT 1' });
 check('sql tanpa token ditolak 401', r.code === 401, `code ${r.code}`);
 
 // 2. Login admin
-r = await post('/api/auth', { action: 'login', username: 'admin', password: 'admin123' });
+r = await post('/api/auth', { action: 'login', username: adminUser, password: adminPass });
 check('login admin berhasil', r.code === 200 && !!r.json.token, `code ${r.code}`);
 const token = r.json.token;
 const auth = { authorization: `Bearer ${token}` };
@@ -52,12 +55,64 @@ check('DROP ditolak', r.code === 403, `code ${r.code}`);
 r = await post('/api/sql', { sql: 'SELECT 1; SELECT 2' }, auth);
 check('multi-statement ditolak', r.code === 403, `code ${r.code}`);
 
-// 8. Tulis ke users lewat /api/sql
+// 8. Tulis ke users lewat /api/sql, termasuk nama berskema
 r = await post('/api/sql', { sql: "UPDATE users SET role='admin' WHERE id=1" }, auth);
 check('tulis users lewat sql ditolak', r.code === 403, `code ${r.code}`);
+r = await post('/api/sql', { sql: "UPDATE public.users SET role='admin' WHERE id=1" }, auth);
+check('tulis public.users lewat sql ditolak', r.code === 403, `code ${r.code}`);
 
-// 9. Kelola user tanpa admin (butuh akun member; dilewati kalau tidak ada)
-// 10. Error DB tidak bocor detail
+// 9. Komentar tidak bisa menyembunyikan target tulis
+r = await post('/api/sql', { sql: 'DELETE /* x */ FROM users WHERE id=1' }, auth);
+check('komentar tidak menyembunyikan users', r.code === 403, `code ${r.code}`);
+
+// 10. ON CONFLICT DO NOTHING tetap boleh (dipakai simpan sesi & turnamen)
+r = await post(
+  '/api/sql',
+  {
+    sql: "INSERT INTO settings (key, value) VALUES ('_uji_akses', '1') ON CONFLICT DO NOTHING",
+  },
+  auth,
+);
+check('ON CONFLICT DO NOTHING boleh', r.code === 200, `code ${r.code} ${r.json.error ?? ''}`);
+await post('/api/sql', { sql: "DELETE FROM settings WHERE key='_uji_akses'" }, auth);
+
+// 11. Parameter yang hilang ditolak, bukan jadi NULL diam-diam
+r = await post('/api/sql', { sql: 'SELECT * FROM members WHERE id=@nope', params: {} }, auth);
+check('parameter hilang ditolak', r.code === 400, `code ${r.code}`);
+
+// 12. Karakter @ di dalam string tidak dianggap parameter
+r = await post('/api/sql', { sql: "SELECT '@bukan_param'::text AS v" }, auth);
+check('@ di string aman', r.code === 200 && r.json.rows?.[0]?.v === '@bukan_param', `code ${r.code}`);
+
+// 13. Akun member read-only (dibuat lalu dihapus lagi)
+const tempUser = `uji_${Date.now().toString(36)}`;
+const tempPass = `uji-${Math.random().toString(36).slice(2, 12)}`;
+r = await post(
+  '/api/auth',
+  { action: 'create', username: tempUser, password: tempPass, role: 'member' },
+  auth,
+);
+const madeUser = r.code === 200;
+if (madeUser) {
+  const login = await post('/api/auth', { action: 'login', username: tempUser, password: tempPass });
+  const memberAuth = { authorization: `Bearer ${login.json.token}` };
+  const read = await post('/api/sql', { sql: 'SELECT count(*)::int AS n FROM members' }, memberAuth);
+  check('member boleh membaca', read.code === 200, `code ${read.code}`);
+  const write = await post(
+    '/api/sql',
+    { sql: "INSERT INTO announcements (title, body) VALUES ('_uji', '_uji')" },
+    memberAuth,
+  );
+  check('member tidak boleh menulis', write.code === 403, `code ${write.code}`);
+  const users = await post('/api/sql', { sql: 'SELECT id, username FROM users' }, memberAuth);
+  check('member tidak boleh melihat pengguna', users.code === 403, `code ${users.code}`);
+  const id = r.json.id;
+  if (id) await post('/api/auth', { action: 'delete', id }, auth);
+} else {
+  check('akun uji member bisa dibuat', false, `code ${r.code} ${r.json.error ?? ''}`);
+}
+
+// 14. Error DB tidak bocor detail
 r = await post('/api/sql', { sql: 'SELECT * FROM tabel_tidak_ada' }, auth);
 check(
   'error DB tidak bocor detail',
@@ -65,19 +120,23 @@ check(
   `${r.code} ${r.json.error}`,
 );
 
-// 11. Password salah
-r = await post('/api/auth', { action: 'login', username: 'admin', password: 'salah-sekali' });
+// 15. Password salah
+r = await post('/api/auth', { action: 'login', username: adminUser, password: 'salah-sekali' });
 check('password salah 401 + pesan umum', r.code === 401 && r.json.error === 'Username atau password salah');
 
-// 12. Register saat sudah ada user
+// 16. Register saat sudah ada user
 r = await post('/api/auth', { action: 'register', username: 'penyusup', password: 'penyusup123' });
 check('register setelah ada user ditolak', r.code === 403, `code ${r.code}`);
 
-// 13. Aksi admin tanpa token
+// 17. Aksi admin tanpa token
 r = await post('/api/auth', { action: 'create', username: 'x', password: 'xxxxxx' });
 check('create user tanpa token ditolak', r.code === 403, `code ${r.code}`);
 
-// 14. Security headers
+// 18. Input kebesaran ditolak
+r = await post('/api/auth', { action: 'login', username: 'x'.repeat(100), password: 'x' });
+check('username kebesaran ditolak', r.code === 401 || r.code === 400, `code ${r.code}`);
+
+// 19. Security headers
 const head = await fetch(base + '/');
 const h = head.headers;
 check('header CSP ada', !!h.get('content-security-policy'));

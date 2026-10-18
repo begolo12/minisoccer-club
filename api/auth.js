@@ -1,5 +1,4 @@
 import { neon } from '@neondatabase/serverless';
-import { timingSafeEqual } from 'node:crypto';
 import { bearer, issueToken, verifyToken } from './_auth.js';
 
 // POST /api/auth  { action, ... }
@@ -19,6 +18,9 @@ const sql = neon(process.env.DATABASE_URL);
 const MAX_FAILS = 5;
 const LOCK_MINUTES = 10;
 const MIN_PASS = 6; // ponytail: 6 biar tidak mengunci user lama; naikkan ke 8 kalau boleh.
+const MAX_USER = 40;
+const MAX_PASS = 200;
+const MAX_BODY = 8 * 1024;
 
 // ponytail: rate limit per instance (Map). Cukup untuk membendung brute force
 // biasa; ganti ke Redis/DB kalau butuh batas lintas instance.
@@ -49,12 +51,6 @@ const bodyOf = (req) => {
   }
 };
 
-const same = (a, b) => {
-  const x = Buffer.from(String(a));
-  const y = Buffer.from(String(b));
-  return x.length === y.length && timingSafeEqual(x, y);
-};
-
 const adminOf = (req) => {
   const s = verifyToken(bearer(req));
   return s && s.r === 'admin' ? s : null;
@@ -64,12 +60,16 @@ export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
+  const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {});
+  if (raw.length > MAX_BODY) return res.status(413).json({ error: 'Permintaan terlalu besar' });
+
   const { action, username, password, role, id } = bodyOf(req);
   const user = String(username || '').trim();
   const pass = String(password || '');
 
   // Batasi hanya percobaan kredensial; aksi admin yang sah tidak ikut terhitung.
   if ((action === 'login' || action === 'register') && tooMany(clientIp(req))) {
+    res.setHeader('retry-after', String(WINDOW_MS / 1000));
     return res.status(429).json({ error: 'Terlalu banyak percobaan. Tunggu beberapa menit.' });
   }
 
@@ -99,8 +99,8 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      if (!user || pass.length < MIN_PASS) {
-        return res.status(400).json({ error: `Username wajib, password minimal ${MIN_PASS} karakter` });
+      if (!user || user.length > MAX_USER || pass.length < MIN_PASS || pass.length > MAX_PASS) {
+        return res.status(400).json({ error: `Username wajib (maks ${MAX_USER}), password ${MIN_PASS}-${MAX_PASS} karakter` });
       }
       const safeRole = role === 'admin' || role === 'treasurer' ? role : 'member';
 
@@ -134,8 +134,8 @@ export default async function handler(req, res) {
 
     // ---- publik: register admin pertama ----
     if (action === 'register') {
-      if (!user || pass.length < MIN_PASS) {
-        return res.status(400).json({ error: `Username wajib, password minimal ${MIN_PASS} karakter` });
+      if (!user || user.length > MAX_USER || pass.length < MIN_PASS || pass.length > MAX_PASS) {
+        return res.status(400).json({ error: `Username wajib (maks ${MAX_USER}), password ${MIN_PASS}-${MAX_PASS} karakter` });
       }
       const rows = await sql(
         `INSERT INTO users (username, role, password_hash)
@@ -152,12 +152,16 @@ export default async function handler(req, res) {
     // ---- login ----
     if (action !== 'login') return res.status(400).json({ error: 'action tidak dikenal' });
     if (!user || !pass) return res.status(400).json({ error: 'Username dan password wajib diisi' });
+    if (user.length > MAX_USER || pass.length > MAX_PASS) {
+      return res.status(401).json({ error: 'Username atau password salah' });
+    }
 
     const [known] = await sql(
       'SELECT id, failed_attempts, locked_until FROM users WHERE username = $1',
       [user],
     );
     if (known?.locked_until && new Date(known.locked_until) > new Date()) {
+      res.setHeader('retry-after', String(LOCK_MINUTES * 60));
       return res.status(429).json({ error: `Akun terkunci sementara. Coba lagi ${LOCK_MINUTES} menit.` });
     }
 

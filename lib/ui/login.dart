@@ -10,10 +10,9 @@ import 'widgets.dart';
 /// Arah "Papan skor": wordmark sempit besar di kiri, form di panel bergaris
 /// di kanan. Latar cuma garis lapangan tipis, tanpa cahaya dan gradien.
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, required this.onSignedIn, this.error});
+  const LoginPage({super.key, required this.onSignedIn});
 
   final VoidCallback onSignedIn;
-  final String? error;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -31,7 +30,6 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _err = widget.error;
     _check();
   }
 
@@ -317,6 +315,7 @@ class _FormPanel extends StatelessWidget {
               focusNode: userFocus,
               enabled: !busy,
               autocorrect: false,
+              autofillHints: const [AutofillHints.username],
               textInputAction: TextInputAction.next,
               placeholder: const Text('mis. admin'),
               onSubmitted: (_) {
@@ -331,17 +330,22 @@ class _FormPanel extends StatelessWidget {
               controller: pass,
               enabled: !busy,
               obscureText: !showPass,
+              autofillHints: const [AutofillHints.password],
+              textInputAction: TextInputAction.done,
               placeholder: Text(firstRun ? 'Minimal 6 karakter' : 'Password'),
               onSubmitted: (_) => onSubmit(),
-              trailing: IconButton(
-                splashRadius: 18,
-                tooltip: showPass ? 'Sembunyikan' : 'Tampilkan',
-                icon: Icon(
-                  showPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                  size: 17,
-                  color: t.colorScheme.mutedForeground,
+              // Tombol mata tidak boleh mencuri fokus dari field.
+              trailing: ExcludeFocus(
+                child: IconButton(
+                  splashRadius: 18,
+                  tooltip: showPass ? 'Sembunyikan' : 'Tampilkan',
+                  icon: Icon(
+                    showPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 17,
+                    color: t.colorScheme.mutedForeground,
+                  ),
+                  onPressed: onTogglePass,
                 ),
-                onPressed: onTogglePass,
               ),
             ),
           ),

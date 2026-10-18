@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'theme.dart';
@@ -36,27 +37,33 @@ class _BookingsPageState extends State<BookingsPage> {
       title: 'Booking lapangan',
       subtitle: 'Sewa lapangan & biaya',
       actions: [
-        iconAction(context, Icons.add, () async {
-          if (await showBookingForm(context)) _reload();
-        }, tooltip: 'Booking baru'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.add, () async {
+            if (await showBookingForm(context)) _reload();
+          }, tooltip: 'Booking baru'),
       ],
       child: AsyncView<List<Booking>>(
         future: _future,
         onRefresh: _reload,
         builder: (items) {
           if (items.isEmpty) {
-            return ListView(children: [
-              const SizedBox(height: 80),
-              EmptyState(
-                icon: Icons.stadium_outlined,
-                title: 'Belum ada booking',
-                message: 'Catat jadwal sewa lapangan supaya tidak bentrok.',
-                actionLabel: 'Booking lapangan',
-                onAction: () async {
-                  if (await showBookingForm(context)) _reload();
-                },
-              ),
-            ]);
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                const SizedBox(height: 80),
+                EmptyState(
+                  icon: Icons.stadium_outlined,
+                  title: 'Belum ada booking',
+                  message: 'Catat jadwal sewa lapangan supaya tidak bentrok.',
+                  actionLabel: Auth.canWrite ? 'Booking lapangan' : null,
+                  onAction: Auth.canWrite
+                      ? () async {
+                          if (await showBookingForm(context)) _reload();
+                        }
+                      : null,
+                ),
+              ],
+            );
           }
           final total = items.where((b) => b.status != 'canceled').fold<double>(0, (s, b) => s + b.cost);
           return ListView(
@@ -109,29 +116,34 @@ class _BookingsPageState extends State<BookingsPage> {
                             ),
                           ),
                           const SizedBox(height: 6),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (b.status == 'booked') ...[
-                                iconAction(context, Icons.check, () async {
-                                  await b.setStatus('done');
-                                  _reload();
-                                }, tooltip: 'Tandai selesai'),
-                                const SizedBox(width: 6),
-                                iconAction(context, Icons.block, () async {
-                                  await b.setStatus('canceled');
-                                  _reload();
-                                }, tooltip: 'Batalkan'),
-                                const SizedBox(width: 6),
+                          if (Auth.canWrite)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (b.status == 'booked') ...[
+                                  iconAction(context, Icons.check, () async {
+                                    if (await attempt(context, () => b.setStatus('done'), fail: 'Gagal menyimpan')) {
+                                      _reload();
+                                    }
+                                  }, tooltip: 'Tandai selesai'),
+                                  const SizedBox(width: 6),
+                                  iconAction(context, Icons.block, () async {
+                                    if (await attempt(context, () => b.setStatus('canceled'), fail: 'Gagal menyimpan')) {
+                                      _reload();
+                                    }
+                                  }, tooltip: 'Batalkan'),
+                                  const SizedBox(width: 6),
+                                ],
+                                iconAction(context, Icons.delete_outline, () async {
+                                  if (await confirm(context, 'Hapus booking?', b.title)) {
+                                    if (!context.mounted) return;
+                                    if (await attempt(context, () => Booking.delete(b.id), fail: 'Gagal menghapus')) {
+                                      _reload();
+                                    }
+                                  }
+                                }, tooltip: 'Hapus'),
                               ],
-                              iconAction(context, Icons.delete_outline, () async {
-                                if (await confirm(context, 'Hapus booking?', b.title)) {
-                                  await Booking.delete(b.id);
-                                  _reload();
-                                }
-                              }, tooltip: 'Hapus'),
-                            ],
-                          ),
+                            ),
                         ],
                       ),
                     ],

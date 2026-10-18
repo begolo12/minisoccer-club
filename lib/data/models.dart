@@ -130,9 +130,19 @@ class Match {
     return rows.map(Match.fromMap).toList();
   }
 
+  /// Laga yang belum selesai, termasuk yang sedang berjalan.
   static Future<List<Match>> upcoming() async {
     final rows = await Db.query(
-      "SELECT * FROM matches WHERE status='scheduled' AND played_at >= now() - interval '3 hours' ORDER BY played_at ASC LIMIT 5",
+      "SELECT * FROM matches WHERE status IN ('scheduled', 'ongoing') AND played_at >= now() - interval '3 hours' ORDER BY played_at ASC LIMIT 5",
+    );
+    return rows.map(Match.fromMap).toList();
+  }
+
+  /// Hasil terakhir untuk ringkasan beranda.
+  static Future<List<Match>> recentFinished({int limit = 4}) async {
+    final rows = await Db.query(
+      "SELECT * FROM matches WHERE status='finished' ORDER BY played_at DESC LIMIT @limit",
+      params: {'limit': limit},
     );
     return rows.map(Match.fromMap).toList();
   }
@@ -290,14 +300,186 @@ class Payment {
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM payments WHERE id=@id', params: {'id': id});
 
-  /// Total iuran per periode (yyyy-MM).
-  static Future<double> totalForPeriod(String period) async {
+  /// Nominal iuran yang paling sering dibayar — dipakai sebagai isian awal
+  /// form dan label tunggakan, supaya tidak ada angka iuran yang ditulis
+  /// mati di UI.
+  static Future<double?> standardAmount() async {
     final rows = await Db.query(
-      'SELECT coalesce(sum(amount), 0) AS total FROM payments WHERE period = @p',
-      params: {'p': period},
+      '''SELECT amount, count(*)::int AS n FROM payments
+         GROUP BY amount ORDER BY n DESC, amount DESC LIMIT 1''',
     );
-    return _num(rows.first['total']);
+    if (rows.isEmpty) return null;
+    final v = _num(rows.first['amount']);
+    return v > 0 ? v : null;
   }
+}
+
+// ---------- Transactions (kas klub) ----------
+
+/// Satu arus kas di luar iuran anggota. Iuran tetap di tabel `payments`
+/// karena butuh status per anggota; [mergeCashLedger] menggabungkan keduanya.
+class Transaction {
+  final int id;
+  final String kind; // income | expense
+  final String category;
+  final double amount;
+  final DateTime occurredAt;
+  final String? note;
+
+  Transaction({
+    required this.id,
+    required this.kind,
+    required this.category,
+    required this.amount,
+    required this.occurredAt,
+    this.note,
+  });
+
+  factory Transaction.fromMap(Map<String, dynamic> m) => Transaction(
+        id: m['id'] as int,
+        kind: (m['kind'] as String?) ?? 'expense',
+        category: (m['category'] as String?) ?? 'lain',
+        amount: _num(m['amount']),
+        occurredAt: _dt(m['occurred_at']),
+        note: m['note'] as String?,
+      );
+
+  static const incomeCategories = <String, String>{
+    'sponsor': 'Sponsor',
+    'sewa': 'Sewa lapangan',
+    'lain': 'Lain-lain',
+  };
+
+  static const expenseCategories = <String, String>{
+    'sewa': 'Sewa lapangan',
+    'konsumsi': 'Konsumsi',
+    'wasit': 'Wasit',
+    'perlengkapan': 'Perlengkapan',
+    'lain': 'Lain-lain',
+  };
+
+  static Map<String, String> categoriesFor(String kind) =>
+      kind == 'income' ? incomeCategories : expenseCategories;
+
+  bool get isIncome => kind == 'income';
+  String get categoryLabel => categoriesFor(kind)[category] ?? category;
+
+  static Future<List<Transaction>> all({String? period}) async {
+    final rows = await Db.query(
+      '''SELECT * FROM transactions
+         ${period == null ? '' : "WHERE to_char(occurred_at, 'YYYY-MM') = @p"}
+         ORDER BY occurred_at DESC, id DESC''',
+      params: period == null ? const {} : {'p': period},
+    );
+    return rows.map(Transaction.fromMap).toList();
+  }
+
+  static Future<void> insert({
+    required String kind,
+    required String category,
+    required double amount,
+    required DateTime occurredAt,
+    String? note,
+  }) =>
+      Db.execute(
+        '''INSERT INTO transactions (kind, category, amount, occurred_at, note)
+           VALUES (@kind, @category, @amount, @date, @note)''',
+        params: {
+          'kind': kind,
+          'category': category,
+          'amount': amount,
+          'date': _dateOnly(occurredAt),
+          'note': note,
+        },
+      );
+
+  static Future<void> delete(int id) =>
+      Db.execute('DELETE FROM transactions WHERE id=@id', params: {'id': id});
+}
+
+/// Satu baris buku kas: iuran (dari `payments`) atau transaksi manual.
+/// [amount] bertanda: masuk positif, keluar negatif.
+class CashEntry {
+  final DateTime date;
+  final String label;
+  final String detail;
+  final double amount;
+  final bool dues;
+  final int? transactionId;
+
+  CashEntry({
+    required this.date,
+    required this.label,
+    required this.detail,
+    required this.amount,
+    this.dues = false,
+    this.transactionId,
+  });
+
+  bool get isIncome => amount >= 0;
+}
+
+/// Gabungkan iuran + transaksi jadi satu buku kas, terbaru di atas.
+List<CashEntry> mergeCashLedger({
+  required List<Payment> payments,
+  required List<Transaction> transactions,
+}) {
+  final entries = <CashEntry>[
+    for (final p in payments)
+      CashEntry(
+        date: p.paidAt,
+        label: 'Iuran',
+        detail: p.memberName,
+        amount: p.amount,
+        dues: true,
+      ),
+    for (final t in transactions)
+      CashEntry(
+        date: t.occurredAt,
+        label: t.categoryLabel,
+        detail: t.note ?? '',
+        amount: t.isIncome ? t.amount : -t.amount,
+        transactionId: t.id,
+      ),
+  ];
+  entries.sort((a, b) {
+    final byDate = b.date.compareTo(a.date);
+    if (byDate != 0) return byDate;
+    return (b.transactionId ?? 0).compareTo(a.transactionId ?? 0);
+  });
+  return entries;
+}
+
+/// Ringkasan kas. Iuran dipisah supaya UI bisa menyebut asalnya.
+class CashSummary {
+  final double dues;
+  final double otherIncome;
+  final double expense;
+
+  const CashSummary({
+    required this.dues,
+    required this.otherIncome,
+    required this.expense,
+  });
+
+  factory CashSummary.fromEntries(Iterable<CashEntry> entries) {
+    var dues = 0.0;
+    var other = 0.0;
+    var expense = 0.0;
+    for (final e in entries) {
+      if (e.dues) {
+        dues += e.amount;
+      } else if (e.amount >= 0) {
+        other += e.amount;
+      } else {
+        expense += -e.amount;
+      }
+    }
+    return CashSummary(dues: dues, otherIncome: other, expense: expense);
+  }
+
+  double get income => dues + otherIncome;
+  double get balance => income - expense;
 }
 
 // ---------- Bookings ----------
@@ -892,6 +1074,12 @@ class Standing {
       });
   }
 }
+
+/// Kolom DATE dikirim sebagai string, bukan ISO timestamp.
+String _dateOnly(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
 
 /// Neon mengembalikan NUMERIC sebagai String (biar presisi).
 double _num(dynamic v) => switch (v) {

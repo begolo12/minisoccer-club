@@ -12,12 +12,14 @@ import 'data/auth.dart';
 import 'main.dart' as app;
 import 'ui/announcements.dart';
 import 'ui/bookings.dart';
+import 'ui/finance.dart';
 import 'ui/matches.dart';
 import 'ui/settings.dart';
 import 'ui/stats.dart';
 import 'ui/theme.dart';
 import 'ui/tournament.dart';
 import 'ui/users.dart';
+import 'ui/widgets.dart';
 import 'data/models.dart';
 
 Future<void> main() async {
@@ -29,8 +31,20 @@ Future<void> main() async {
     Db.authToken = 'preview';
     Auth.session.value = true;
   }
-  if (q['theme'] == 'light') await SecureStore.write('theme', 'light');
-  if (q['theme'] == 'dark') await SecureStore.write('theme', 'dark');
+  // ?role=member|treasurer untuk memeriksa tampilan tanpa hak tulis.
+  final role = q['role'];
+  if (role != null && (role == 'member' || role == 'treasurer')) {
+    Auth.username = 'anggota';
+    Auth.role = role;
+  }
+  if (q['theme'] == 'light') {
+    await SecureStore.write('theme', 'light');
+    ThemeController.mode.value = ThemeMode.light;
+  }
+  if (q['theme'] == 'dark') {
+    await SecureStore.write('theme', 'dark');
+    ThemeController.mode.value = ThemeMode.dark;
+  }
 
   final page = q['page'];
   if (page == null) {
@@ -38,15 +52,20 @@ Future<void> main() async {
     return;
   }
 
-  final dark = q['theme'] != 'light';
   runApp(
-    ShadApp(
-      title: 'Minisoccer Club',
-      debugShowCheckedModeBanner: false,
-      theme: AppThemes.light,
-      darkTheme: AppThemes.dark,
-      themeMode: dark ? ThemeMode.dark : ThemeMode.light,
-      home: ShadSonner(child: _Page(name: page)),
+    ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, _) => ShadApp(
+        title: 'Minisoccer Club',
+        debugShowCheckedModeBanner: false,
+        theme: AppThemes.light,
+        darkTheme: AppThemes.dark,
+        themeMode: mode,
+        locale: const Locale('id', 'ID'),
+        supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
+        scrollBehavior: const AppScrollBehavior(),
+        home: ShadSonner(child: _Page(name: page)),
+      ),
     ),
   );
 }
@@ -60,6 +79,7 @@ class _Page extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (name) {
       'bookings' => const BookingsPage(),
+      'finance' => const FinancePage(),
       'announcements' => const AnnouncementsPage(),
       'stats' => const StatsPage(),
       'users' => const UsersPage(),

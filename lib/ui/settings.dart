@@ -31,9 +31,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _setDark(bool v) async {
     setState(() => _dark = v);
-    await SecureStore.write('theme', v ? 'dark' : 'light');
-    if (!mounted) return;
-    toast(context, 'Tema ${v ? "gelap" : "terang"} — buka ulang app untuk terapkan');
+    await ThemeController.setDark(v);
   }
 
   @override

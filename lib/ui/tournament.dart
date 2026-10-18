@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'theme.dart';
@@ -38,24 +39,29 @@ class _TournamentsPageState extends State<TournamentsPage> {
   Widget build(BuildContext context) {
     return PageScaffold(
       title: 'Turnamen internal',
-      subtitle: '4 tim • semua bertemu semua • klasemen grup',
-      actions: [iconAction(context, Icons.add, _create, tooltip: 'Turnamen baru')],
+      subtitle: 'Semua bertemu semua • klasemen grup',
+      actions: [
+        if (Auth.canWrite) iconAction(context, Icons.add, _create, tooltip: 'Turnamen baru'),
+      ],
       child: AsyncView<List<Tournament>>(
         future: _future,
         onRefresh: _reload,
         builder: (items) {
           if (items.isEmpty) {
-            return ListView(children: [
-              const SizedBox(height: 80),
-              EmptyState(
-                icon: Icons.emoji_events_outlined,
-                title: 'Belum ada turnamen',
-                message: 'Buat turnamen 4 tim. Jadwal, pembagian tim, dan '
-                    'klasemen dibuat otomatis.',
-                actionLabel: 'Buat turnamen',
-                onAction: _create,
-              ),
-            ]);
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                const SizedBox(height: 80),
+                EmptyState(
+                  icon: Icons.emoji_events_outlined,
+                  title: 'Belum ada turnamen',
+                  message: 'Buat turnamen 4 tim. Jadwal, pembagian tim, dan '
+                      'klasemen dibuat otomatis.',
+                  actionLabel: Auth.canWrite ? 'Buat turnamen' : null,
+                  onAction: Auth.canWrite ? _create : null,
+                ),
+              ],
+            );
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
@@ -159,7 +165,10 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
 
   Future<void> _delete() async {
     if (!await confirm(context, 'Hapus turnamen?', 'Semua tim, jadwal, dan skor ikut terhapus.')) return;
-    await Tournament.delete(widget.tournament.id);
+    if (!mounted) return;
+    if (!await attempt(context, () => Tournament.delete(widget.tournament.id), fail: 'Gagal menghapus')) {
+      return;
+    }
     if (mounted) Navigator.pop(context);
   }
 
@@ -171,7 +180,9 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
         fmtDateTime(widget.tournament.startsAt),
         if (widget.tournament.venue?.isNotEmpty ?? false) widget.tournament.venue!,
       ].join(' • '),
-      actions: [iconAction(context, Icons.delete_outline, _delete, tooltip: 'Hapus')],
+      actions: [
+        if (Auth.canWrite) iconAction(context, Icons.delete_outline, _delete, tooltip: 'Hapus'),
+      ],
       child: AsyncView<_Data>(
         future: _future,
         onRefresh: _reload,
@@ -197,17 +208,23 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
               const SizedBox(height: 18),
               SectionTitle(
                 'Pembagian tim',
-                action: TextButton(
-                  onPressed: () async {
-                    if (!await confirm(context, 'Bagi ulang tim?',
-                        'Semua pemain dibagi ulang secara acak dan merata.')) {
-                      return;
-                    }
-                    await Tournament.autoAssign(widget.tournament.id);
-                    _reload();
-                  },
-                  child: const Text('Acak ulang'),
-                ),
+                action: Auth.canWrite
+                    ? TextButton(
+                        onPressed: () async {
+                          if (!await confirm(context, 'Bagi ulang tim?',
+                              'Semua pemain dibagi ulang secara acak dan merata.')) {
+                            return;
+                          }
+                          if (!context.mounted) return;
+                          if (await attempt(context,
+                              () => Tournament.autoAssign(widget.tournament.id),
+                              fail: 'Gagal membagi tim')) {
+                            _reload();
+                          }
+                        },
+                        child: const Text('Acak ulang'),
+                      )
+                    : null,
               ),
               for (final team in d.teams)
                 _TeamCard(
@@ -361,10 +378,12 @@ class _MatchTile extends StatelessWidget {
       away: match.scoreAway,
       canReset: match.done,
     );
+    if (!context.mounted) return;
     if (action == 'reset') {
-      await match.clearScore();
+      await attempt(context, () => match.clearScore(), fail: 'Gagal menyimpan skor');
     } else if (action is (int, int)) {
-      await match.saveScore(action.$1, action.$2);
+      await attempt(context, () => match.saveScore(action.$1, action.$2),
+          fail: 'Gagal menyimpan skor');
     } else {
       return;
     }
@@ -381,7 +400,7 @@ class _MatchTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _openScore(context),
+        onTap: Auth.canWrite ? () => _openScore(context) : null,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
@@ -467,8 +486,9 @@ class _TeamCard extends StatelessWidget {
             onPressed: () async {
               final v = c.text.trim();
               if (v.isEmpty) return;
-              await Team.rename(team.id, v);
-              if (ctx.mounted) Navigator.pop(ctx, true);
+              if (await attempt(ctx, () => Team.rename(team.id, v), fail: 'Gagal mengganti nama')) {
+                if (ctx.mounted) Navigator.pop(ctx, true);
+              }
             },
             child: const Text('Simpan'),
           ),
@@ -513,8 +533,10 @@ class _TeamCard extends StatelessWidget {
       ),
     );
     if (picked == null) return;
-    await Team.addPlayer(team.id, picked.id);
-    await onChanged();
+    if (!context.mounted) return;
+    if (await attempt(context, () => Team.addPlayer(team.id, picked.id), fail: 'Gagal menambah pemain')) {
+      await onChanged();
+    }
   }
 
   @override
@@ -529,21 +551,31 @@ class _TeamCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: InkWell(
-                    onTap: () => _rename(context),
+                    onTap: Auth.canWrite ? () => _rename(context) : null,
                     child: Row(children: [
-                      Text(team.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(width: 6),
-                      Icon(Icons.edit_outlined, size: 12, color: t.colorScheme.mutedForeground),
+                      Flexible(
+                        child: Text(
+                          team.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      if (Auth.canWrite) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.edit_outlined, size: 12, color: t.colorScheme.mutedForeground),
+                      ],
                     ]),
                   ),
                 ),
                 Text('${players.length} pemain', style: t.textTheme.small),
-                IconButton(
-                  onPressed: () => _addPlayer(context),
-                  icon: const Icon(Icons.person_add_alt, size: 18),
-                  tooltip: 'Tambah pemain',
-                  visualDensity: VisualDensity.compact,
-                ),
+                if (Auth.canWrite)
+                  IconButton(
+                    onPressed: () => _addPlayer(context),
+                    icon: const Icon(Icons.person_add_alt, size: 18),
+                    tooltip: 'Tambah pemain',
+                    visualDensity: VisualDensity.compact,
+                  ),
               ],
             ),
             if (players.isEmpty)
@@ -561,10 +593,15 @@ class _TeamCard extends StatelessWidget {
                       label: Text(p.name, style: const TextStyle(fontSize: 11)),
                       visualDensity: VisualDensity.compact,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      onDeleted: () async {
-                        await Team.removePlayer(team.id, p.id);
-                        await onChanged();
-                      },
+                      onDeleted: Auth.canWrite
+                          ? () async {
+                              if (await attempt(context,
+                                  () => Team.removePlayer(team.id, p.id),
+                                  fail: 'Gagal mengeluarkan pemain')) {
+                                await onChanged();
+                              }
+                            }
+                          : null,
                     ),
                 ],
               ),
