@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/db.dart';
+import 'bootstrap.dart';
 import 'fmt.dart';
 import 'widgets.dart';
-import 'onboarding.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -104,12 +104,13 @@ class _SettingsPageState extends State<SettingsPage> {
                           await SecureStore.delete('neon_url');
                           await Db.close();
                           if (!context.mounted) return;
+                          // Ganti seluruh root dengan Bootstrap baru. Versi lama
+                          // memanggil Navigator.pop() pada context Settings yang
+                          // sudah dihapus -> "Null check operator used on a null
+                          // value" (Navigator.of: navigator!) setelah connect
+                          // berhasil, lalu URL ikut terhapus.
                           Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                            MaterialPageRoute(
-                              builder: (_) => Onboarding(onDone: () {
-                                Navigator.of(context).pop();
-                              }),
-                            ),
+                            MaterialPageRoute(builder: (_) => const Bootstrap()),
                             (_) => false,
                           );
                         },

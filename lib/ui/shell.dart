@@ -30,7 +30,11 @@ class _HomeShellState extends State<HomeShell> {
     final t = ShadTheme.of(context);
     final dark = t.brightness == Brightness.dark;
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+      // IndexedStack membangun kelima tab saat start: tab lain menyimpan
+      // Future lama sehingga data yang ditulis di Beranda tidak pernah muncul
+      // di Anggota/Iuran sampai app di-restart. Bangun hanya tab aktif supaya
+      // tiap tab mengambil data saat dibuka.
+      body: _pages[_index],
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
           backgroundColor: dark ? const Color(0xFF0E141C) : Colors.white,

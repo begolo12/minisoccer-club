@@ -156,11 +156,16 @@ class StatTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: t.textTheme.h3.copyWith(color: color),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          // Nilai uang (mis. "Rp 1.250.000") tidak boleh dipotong ellipsis di
+          // tile selebar sepertiga layar — kecilkan agar tetap terbaca utuh.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: t.textTheme.h3.copyWith(color: color),
+              maxLines: 1,
+            ),
           ),
           if (hint != null) ...[
             const SizedBox(height: 2),

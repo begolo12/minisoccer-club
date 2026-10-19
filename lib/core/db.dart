@@ -55,6 +55,13 @@ class Db {
     return result.affectedRows;
   }
 
+  /// Jalankan skrip DDL multi-statement (mis. db/schema.sql).
+  /// Protokol simple: satu round-trip, aman untuk beberapa perintah sekaligus.
+  static Future<void> executeScript(String sql) async {
+    final c = await instance;
+    await c.execute(sql, ignoreRows: true);
+  }
+
   static Future<void> close() async {
     try {
       await _conn?.close();

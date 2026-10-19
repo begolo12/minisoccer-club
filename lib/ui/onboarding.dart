@@ -44,20 +44,20 @@ class _OnboardingState extends State<Onboarding> {
 
       // Setup schema otomatis (idempotent).
       final sql = await rootBundle.loadString('db/schema.sql');
-      for (final stmt in sql.split(';')) {
-        final s = stmt.trim();
-        if (s.isEmpty || s.startsWith('--')) continue;
-        await Db.execute(s);
-      }
-      widget.onDone();
+      await Db.executeScript(sql);
     } catch (e) {
+      // Hanya kegagalan DB yang menghapus URL. Kegagalan UI (onDone) tidak
+      // boleh ikut menghapus koneksi yang sudah valid.
       await SecureStore.delete('neon_url');
+      await Db.close();
       if (mounted) {
         setState(() => _err = 'Gagal terhubung. Cek URL & koneksi internet.\n\n$e');
       }
+      return;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+    widget.onDone();
   }
 
   @override
