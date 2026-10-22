@@ -52,8 +52,13 @@ test('semua query aplikasi bisa diikat parameternya', () => {
 test('setiap tabel/view aplikasi punya izin app_web', () => {
   const granted = new Set([...APP_WEB_TABLES, ...APP_WEB_VIEWS, 'users']);
   const referenced = new Set();
-  // `DO UPDATE SET ...` bukan nama tabel, jadi kata kunci SQL disaring.
-  const keywords = new Set(['set', 'select', 'where', 'values', 'only']);
+  // Kata kunci SQL yang bisa muncul setelah FROM/JOIN/INTO/UPDATE tapi bukan
+  // nama tabel. `and` perlu ada di sini: klausa `JOIN x ON a = b AND c = d`
+  // membuat regex menangkap "and" sebagai nama tabel.
+  const keywords = new Set([
+    'set', 'select', 'where', 'values', 'only', 'and', 'or', 'on', 'as',
+    'lateral', 'unnest', 'generate_series',
+  ]);
   for (const sql of [...Object.values(reads), ...Object.values(writes)]) {
     for (const m of sql.matchAll(/\b(?:from|join|into|update)\s+([a-z_][a-z0-9_]*)/gi)) {
       const name = m[1].toLowerCase();
