@@ -411,13 +411,22 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
                   ),
                 )
+              else if (s.underpaid > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    'Ada yang sudah setor kurang ${fmtMoney(s.underpaid)} dari bagiannya '
+                    'karena biayanya berubah setelah setoran masuk. Tagih selisihnya, '
+                    'atau batalkan setorannya lalu catat ulang.',
+                    style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
+                  ),
+                )
               else if (s.shortfall > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: Text(
-                    'Masih kurang ${fmtMoney(s.shortfall)} dari biaya sewa. '
-                    'Setoran yang sudah masuk tidak diubah otomatis; '
-                    'kekurangannya ditanggung kas sampai ditagih.',
+                    'Total bagian yang dibagi masih kurang ${fmtMoney(s.shortfall)} '
+                    'dari biaya sewa, jadi selisih itu ditanggung kas.',
                     style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
                   ),
                 ),

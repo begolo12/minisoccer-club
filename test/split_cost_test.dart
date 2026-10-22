@@ -155,6 +155,30 @@ void main() {
       expect(s.shortfall, 50000, reason: '350.000 - 300.000 bagian yang dijanjikan');
     });
 
+    test('shortfall tidak menghitung bagian yang sudah dibayar kurang', () {
+      // Bagian naik jadi 150.000 setelah orang pertama setor 100.000. Jumlah
+      // bagian (300.000) sama dengan biaya sewa, jadi shortfall 0 — tetapi kas
+      // masih kurang 50.000 dari orang yang sudah setor. Lubang itu hanya
+      // terlihat lewat `underpaid`, dan tidak tertutup dengan menagih orang
+      // kedua yang belum bayar.
+      final s = BookingSplit(booking: booking(), rows: [
+        BookingAttendance(
+          id: 1,
+          bookingId: 1,
+          memberId: 1,
+          memberName: 'Anggota 1',
+          share: 150000,
+          paidAt: DateTime(2026, 10, 21),
+          paidAmount: 100000,
+        ),
+        row(id: 2, share: 150000),
+      ]);
+      expect(s.shortfall, 0);
+      expect(s.underpaid, 50000);
+      expect(s.outstanding, 150000);
+      expect(s.collected, 100000);
+    });
+
     test('semua setor dengan nominal pas berarti tidak ada kekurangan', () {
       final s = BookingSplit(booking: booking(cost: 100000), rows: [
         row(id: 1, share: 50000, paid: true),

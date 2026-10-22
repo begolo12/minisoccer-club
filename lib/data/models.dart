@@ -1497,6 +1497,17 @@ class BookingSplit {
     return gap > 0.005 ? gap : 0;
   }
 
+  /// Bagian orang yang SUDAH setor tetapi nominalnya kurang dari bagiannya.
+  ///
+  /// Terjadi kalau bagian naik setelah dia menyetor: rebalance membagi ulang
+  /// biaya yang lebih besar, sedangkan uang di kas tidak ikut berubah. Lubang
+  /// ini tidak tertutup dengan menagih orang yang belum bayar — [outstanding]
+  /// tidak memuatnya, dan [shortfall] juga tidak (jumlah bagian tetap sama
+  /// dengan biaya sewa). Satu-satunya jalan adalah menagih selisihnya ke orang
+  /// tersebut, jadi angkanya ditampilkan terpisah.
+  double get underpaid => rows.fold<double>(
+      0, (s, r) => s + (r.paid && r.share - r.cash > 0.005 ? r.share - r.cash : 0));
+
   /// Selisih yang ditanggung klub kalau biaya belum habis dibagi.
   ///
   /// Terisi hanya kalau tidak ada yang hadir sama sekali: biaya sewa tetap
