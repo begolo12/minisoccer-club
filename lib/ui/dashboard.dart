@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'announcements.dart';
@@ -37,6 +38,9 @@ class _DashboardData {
   final List<Booking> bookings;
   final List<Standing> standings;
 
+  /// Sumber yang gagal dimuat; beranda tetap tampil dengan data lain.
+  final List<String> failures;
+
   _DashboardData({
     required this.upcoming,
     required this.tournaments,
@@ -52,6 +56,7 @@ class _DashboardData {
     required this.teamNames,
     required this.bookings,
     required this.standings,
+    this.failures = const [],
   });
 
   /// Laga yang sedang berlangsung — satu-satunya laga yang layak jadi papan
@@ -90,46 +95,71 @@ class _DashboardData {
     return best;
   }
 
+  /// Muat semua sumber. Satu sumber yang gagal (izin DB, tabel belum ada,
+  /// jaringan putus sesaat) tidak mematikan seluruh beranda: yang berhasil
+  /// tetap tampil, dan [failures] menyebut sumber mana yang bermasalah.
   static Future<_DashboardData> load() async {
     final period = periodNow();
-    final results = await Future.wait([
-      Match.upcoming(),
-      Tournament.all(),
-      Match.stats(),
-      Member.countActive(),
-      ScorerRow.top(),
-      Announcement.all(),
-      Member.all(activeOnly: true),
-      Payment.all(period: period),
-      Transaction.all(period: period),
-      Payment.standardAmount(),
-      Team.all(),
-      Booking.upcoming(),
-      Team.standings(),
-    ]);
-    final active = results[6] as List<Member>;
-    final payments = results[7] as List<Payment>;
-    final paid = {for (final p in payments) p.memberId};
-    final teams = results[10] as List<Team>;
+    final upcoming = await soft('Jadwal laga', Match.upcoming, fallback: const <Match>[]);
+    final tournaments = await soft('Turnamen', Tournament.all, fallback: const <Tournament>[]);
+    final stats = await soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]);
+    final memberCount = await soft('Jumlah anggota', Member.countActive, fallback: 0);
+    final scorers = await soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]);
+    final news = await soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]);
+    final active = await soft(
+      'Anggota',
+      () => Member.all(activeOnly: true),
+      fallback: const <Member>[],
+    );
+    final payments = await soft(
+      'Iuran bulan ini',
+      () => Payment.all(period: period),
+      fallback: const <Payment>[],
+    );
+    final transactions = await soft(
+      'Kas bulan ini',
+      () => Transaction.all(period: period),
+      fallback: const <Transaction>[],
+    );
+    final dues = await soft('Nominal iuran', Payment.standardAmount, fallback: null);
+    final teams = await soft('Daftar tim', Team.all, fallback: const <Team>[]);
+    final bookings = await soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]);
+    final standings = await soft('Klasemen tim', Team.standings, fallback: const <Standing>[]);
+
+    final all = <Soft<Object?>>[
+      upcoming, tournaments, stats, memberCount, scorers, news, active,
+      payments, transactions, dues, teams, bookings, standings,
+    ];
+    // Semua sumber gagal = server/jaringan mati, bukan satu tabel. Biarkan
+    // layar error penuh yang menangani (dengan tombol coba lagi).
+    if (all.every((s) => !s.ok)) {
+      throw Exception(all.first.error);
+    }
+
+    final paid = {for (final p in payments.value!) p.memberId};
     final cash = CashSummary.fromEntries(mergeCashLedger(
-      payments: payments,
-      transactions: results[8] as List<Transaction>,
+      payments: payments.value!,
+      transactions: transactions.value!,
     ));
     return _DashboardData(
-      upcoming: results[0] as List<Match>,
-      tournaments: results[1] as List<Tournament>,
-      stats: results[2] as List<int>,
-      members: results[3] as int,
+      upcoming: upcoming.value!,
+      tournaments: tournaments.value!,
+      stats: stats.value!,
+      members: memberCount.value!,
       income: cash.dues,
       cash: cash,
-      scorers: results[4] as List<ScorerRow>,
-      news: results[5] as List<Announcement>,
-      unpaid: active.where((m) => !paid.contains(m.id)).toList(),
-      dues: results[9] as double?,
-      teams: teams,
-      teamNames: {for (final t in teams) t.id: t.name},
-      bookings: results[11] as List<Booking>,
-      standings: results[12] as List<Standing>,
+      scorers: scorers.value!,
+      news: news.value!,
+      unpaid: active.value!.where((m) => !paid.contains(m.id)).toList(),
+      dues: dues.value,
+      teams: teams.value!,
+      teamNames: {for (final t in teams.value!) t.id: t.name},
+      bookings: bookings.value!,
+      standings: standings.value!,
+      failures: [
+        for (final s in all)
+          if (!s.ok) '${s.label}: ${s.error}',
+      ],
     );
   }
 }
@@ -186,15 +216,19 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
           builder: (context, c) {
             final wide = c.maxWidth >= 880;
             final main = _MainColumn(data: d, anim: _in, gen: _gen, onChanged: _reload);
+            final notice = d.failures.isEmpty
+                ? null
+                : DegradedNotice(failures: d.failures, onRetry: _reload);
             if (!wide) {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                children: [main],
+                children: [?notice, main],
               );
             }
             return ListView(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
               children: [
+                ?notice,
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

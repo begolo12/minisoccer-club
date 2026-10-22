@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/errors.dart';
+
+export '../core/errors.dart';
+
 /// Format tanggal/jam Indonesia tanpa dependensi locale intl tambahan.
 String fmtDate(DateTime d) {
   const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -115,15 +119,6 @@ void toast(BuildContext context, String msg) {
 
 /// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
 /// tidak berhenti sebagai exception tanpa penjelasan.
-/// Pesan yang bisa dibaca user. `Exception(...)` dari model adalah teks
-/// Indonesia yang memang ditujukan ke user; prefix kelasnya hanya noise —
-/// "Exception: Sudah ada laga dengan skor" tidak lebih jelas daripada
-/// "Sudah ada laga dengan skor".
-String errText(Object e) => e
-    .toString()
-    .replaceFirst(RegExp(r'^(Exception|ApiException):\s*'), '')
-    .trim();
-
 /// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
 /// tidak berhenti sebagai exception tanpa penjelasan.
 Future<bool> attempt(

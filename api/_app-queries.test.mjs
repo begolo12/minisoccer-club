@@ -224,3 +224,25 @@ test('setiap tabel/view aplikasi punya izin app_web', () => {
     assert.ok(granted.has(table), `tabel ${table} dipakai app tapi tidak di-grant`);
   }
 });
+
+// Mode publik: tamu (tanpa token) boleh membaca data klub, tetapi tidak boleh
+// menulis dan tidak boleh melihat daftar pengguna.
+test('tamu hanya boleh membaca data klub', () => {
+  const guest = { r: 'public' };
+  for (const [name, sql] of Object.entries(reads)) {
+    if (name === 'users') {
+      assert.notEqual(rejectSql(sql, guest), null, 'baca users harus ditolak');
+      continue;
+    }
+    assert.equal(rejectSql(sql, guest), null, `baca ${name}`);
+  }
+  for (const [name, sql] of Object.entries(writes)) {
+    assert.notEqual(rejectSql(sql, guest), null, `tulis ${name} harus ditolak`);
+  }
+});
+
+test('query yang menyentuh tabel users ditolak untuk tamu', () => {
+  const guest = { r: 'public' };
+  assert.notEqual(rejectSql('SELECT u.username FROM users u', guest), null);
+  assert.notEqual(rejectSql('SELECT * FROM users WHERE id=@id', guest), null);
+});

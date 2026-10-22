@@ -34,10 +34,17 @@ export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  // Auth dulu (HMAC murah), baru batas ukuran: permintaan tanpa token tidak
-  // perlu diproses lebih jauh.
-  const session = verifyToken(bearer(req));
-  if (!session) return res.status(401).json({ error: 'Sesi habis, silakan login ulang' });
+  // Tanpa token = tamu. Aplikasi memang menampilkan data klub tanpa login
+  // (mode publik read-only); tulis tetap ditolak di `_guard.js` karena role
+  // `public` hanya boleh SELECT. Token yang ada tapi kedaluwarsa tetap 401
+  // supaya sesi yang habis tidak diam-diam turun jadi tamu.
+  const token = bearer(req);
+  let session = null;
+  if (token) {
+    session = verifyToken(token);
+    if (!session) return res.status(401).json({ error: 'Sesi habis, silakan login ulang' });
+  }
+  const viewer = session || { r: 'public', u: 'tamu' };
 
   const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {});
   if (raw.length > MAX_BODY) return res.status(413).json({ error: 'Permintaan terlalu besar' });
@@ -50,7 +57,7 @@ export default async function handler(req, res) {
   }
 
   const { sql: text, params = {} } = body;
-  const blocked = rejectSql(text, session);
+  const blocked = rejectSql(text, viewer);
   if (blocked) return res.status(403).json({ error: blocked });
 
   if (params === null || typeof params !== 'object' || Array.isArray(params)) {

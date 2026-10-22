@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'core/db.dart';
+import 'core/update.dart';
 import 'data/auth.dart';
 import 'ui/theme.dart';
-import 'ui/login.dart';
 import 'ui/shell.dart';
 import 'ui/widgets.dart';
 
@@ -83,7 +83,8 @@ class _BootstrapState extends State<Bootstrap> {
     if (mounted) setState(() => _checking = true);
     await Auth.restore();
 
-    // Belum ada sesi: jangan sentuh DB (butuh token). Langsung ke login.
+    // Belum ada sesi: mode publik. Aplikasi langsung terbuka dalam mode
+    // baca-saja; layar masuk hanya muncul saat tombol "Masuk" ditekan.
     if (!Auth.signedIn) {
       if (mounted) {
         setState(() {
@@ -104,6 +105,9 @@ class _BootstrapState extends State<Bootstrap> {
           _error = null;
         });
       }
+      // Cek versi di latar (maks. sekali per 12 jam). Tidak di-await dan
+      // tidak pernah melempar, jadi layar utama tidak menunggu jaringan.
+      UpdateService.autoCheck();
     } catch (e) {
       if (e is Unauthorized) {
         await Auth.expire();
@@ -116,10 +120,15 @@ class _BootstrapState extends State<Bootstrap> {
         }
         return;
       }
+      // Offline tapi punya sesi: jangan hadang dengan layar error. Masuk ke
+      // shell; setiap pembacaan akan jatuh ke cache (Db.query) dan bilah
+      // "Offline" menyala. Layar error hanya untuk kasus tanpa cache sama
+      // sekali, yang akan terlihat sebagai error di dalam shell.
       if (mounted) {
         setState(() {
           _checking = false;
-          _error = e.toString();
+          _signedIn = true;
+          _error = null;
         });
       }
     }
@@ -152,9 +161,11 @@ class _BootstrapState extends State<Bootstrap> {
         ),
       );
     }
-    if (!_signedIn) {
-      return LoginPage(onSignedIn: () => setState(() => _signedIn = true));
-    }
-    return HomeShell(initialTab: widget.initialTab);
+    // Shell selalu tampil; tamu melihat data tanpa tombol tulis, dan
+    // "Masuk" ada di bilah mode publik.
+    return HomeShell(
+      initialTab: widget.initialTab,
+      readOnly: !_signedIn,
+    );
   }
 }

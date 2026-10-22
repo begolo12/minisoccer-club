@@ -3,6 +3,8 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/db.dart';
 import 'dashboard.dart';
+import 'fmt.dart';
+import 'login.dart';
 import 'matches.dart';
 import 'payments.dart';
 import 'more.dart';
@@ -16,9 +18,14 @@ import 'theme.dart';
 /// dimuat ulang saat dibuka lagi setelah ada data yang berubah — jadi tab
 /// lain tidak menampilkan angka lama.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, this.initialTab = 0});
+  const HomeShell({super.key, this.initialTab = 0, this.readOnly = false});
 
   final int initialTab;
+
+  /// Belum masuk: aplikasi terbuka sebagai tamu. Data terlihat, tombol tulis
+  /// disembunyikan oleh `Auth.canWrite`, dan bilah mode publik menawarkan
+  /// "Masuk" — layar login tidak lagi menghadang di depan.
+  final bool readOnly;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -42,6 +49,7 @@ class _HomeShellState extends State<HomeShell> {
   ];
 
   late int _index = widget.initialTab.clamp(0, _pages.length - 1);
+  late bool _readOnly = widget.readOnly;
   final Set<int> _built = {};
   final List<int> _version = List.filled(_pages.length, 0);
   int _seenWrites = Db.writes.value;
@@ -50,6 +58,22 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     _built.add(_index);
+  }
+
+  Future<void> _openLogin() async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (ctx) => LoginPage(onSignedIn: () => Navigator.pop(ctx, true))),
+    );
+    if (!mounted || ok != true) return;
+    setState(() {
+      _readOnly = false;
+      // Semua tab dimuat ulang: data publik bisa berbeda dengan data akun
+      // (mis. iuran yang hanya boleh dilihat bendahara).
+      for (var i = 0; i < _version.length; i++) {
+        _version[i]++;
+      }
+    });
   }
 
   void _select(int i) {
@@ -78,6 +102,13 @@ class _HomeShellState extends State<HomeShell> {
           else
             const SizedBox.shrink(),
       ],
+    );
+
+    // Bilah status di atas isi: mode publik (ada tombol Masuk) dan/atau
+    // mode offline (data dari cache). Keduanya tidak menutupi halaman.
+    final strip = _StatusStrip(
+      readOnly: _readOnly,
+      onLogin: _openLogin,
     );
 
     if (wide) {
@@ -124,7 +155,12 @@ class _HomeShellState extends State<HomeShell> {
                   ],
                 ),
               ),
-              Expanded(child: body),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [strip, Expanded(child: body)],
+                ),
+              ),
             ],
           ),
         ),
@@ -132,7 +168,10 @@ class _HomeShellState extends State<HomeShell> {
     }
 
     return Scaffold(
-      body: body,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [strip, Expanded(child: body)],
+      ),
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
           border: Border(top: BorderSide(color: t.colorScheme.border)),
@@ -228,6 +267,89 @@ class _RailItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Bilah tipis di atas isi: "Mode publik" (dengan tombol Masuk) dan/atau
+/// "Offline" (data dari cache).
+///
+/// Dua keadaan ini bisa terjadi bersamaan (tamu membuka app tanpa jaringan),
+/// jadi keduanya ditampilkan sebagai dua baris, bukan saling menimpa.
+class _StatusStrip extends StatelessWidget {
+  const _StatusStrip({required this.readOnly, required this.onLogin});
+
+  final bool readOnly;
+  final VoidCallback onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return ValueListenableBuilder<bool>(
+      valueListenable: Db.offline,
+      builder: (context, offline, _) {
+        if (!readOnly && !offline) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (offline)
+              Container(
+                color: t.colorScheme.muted,
+                padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.cloud_off, size: 14, color: t.colorScheme.mutedForeground),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        Db.offlineSince == null
+                            ? 'Offline — menampilkan data tersimpan'
+                            : 'Offline — data tersimpan ${fmtDate(Db.offlineSince!)} '
+                                '${fmtTime(Db.offlineSince!)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.textTheme.small,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (readOnly)
+              Container(
+                decoration: BoxDecoration(
+                  color: t.colorScheme.primary.withValues(alpha: 0.10),
+                  border: Border(
+                    bottom: BorderSide(color: t.colorScheme.border),
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.visibility_outlined, size: 14, color: t.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Mode publik — hanya lihat',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.textTheme.small.copyWith(color: t.colorScheme.foreground),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: onLogin,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Masuk'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

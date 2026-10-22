@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/update.dart';
 import '../core/version.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
@@ -8,6 +9,7 @@ import 'announcements.dart';
 import 'bookings.dart';
 import 'finance.dart';
 import 'fmt.dart';
+import 'login.dart';
 import 'members.dart';
 import 'settings.dart';
 import 'stats.dart';
@@ -129,6 +131,22 @@ class _MorePageState extends State<MorePage> {
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
             children: [
               _AccountStrip(),
+              if (Auth.isGuest)
+                _Tile(
+                  icon: Icons.login,
+                  title: 'Masuk',
+                  subtitle: 'Admin/bendahara bisa mengubah data setelah masuk',
+                  highlight: true,
+                  onTap: () async {
+                    final ok = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (ctx) => LoginPage(onSignedIn: () => Navigator.pop(ctx, true)),
+                      ),
+                    );
+                    if (ok == true && context.mounted) _reload();
+                  },
+                ),
               const SectionTitle('Kelola klub'),
               _Tile(
                 icon: Icons.groups_outlined,
@@ -193,11 +211,23 @@ class _MorePageState extends State<MorePage> {
                   subtitle: 'Akun & role admin/bendahara',
                   onTap: () => _open(context, const UsersPage()),
                 ),
-              _Tile(
-                icon: Icons.settings_outlined,
-                title: 'Pengaturan',
-                subtitle: 'Tema, server, tentang',
-                onTap: () => _open(context, const SettingsPage()),
+              // Baris ini satu-satunya tempat pembaruan terlihat tanpa
+              // membuka Pengaturan: kalau ada versi baru, subjudulnya berubah
+              // dan ikonnya diberi titik hijau.
+              ValueListenableBuilder<UpdateCheck?>(
+                valueListenable: UpdateService.latest,
+                builder: (context, check, _) {
+                  final release = check?.release;
+                  return _Tile(
+                    icon: Icons.settings_outlined,
+                    title: 'Pengaturan',
+                    subtitle: release == null
+                        ? 'Tema, server, pembaruan'
+                        : 'Versi ${release.version} tersedia — ketuk untuk memasang',
+                    highlight: release != null,
+                    onTap: () => _open(context, const SettingsPage()),
+                  );
+                },
               ),
               const SizedBox(height: 20),
               Center(
@@ -298,12 +328,17 @@ class _Tile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
+    this.highlight = false,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+
+  /// Baris yang butuh perhatian (mis. ada versi baru): subjudul hijau dan
+  /// ikon diberi titik.
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -315,7 +350,9 @@ class _Tile extends StatelessWidget {
         height: 34,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          border: Border.all(color: t.colorScheme.border),
+          border: Border.all(
+            color: highlight ? t.colorScheme.primary : t.colorScheme.border,
+          ),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon, size: 17, color: t.colorScheme.primary),

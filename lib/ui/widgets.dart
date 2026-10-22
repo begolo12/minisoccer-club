@@ -1032,3 +1032,67 @@ Widget iconAction(
     ),
   );
 }
+
+/// Peringatan bahwa sebagian data gagal dimuat, tanpa menutupi halaman.
+///
+/// Dipakai saat satu sumber gagal (mis. tabel/izin belum ada di server):
+/// menyebut nama sumbernya supaya masalahnya bisa diperbaiki, bukan sekadar
+/// "gagal memuat data".
+class DegradedNotice extends StatelessWidget {
+  const DegradedNotice({super.key, required this.failures, this.onRetry});
+
+  final List<String> failures;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: t.colorScheme.destructive.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: t.colorScheme.destructive.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 17, color: t.colorScheme.destructive),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Sebagian data gagal dimuat',
+                  style: t.textTheme.large.copyWith(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  failures.join(' • '),
+                  style: t.textTheme.small.copyWith(color: t.colorScheme.mutedForeground),
+                ),
+              ],
+            ),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(width: 6),
+            TextButton(
+              onPressed: onRetry,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Coba lagi'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}

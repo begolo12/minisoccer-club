@@ -73,11 +73,26 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final firstRun = _bootstrap == true;
+    // Layar ini sekarang dibuka dari tombol "Masuk" (bukan gerbang wajib),
+    // jadi harus ada jalan kembali ke mode publik.
+    final canPop = Navigator.canPop(context);
 
     return Scaffold(
       body: Stack(
         children: [
           Positioned.fill(child: CustomPaint(painter: _PitchPainter(_lineColor(context)))),
+          if (canPop)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: SafeArea(
+                child: IconButton(
+                  tooltip: 'Kembali ke mode publik',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
           SafeArea(
             child: Center(
               child: SingleChildScrollView(

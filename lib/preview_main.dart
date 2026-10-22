@@ -26,7 +26,9 @@ import 'data/models.dart';
 
 Future<void> main() async {
   final q = Uri.base.queryParameters;
-  if (q['login'] != '1') {
+  // ?guest=1 membuka mode publik (tanpa sesi) seperti app asli sebelum masuk.
+  final guest = q['guest'] == '1';
+  if (!guest && q['login'] != '1') {
     Auth.username = 'admin';
     Auth.role = 'admin';
     Auth.token = 'preview';

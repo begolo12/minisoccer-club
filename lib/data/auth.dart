@@ -21,6 +21,9 @@ class Auth {
   static final ValueNotifier<bool> session = ValueNotifier(false);
 
   static bool get signedIn => username != null;
+
+  /// Tamu: belum masuk. Aplikasi tetap terbuka dalam mode baca-saja.
+  static bool get isGuest => username == null;
   static bool get isAdmin => role == 'admin';
 
   /// Admin dan bendahara boleh menulis data klub; member hanya membaca.

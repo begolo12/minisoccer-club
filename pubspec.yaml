@@ -13,6 +13,11 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   http: ^1.2.2
   intl: ^0.20.2
+  # Pembaruan APK: unduh ke cache + verifikasi sha256 aset GitHub.
+  crypto: ^3.0.6
+  path_provider: ^2.1.5
+  # Cache offline di web (localStorage). Di Android dipakai berkas.
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:

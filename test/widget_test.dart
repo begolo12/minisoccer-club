@@ -3,6 +3,7 @@ import 'package:minisoccer_club/data/models.dart';
 import 'dart:io';
 
 import 'package:minisoccer_club/core/db_web.dart' show ApiException;
+import 'package:minisoccer_club/core/cache.dart';
 import 'package:minisoccer_club/core/version.dart';
 import 'package:minisoccer_club/ui/fmt.dart';
 import 'package:minisoccer_club/ui/tournament.dart';
@@ -190,6 +191,15 @@ void main() {
     expect(total, 4, reason: '3 tim = 3 laga, 2 tim = 1 laga');
     expect(roundRobin([4, 5]).length, 1);
     expect(roundRobin([1]).length, 0, reason: 'grup 1 tim tidak punya laga');
+  });
+
+  test('cache offline: kunci berbeda per parameter', () {
+    final a = cacheKey('SELECT * FROM matches WHERE id=@id', {'id': 1});
+    final b = cacheKey('SELECT * FROM matches WHERE id=@id', {'id': 2});
+    final c = cacheKey('SELECT  *  FROM matches WHERE id=@id', {'id': 1});
+    expect(a, isNot(b), reason: 'parameter berbeda harus beda kunci');
+    expect(a, c, reason: 'spasi berlebih tidak mengubah kunci');
+    expect(a.length, 32);
   });
 
   test('versi di app sama dengan pubspec.yaml', () {

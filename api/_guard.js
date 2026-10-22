@@ -143,10 +143,17 @@ export function rejectSql(text, session) {
     if (/\busers\b/i.test(scan) && session?.r !== 'admin') {
       return 'Hanya admin yang bisa melihat pengguna';
     }
+    // Daftar pengguna juga tidak untuk tamu, termasuk lewat view/join.
+    if (session?.r === 'public' && /\busers\b/i.test(scan)) {
+      return 'Hanya admin yang bisa melihat pengguna';
+    }
     return null;
   }
 
-  if (session?.r === 'member') return 'Akun member hanya bisa melihat data';
+  // `public` = tamu tanpa token; `member` = akun dengan hak baca saja.
+  if (session?.r === 'public' || session?.r === 'member') {
+    return 'Mode publik hanya bisa melihat data. Masuk untuk mengubah.';
+  }
   if (targets.some((t) => WRITE_DENY.has(t))) return 'Tabel ini hanya lewat /api/auth';
   if (/\busers\b/i.test(scan)) return 'Tabel ini hanya lewat /api/auth';
 

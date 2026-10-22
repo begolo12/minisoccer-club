@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
@@ -15,12 +16,22 @@ class MatchesPage extends StatefulWidget {
   State<MatchesPage> createState() => _MatchesPageState();
 }
 
-class _MatchesPageState extends State<MatchesPage> {
-  late Future<(List<Match>, List<int>, List<Standing>)> _future;
+/// (laga, rekap, klasemen, peringatan). Klasemen dimuat terpisah supaya
+/// tabel yang izinnya belum ada tidak mematikan seluruh halaman Tanding.
+typedef _MatchesData = (List<Match>, List<int>, List<Standing>, String?);
 
-  Future<(List<Match>, List<int>, List<Standing>)> _load() async {
-    final r = await Future.wait([Match.all(), Match.stats(), Team.standings()]);
-    return (r[0] as List<Match>, r[1] as List<int>, r[2] as List<Standing>);
+class _MatchesPageState extends State<MatchesPage> {
+  late Future<_MatchesData> _future;
+
+  Future<_MatchesData> _load() async {
+    final r = await Future.wait([Match.all(), Match.stats()]);
+    final standings = await soft('Klasemen tim', Team.standings, fallback: const <Standing>[]);
+    return (
+      r[0] as List<Match>,
+      r[1] as List<int>,
+      standings.value!,
+      standings.ok ? null : '${standings.label}: ${standings.error}',
+    );
   }
 
   @override
@@ -51,13 +62,14 @@ class _MatchesPageState extends State<MatchesPage> {
             child: const Text('Jadwal'),
           ),
       ],
-      child: AsyncView<(List<Match>, List<int>, List<Standing>)>(
+      child: AsyncView<_MatchesData>(
         future: _future,
         onRefresh: _reload,
         builder: (data) {
           final matches = data.$1;
           final stats = data.$2;
           final standings = data.$3;
+          final warn = data.$4;
           if (matches.isEmpty && standings.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -85,6 +97,7 @@ class _MatchesPageState extends State<MatchesPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              if (warn != null) DegradedNotice(failures: [warn], onRetry: _reload),
               _StatsStrip(stats: stats),
               if (ongoing.isNotEmpty) ...[
                 const SectionTitle('Sedang berlangsung'),
