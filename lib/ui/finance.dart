@@ -16,18 +16,27 @@ class _FinanceData {
   final List<CashEntry> entries;
   final CashSummary summary;
 
-  _FinanceData(this.entries, this.summary);
+  /// Transaksi manual menurut id, untuk membuka form koreksi dari baris buku
+  /// kas. `CashEntry` hanya menyimpan id-nya.
+  final Map<int, Transaction> byId;
+
+  _FinanceData(this.entries, this.summary, this.byId);
 
   static Future<_FinanceData> load(String? period) async {
     final results = await Future.wait([
       Payment.all(period: period),
       Transaction.all(period: period),
     ]);
+    final transactions = results[1] as List<Transaction>;
     final entries = mergeCashLedger(
       payments: results[0] as List<Payment>,
-      transactions: results[1] as List<Transaction>,
+      transactions: transactions,
     );
-    return _FinanceData(entries, CashSummary.fromEntries(entries));
+    return _FinanceData(
+      entries,
+      CashSummary.fromEntries(entries),
+      {for (final t in transactions) t.id: t},
+    );
   }
 }
 
@@ -54,13 +63,6 @@ class _FinancePageState extends State<FinancePage> {
     await f;
   }
 
-  List<String?> get _periods => [null, for (var i = 0; i < 6; i++) _month(i)];
-
-  String _month(int monthsAgo) {
-    final d = DateTime(DateTime.now().year, DateTime.now().month - monthsAgo);
-    return '${d.year}-${d.month.toString().padLeft(2, '0')}';
-  }
-
   String _periodName(String? p) => p == null ? 'Semua' : periodLabel(p);
 
   Future<void> _add() async {
@@ -70,7 +72,6 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Kas klub',
       subtitle: _periodName(_period),
@@ -80,25 +81,14 @@ class _FinancePageState extends State<FinancePage> {
       ],
       child: Column(
         children: [
-          SizedBox(
-            height: 38,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: _periods.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                final p = _periods[i];
-                return _PeriodChip(
-                  label: _periodName(p),
-                  selected: p == _period,
-                  onTap: () {
-                    setState(() => _period = p);
-                    _reload();
-                  },
-                );
-              },
-            ),
+          PeriodChips(
+            periods: recentPeriods(),
+            selected: _period,
+            all: true,
+            onChanged: (p) {
+              setState(() => _period = p);
+              _reload();
+            },
           ),
           const SizedBox(height: 12),
           Expanded(
@@ -111,49 +101,29 @@ class _FinancePageState extends State<FinancePage> {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: t.colorScheme.border),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: StatTile(
-                              label: 'Masuk',
-                              value: fmtMoney(s.income),
-                              hint: 'iuran ${fmtNumber(s.dues)}',
-                            ),
-                          ),
-                          _divider(t),
-                          Expanded(
-                            flex: 3,
-                            child: StatTile(
-                              label: 'Keluar',
-                              value: fmtMoney(s.expense),
-                              hint: '$expenses catatan',
-                            ),
-                          ),
-                          _divider(t),
-                          Expanded(
-                            flex: 3,
-                            child: StatTile(
-                              label: 'Saldo',
-                              value: fmtMoney(s.balance),
-                              hint: s.balance < 0 ? 'defisit' : 'tersedia',
-                              color: s.balance < 0
-                                  ? AppThemes.bad(context)
-                                  : AppThemes.money(context),
-                            ),
-                          ),
-                        ],
-                      ),
+                    StatStrip(
+                      children: [
+                        StatTile(
+                          label: 'Masuk',
+                          value: fmtMoney(s.income),
+                          hint: s.dues > 0
+                              ? 'iuran ${fmtShortMoney(s.dues)}'
+                              : 'tanpa iuran',
+                        ),
+                        StatTile(
+                          label: 'Keluar',
+                          value: fmtMoney(s.expense),
+                          hint: '$expenses catatan',
+                        ),
+                        StatTile(
+                          label: 'Saldo',
+                          value: fmtMoney(s.balance),
+                          hint: s.balance < 0 ? 'defisit' : 'tersedia',
+                          color: s.balance < 0
+                              ? AppThemes.bad(context)
+                              : AppThemes.money(context),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     if (d.entries.isEmpty)
@@ -171,8 +141,21 @@ class _FinancePageState extends State<FinancePage> {
                       )
                     else ...[
                       const SectionTitle('Buku kas'),
-                      for (final e in d.entries)
-                        _LedgerRow(entry: e, onChanged: _reload),
+                      // Saat periode "Semua" dipilih, buku kas menyeberangi
+                      // beberapa bulan — beri batas bulan supaya saldo tidak
+                      // terbaca sebagai satu deret tanpa jeda.
+                      for (var i = 0; i < d.entries.length; i++) ...[
+                        if (_period == null &&
+                            (i == 0 || d.entries[i - 1].date.month != d.entries[i].date.month))
+                          _MonthLabel(month: d.entries[i].date),
+                        _LedgerRow(
+                          entry: d.entries[i],
+                          transaction: d.entries[i].transactionId == null
+                              ? null
+                              : d.byId[d.entries[i].transactionId],
+                          onChanged: _reload,
+                        ),
+                      ],
                     ],
                   ],
                 );
@@ -183,65 +166,49 @@ class _FinancePageState extends State<FinancePage> {
       ),
     );
   }
-
-  Widget _divider(ShadThemeData t) => Container(
-    width: 1,
-    height: 44,
-    margin: const EdgeInsets.symmetric(horizontal: 10),
-    color: t.colorScheme.border,
-  );
 }
 
-class _PeriodChip extends StatelessWidget {
-  const _PeriodChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+/// Pemisah bulan di buku kas "Semua": label kecil, bukan judul bagian —
+/// jangan bersaing dengan "BUKU KAS" di atasnya.
+class _MonthLabel extends StatelessWidget {
+  const _MonthLabel({required this.month});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+  final DateTime month;
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Material(
-      color: selected ? t.colorScheme.primary : Colors.transparent,
-      borderRadius: BorderRadius.circular(7),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(7),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(
-              color: selected ? t.colorScheme.primary : t.colorScheme.border,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected
-                  ? t.colorScheme.primaryForeground
-                  : t.colorScheme.mutedForeground,
-            ),
-          ),
-        ),
-      ),
+    final label = periodLabel(
+      '${month.year}-${month.month.toString().padLeft(2, '0')}',
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 2),
+      child: Text(label.toUpperCase(), style: t.textTheme.h4.copyWith(fontSize: 11)),
     );
   }
 }
 
 class _LedgerRow extends StatelessWidget {
-  const _LedgerRow({required this.entry, required this.onChanged});
+  const _LedgerRow({
+    required this.entry,
+    required this.onChanged,
+    this.transaction,
+  });
 
   final CashEntry entry;
   final Future<void> Function() onChanged;
+
+  /// Terisi hanya untuk transaksi manual (bukan iuran, bukan sewa booking).
+  final Transaction? transaction;
+
+  /// Transaksi kadang memakai judul yang sama dengan keterangannya
+  /// ("Sewa lapangan" + "Sewa lapangan latihan rutin"); jangan diulang.
+  String _subtitle(CashEntry e) {
+    final detail = e.detail.trim();
+    if (detail.isEmpty) return fmtDate(e.date);
+    final dupe = detail.toLowerCase() == e.label.trim().toLowerCase();
+    return dupe ? fmtDate(e.date) : '${fmtDate(e.date)} • $detail';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -251,6 +218,16 @@ class _LedgerRow extends StatelessWidget {
         ? '+${fmtMoney(entry.amount)}'
         : '-${fmtMoney(-entry.amount)}';
     return RowItem(
+      // Ketuk baris untuk mengoreksi nominal/kategori/tanggal. Iuran dan
+      // sewa lapangan tidak bisa diedit di sini: iuran dikelola di halaman
+      // Iuran, sewa mengikuti booking-nya.
+      onTap: transaction == null
+          ? null
+          : () async {
+              if (await showTransactionForm(context, transaction: transaction)) {
+                await onChanged();
+              }
+            },
       leading: Icon(
         entry.dues
             ? Icons.check_circle_outline
@@ -259,8 +236,7 @@ class _LedgerRow extends StatelessWidget {
         color: income ? t.colorScheme.primary : t.colorScheme.mutedForeground,
       ),
       title: entry.dues ? 'Iuran' : entry.label,
-      subtitle:
-          '${fmtDate(entry.date)}${entry.detail.isEmpty ? '' : ' • ${entry.detail}'}',
+      subtitle: _subtitle(entry),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -272,24 +248,32 @@ class _LedgerRow extends StatelessWidget {
               fontFeatures: AppThemes.tabular,
             ),
           ),
-          if (entry.transactionId != null && Auth.canWrite) ...[
+          // Slot aksi selalu disediakan: tanpa ini nominal iuran bergeser ke
+          // kanan dan kolom angka tidak lagi rata dengan baris transaksi.
+          if (Auth.canWrite) ...[
             const SizedBox(width: 6),
-            iconAction(context, Icons.delete_outline, () async {
-              if (await confirm(
-                context,
-                'Hapus transaksi?',
-                '${entry.label} ${fmtMoney(entry.amount.abs())} dihapus dari buku kas.',
-              )) {
-                if (!context.mounted) return;
-                if (await attempt(context, () => Transaction.delete(entry.transactionId!),
-                    fail: 'Gagal menghapus')) {
-                  await onChanged();
-                }
-              }
-            }, tooltip: 'Hapus'),
+            SizedBox(
+              width: 34,
+              child: entry.transactionId == null
+                  ? null
+                  : iconAction(context, Icons.delete_outline, () async {
+                      if (await confirm(
+                        context,
+                        'Hapus transaksi?',
+                        '${entry.label} ${fmtMoney(entry.amount.abs())} dihapus dari buku kas.',
+                      )) {
+                        if (!context.mounted) return;
+                        if (await attempt(context, () => Transaction.delete(entry.transactionId!),
+                            fail: 'Gagal menghapus')) {
+                          await onChanged();
+                        }
+                      }
+                    }, tooltip: 'Hapus'),
+            ),
           ],
         ],
       ),
     );
   }
 }
+

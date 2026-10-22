@@ -78,62 +78,104 @@ class Member {
   }
 }
 
-// ---------- Matches ----------
+// ---------- Matches (tanding internal antar tim klub) ----------
 
+/// Satu laga internal: Tim A vs Tim B dari klub yang sama.
+///
+/// Skor disimpan di `goals_for` (tim home) dan `goals_against` (tim away)
+/// supaya kompatibel dengan data lama, tapi UI selalu memakai nama tim.
 class Match {
   final int id;
-  final String opponent;
   final DateTime playedAt;
   final String? venue;
-  final bool isHome;
   final String status;
   final int goalsFor;
   final int goalsAgainst;
-  final String? notes;
+  final int? homeTeamId;
+  final int? awayTeamId;
+  final String homeName;
+  final String awayName;
 
   Match({
     required this.id,
-    required this.opponent,
     required this.playedAt,
     this.venue,
-    required this.isHome,
     required this.status,
     required this.goalsFor,
     required this.goalsAgainst,
-    this.notes,
+    this.homeTeamId,
+    this.awayTeamId,
+    this.homeName = 'Tim A',
+    this.awayName = 'Tim B',
   });
 
   factory Match.fromMap(Map<String, dynamic> m) => Match(
         id: m['id'] as int,
-        opponent: m['opponent'] as String,
         playedAt: _dt(m['played_at']),
         venue: m['venue'] as String?,
-        isHome: (m['is_home'] as bool?) ?? true,
         status: (m['status'] as String?) ?? 'scheduled',
         goalsFor: (m['goals_for'] as int?) ?? 0,
         goalsAgainst: (m['goals_against'] as int?) ?? 0,
-        notes: m['notes'] as String?,
+        homeTeamId: m['home_team_id'] as int?,
+        awayTeamId: m['away_team_id'] as int?,
+        homeName: (m['home_name'] as String?) ?? (m['opponent'] as String?) ?? 'Tim dihapus',
+        awayName: (m['away_name'] as String?) ?? 'Tim dihapus',
       );
 
-  String get resultLabel {
-    if (status != 'finished') return 'vs $opponent';
-    if (goalsFor > goalsAgainst) return 'Menang $goalsFor-$goalsAgainst';
-    if (goalsFor < goalsAgainst) return 'Kalah $goalsFor-$goalsAgainst';
-    return 'Draw $goalsFor-$goalsAgainst';
+  bool get finished => status == 'finished';
+  bool get ongoing => status == 'ongoing';
+
+  /// Poin yang didapat pemenang: 3 menang, 1 seri. Null kalau belum selesai.
+  /// Sisi pemenang tidak mengubah poin — laga yang dimenangkan tim away tetap
+  /// 3, bukan 0 seperti kalau dihitung dari sudut pandang tim home.
+  int? get pointsForWinner {
+    if (!finished) return null;
+    return goalsFor == goalsAgainst ? kPointsDraw : kPointsWin;
   }
+
+  String get resultLabel => finished
+      ? (goalsFor > goalsAgainst ? 'Menang' : (goalsFor == goalsAgainst ? 'Seri' : 'Kalah'))
+      : (ongoing ? 'Berlangsung' : 'Belum main');
+
+  /// Keterangan satu baris untuk daftar: "Tim A 3–1 Tim B".
+  String get scoreline => finished || ongoing ? '$homeName $goalsFor–$goalsAgainst $awayName' : '$homeName vs $awayName';
+
+  /// Gol yang dicetak [teamId] di laga ini. Di halaman tim, tim bisa menjadi
+  /// tim away; membaca `goalsFor` langsung akan menukar menang dan kalah.
+  int goalsForTeam(int teamId) => homeTeamId == teamId ? goalsFor : goalsAgainst;
+
+  int goalsAgainstTeam(int teamId) => homeTeamId == teamId ? goalsAgainst : goalsFor;
+
+  static const _select = '''
+    SELECT m.*, h.name AS home_name, a.name AS away_name
+      FROM matches m
+      LEFT JOIN teams h ON h.id = m.home_team_id
+      LEFT JOIN teams a ON a.id = m.away_team_id''';
 
   static Future<List<Match>> all({int limit = 100}) async {
     final rows = await Db.query(
-      'SELECT * FROM matches ORDER BY played_at DESC LIMIT @limit',
+      '$_select ORDER BY m.played_at DESC LIMIT @limit',
       params: {'limit': limit},
     );
     return rows.map(Match.fromMap).toList();
   }
 
-  /// Laga yang belum selesai, termasuk yang sedang berjalan.
+  /// Satu laga terbaru dari DB. Dipakai detail laga supaya skor di header
+  /// ikut berubah setelah sesi ditambah atau hasil dikoreksi.
+  static Future<Match?> byId(int id) async {
+    final rows = await Db.query('$_select WHERE m.id=@id', params: {'id': id});
+    return rows.isEmpty ? null : Match.fromMap(rows.first);
+  }
+
+  /// Laga yang belum selesai. Laga `ongoing` selalu ikut — laga yang sudah
+  /// berjalan lama bukan alasan untuk menghilangkannya dari beranda; laga
+  /// terjadwal hanya yang belum lewat lebih dari 3 jam, supaya jadwal basi
+  /// tidak menumpuk.
   static Future<List<Match>> upcoming() async {
     final rows = await Db.query(
-      "SELECT * FROM matches WHERE status IN ('scheduled', 'ongoing') AND played_at >= now() - interval '3 hours' ORDER BY played_at ASC LIMIT 5",
+      "$_select WHERE m.status='ongoing' OR (m.status='scheduled' "
+      "AND m.played_at >= now() - interval '3 hours') "
+      'ORDER BY m.played_at ASC LIMIT 5',
     );
     return rows.map(Match.fromMap).toList();
   }
@@ -141,27 +183,101 @@ class Match {
   /// Hasil terakhir untuk ringkasan beranda.
   static Future<List<Match>> recentFinished({int limit = 4}) async {
     final rows = await Db.query(
-      "SELECT * FROM matches WHERE status='finished' ORDER BY played_at DESC LIMIT @limit",
+      "$_select WHERE m.status='finished' ORDER BY m.played_at DESC LIMIT @limit",
       params: {'limit': limit},
     );
     return rows.map(Match.fromMap).toList();
   }
 
+  /// Semua laga tim tertentu (untuk riwayat di halaman tim).
+  static Future<List<Match>> forTeam(int teamId, {int limit = 20}) async {
+    final rows = await Db.query(
+      '$_select WHERE m.home_team_id=@t OR m.away_team_id=@t '
+      'ORDER BY m.played_at DESC LIMIT @limit',
+      params: {'t': teamId, 'limit': limit},
+    );
+    return rows.map(Match.fromMap).toList();
+  }
+
   static Future<void> insert({
-    required String opponent,
+    required int homeTeamId,
+    required int awayTeamId,
     required DateTime playedAt,
     String? venue,
-    required bool isHome,
-  }) =>
-      Db.execute(
-        '''INSERT INTO matches (opponent, played_at, venue, is_home)
-           VALUES (@opponent, @playedAt, @venue, @isHome)''',
-        params: {'opponent': opponent, 'playedAt': playedAt, 'venue': venue, 'isHome': isHome},
+  }) {
+    if (homeTeamId == awayTeamId) {
+      throw Exception('Tim tidak boleh bertemu dirinya sendiri');
+    }
+    return Db.execute(
+      '''INSERT INTO matches (home_team_id, away_team_id, played_at, venue)
+         VALUES (@h, @a, @t, @v)''',
+      params: {'h': homeTeamId, 'a': awayTeamId, 't': playedAt, 'v': venue},
+    );
+  }
+
+  /// Ubah jadwal laga (tim, tanggal, lokasi) tanpa menghapus hasilnya.
+  /// Sebelumnya satu-satunya jalan memperbaiki jadwal salah adalah hapus +
+  /// buat ulang, dan itu ikut membuang sesi serta catatan gol.
+  ///
+  /// Tim hanya boleh diganti selama laga belum selesai: skor dan sesi
+  /// tersimpan per laga, jadi menukar tim setelah ada hasil berarti
+  /// memindahkan kemenangan ke tim yang tidak pernah bermain.
+  Future<void> update({
+    required int homeTeamId,
+    required int awayTeamId,
+    required DateTime playedAt,
+    String? venue,
+  }) async {
+    if (homeTeamId == awayTeamId) {
+      throw Exception('Tim tidak boleh bertemu dirinya sendiri');
+    }
+    final rows = await Db.query(
+      'SELECT status FROM matches WHERE id=@id',
+      params: {'id': id},
+    );
+    if (rows.isEmpty) throw Exception('Laga tidak ditemukan');
+    final status = rows.first['status'] as String?;
+    final teamsChanged = homeTeamId != this.homeTeamId || awayTeamId != this.awayTeamId;
+    if (status == 'finished' && teamsChanged) {
+      throw Exception('Hasil sudah dikunci. Buka lagi laga sebelum mengganti tim.');
+    }
+    await Db.execute(
+      '''UPDATE matches SET home_team_id=@h, away_team_id=@a,
+           played_at=@t, venue=@v WHERE id=@id''',
+      params: {'id': id, 'h': homeTeamId, 'a': awayTeamId, 't': playedAt, 'v': venue},
+    );
+  }
+
+  /// Tandai laga sedang berjalan tanpa menunggu gol pertama. Papan skor di
+  /// beranda hanya menampilkan laga `ongoing`, jadi tanpa ini laga yang baru
+  /// dimulai (0–0) tidak bisa dilihat sebagai laga hidup.
+  Future<void> start() => Db.execute(
+        "UPDATE matches SET status='ongoing' WHERE id=@id AND status='scheduled'",
+        params: {'id': id},
       );
 
-  Future<void> finish({required int gf, required int ga}) => Db.execute(
-        "UPDATE matches SET status='finished', goals_for=@gf, goals_against=@ga WHERE id=@id",
-        params: {'id': id, 'gf': gf, 'ga': ga},
+  /// Kunci hasil laga. Kalau laga punya sesi, skor akhir = jumlah sesi: sesi
+  /// adalah rincian babaknya, jadi angka dari dialog tidak boleh berbeda
+  /// dengan rincian yang tersimpan. Tanpa sesi, angka dialog yang dipakai.
+  Future<void> finish({required int gf, required int ga}) async {
+    final sessions = await MatchSession.forMatch(id);
+    final home = sessions.isEmpty ? gf : sessions.fold<int>(0, (s, e) => s + e.scoreHome);
+    final away = sessions.isEmpty ? ga : sessions.fold<int>(0, (s, e) => s + e.scoreAway);
+    await Db.execute(
+      "UPDATE matches SET status='finished', goals_for=@gf, goals_against=@ga WHERE id=@id",
+      params: {'id': id, 'gf': home, 'ga': away},
+    );
+  }
+
+  /// Buka lagi laga yang sudah dikunci. Klasemen langsung kehilangan poinnya
+  /// karena `v_team_standings` hanya menghitung status `finished`. Tanpa ini
+  /// hasil yang salah tekan tidak bisa diperbaiki.
+  Future<void> reopen() => Db.execute(
+        '''UPDATE matches SET status = CASE
+             WHEN EXISTS (SELECT 1 FROM match_sessions WHERE match_id=@id)
+               THEN 'ongoing' ELSE 'scheduled' END
+           WHERE id=@id''',
+        params: {'id': id},
       );
 
   static Future<void> delete(int id) =>
@@ -285,17 +401,33 @@ class Payment {
     return rows.map(Payment.fromMap).toList();
   }
 
+  /// Sudah ada iuran untuk anggota + periode ini? Dipakai form supaya satu
+  /// anggota tidak tercatat dua kali di bulan yang sama (uangnya ikut
+  /// terhitung dua kali di kas dan di label "Lunas").
+  static Future<bool> existsFor(int memberId, String period) async {
+    final rows = await Db.query(
+      'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND period=@p LIMIT 1',
+      params: {'mid': memberId, 'p': period},
+    );
+    return rows.isNotEmpty;
+  }
+
   static Future<void> insert({
     required int memberId,
     required double amount,
     required String period,
     String? note,
-  }) =>
-      Db.execute(
-        '''INSERT INTO payments (member_id, amount, period, note)
-           VALUES (@mid, @amt, @period, @note)''',
-        params: {'mid': memberId, 'amt': amount, 'period': period, 'note': note},
-      );
+  }) async {
+    if (await existsFor(memberId, period)) {
+      throw Exception('Iuran periode ini sudah dicatat. Hapus catatan lama dulu '
+          'kalau nominalnya salah.');
+    }
+    await Db.execute(
+      '''INSERT INTO payments (member_id, amount, period, note)
+         VALUES (@mid, @amt, @period, @note)''',
+      params: {'mid': memberId, 'amt': amount, 'period': period, 'note': note},
+    );
+  }
 
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM payments WHERE id=@id', params: {'id': id});
@@ -385,6 +517,27 @@ class Transaction {
         '''INSERT INTO transactions (kind, category, amount, occurred_at, note)
            VALUES (@kind, @category, @amount, @date, @note)''',
         params: {
+          'kind': kind,
+          'category': category,
+          'amount': amount,
+          'date': _dateOnly(occurredAt),
+          'note': note,
+        },
+      );
+
+  /// Koreksi transaksi kas. Hanya untuk catatan manual — baris iuran
+  /// dikelola di halaman Iuran, dan baris sewa lapangan mengikuti booking.
+  Future<void> update({
+    required String kind,
+    required String category,
+    required double amount,
+    required DateTime occurredAt,
+    String? note,
+  }) => Db.execute(
+        '''UPDATE transactions SET kind=@kind, category=@category,
+             amount=@amount, occurred_at=@date, note=@note WHERE id=@id''',
+        params: {
+          'id': id,
           'kind': kind,
           'category': category,
           'amount': amount,
@@ -492,6 +645,10 @@ class Booking {
   final double cost;
   final String status;
 
+  /// Id transaksi kas yang lahir dari booking ini, kalau biayanya sudah
+  /// dicatat ke kas. Null = biaya belum masuk buku kas.
+  final int? transactionId;
+
   Booking({
     required this.id,
     required this.title,
@@ -499,6 +656,7 @@ class Booking {
     required this.durationMin,
     required this.cost,
     required this.status,
+    this.transactionId,
   });
 
   factory Booking.fromMap(Map<String, dynamic> m) => Booking(
@@ -508,12 +666,21 @@ class Booking {
         durationMin: (m['duration_min'] as int?) ?? 90,
         cost: _num(m['cost']),
         status: (m['status'] as String?) ?? 'booked',
+        transactionId: m['transaction_id'] as int?,
       );
 
   static const statusLabels = {'booked': 'Dipesan', 'done': 'Selesai', 'canceled': 'Batal'};
 
+  bool get inCash => transactionId != null;
+
   static Future<List<Booking>> all() async {
-    final rows = await Db.query('SELECT * FROM bookings ORDER BY starts_at DESC LIMIT 100');
+    // LEFT JOIN, bukan dua query: halaman Booking perlu tahu mana yang
+    // biayanya sudah masuk kas tanpa memuat seluruh transaksi.
+    final rows = await Db.query(
+      '''SELECT b.*, t.id AS transaction_id FROM bookings b
+         LEFT JOIN transactions t ON t.booking_id = b.id
+         ORDER BY b.starts_at DESC LIMIT 100''',
+    );
     return rows.map(Booking.fromMap).toList();
   }
 
@@ -524,21 +691,41 @@ class Booking {
     return rows.map(Booking.fromMap).toList();
   }
 
+  /// Simpan booking. [postToCash] mencatat biayanya sebagai pengeluaran
+  /// "Sewa lapangan" di kas dengan `booking_id` — satu pengeluaran, satu
+  /// catatan. Tanpa tautan ini "Total sewa" di halaman Booking dan saldo di
+  /// Kas klub menghitung dua angka berbeda untuk uang yang sama.
   static Future<void> insert({
     required String title,
     required DateTime startsAt,
     required int durationMin,
     required double cost,
-  }) =>
-      Db.execute(
-        '''INSERT INTO bookings (title, starts_at, duration_min, cost)
-           VALUES (@t, @s, @d, @c)''',
-        params: {'t': title, 's': startsAt, 'd': durationMin, 'c': cost},
-      );
+    bool postToCash = true,
+  }) async {
+    final rows = await Db.query(
+      '''INSERT INTO bookings (title, starts_at, duration_min, cost)
+         VALUES (@t, @s, @d, @c) RETURNING id''',
+      params: {'t': title, 's': startsAt, 'd': durationMin, 'c': cost},
+    );
+    if (!postToCash || cost <= 0) return;
+    final id = rows.first['id'] as int;
+    await Db.execute(
+      '''INSERT INTO transactions (kind, category, amount, occurred_at, note, booking_id)
+         VALUES ('expense', 'sewa', @amount, @date, @note, @booking)''',
+      params: {
+        'amount': cost,
+        'date': _dateOnly(startsAt),
+        'note': title,
+        'booking': id,
+      },
+    );
+  }
 
   Future<void> setStatus(String s) =>
       Db.execute('UPDATE bookings SET status=@s WHERE id=@id', params: {'s': s, 'id': id});
 
+  /// Hapus booking; catatan kasnya ikut terhapus lewat `ON DELETE CASCADE`
+  /// pada `transactions.booking_id`.
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM bookings WHERE id=@id', params: {'id': id});
 }
@@ -573,6 +760,13 @@ class Announcement {
   static Future<void> insert({required String title, required String body}) => Db.execute(
         'INSERT INTO announcements (title, body) VALUES (@t, @b)',
         params: {'t': title, 'b': body},
+      );
+
+  /// Ubah judul/isi. Tanpa ini salah ketik berarti hapus lalu buat ulang —
+  /// dan pengumuman lama yang sudah dibaca anggota ikut hilang.
+  Future<void> update({required String title, required String body}) => Db.execute(
+        'UPDATE announcements SET title=@t, body=@b WHERE id=@id',
+        params: {'id': id, 't': title, 'b': body},
       );
 
   static Future<void> delete(int id) =>
@@ -654,11 +848,23 @@ class MatchSession {
   }
 
   /// Skor laga = jumlah semua sesi, biar ringkasan tetap konsisten.
+  ///
+  /// Tanpa sesi, skor dikosongkan lagi kecuali laga sudah selesai: laga yang
+  /// kembali `scheduled` tidak boleh menyisakan skor 2–1 tanpa rincian, dan
+  /// hasil yang sudah dikunci tidak boleh berubah jadi 0–0 hanya karena
+  /// rincian sesinya dihapus.
   static Future<void> _syncTotals(int matchId) => Db.execute(
         '''UPDATE matches SET
-             goals_for = COALESCE((SELECT sum(score_home) FROM match_sessions WHERE match_id=@m), 0),
-             goals_against = COALESCE((SELECT sum(score_away) FROM match_sessions WHERE match_id=@m), 0),
-             status = CASE WHEN status='scheduled' THEN 'ongoing' ELSE status END
+             goals_for = COALESCE((SELECT sum(score_home) FROM match_sessions WHERE match_id=@m),
+                                  CASE WHEN status='finished' THEN goals_for ELSE 0 END),
+             goals_against = COALESCE((SELECT sum(score_away) FROM match_sessions WHERE match_id=@m),
+                                      CASE WHEN status='finished' THEN goals_against ELSE 0 END),
+             status = CASE
+               WHEN status='scheduled'
+                    AND EXISTS (SELECT 1 FROM match_sessions WHERE match_id=@m) THEN 'ongoing'
+               WHEN status='ongoing'
+                    AND NOT EXISTS (SELECT 1 FROM match_sessions WHERE match_id=@m) THEN 'scheduled'
+               ELSE status END
            WHERE id=@m''',
         params: {'m': matchId},
       );
@@ -767,6 +973,7 @@ class Tournament {
   final DateTime startsAt;
   final int matchMinutes;
   final int breakMinutes;
+  final int groups;
   final String status; // draft | running | done
 
   Tournament({
@@ -776,6 +983,7 @@ class Tournament {
     required this.startsAt,
     required this.matchMinutes,
     required this.breakMinutes,
+    required this.groups,
     required this.status,
   });
 
@@ -786,6 +994,7 @@ class Tournament {
         startsAt: _dt(m['starts_at']),
         matchMinutes: (m['match_minutes'] as int?) ?? 20,
         breakMinutes: (m['break_minutes'] as int?) ?? 0,
+        groups: (m['groups'] as int?) ?? 1,
         status: (m['status'] as String?) ?? 'draft',
       );
 
@@ -793,153 +1002,248 @@ class Tournament {
 
   static Future<List<Tournament>> all() async {
     final rows = await Db.query('SELECT * FROM tournaments ORDER BY starts_at DESC');
-    return rows.map(Tournament.fromMap).toList();
+    final items = rows.map(Tournament.fromMap).toList();
+    // Urut tanggal menaruh draft paling depan karena jadwalnya paling akhir.
+    // Yang dicari saat membuka halaman: yang sedang berjalan dulu, lalu yang
+    // akan datang (terdekat), lalu yang sudah selesai (terbaru).
+    int rank(Tournament t) => switch (t.status) { 'running' => 0, 'draft' => 1, _ => 2 };
+    items.sort((a, b) {
+      final byStatus = rank(a).compareTo(rank(b));
+      if (byStatus != 0) return byStatus;
+      return a.status == 'done'
+          ? b.startsAt.compareTo(a.startsAt)
+          : a.startsAt.compareTo(b.startsAt);
+    });
+    return items;
   }
 
-  /// Buat turnamen + tim + jadwal + bagi pemain otomatis.
+  /// Buat turnamen: pilih tim klub, bagi ke grup, lalu jadwalkan round-robin
+  /// di dalam tiap grup. Tim yang belum punya cukup pemain tetap boleh ikut.
   static Future<int> create({
     required String name,
     String? venue,
     required DateTime startsAt,
-    int teamCount = 4,
+    required List<int> teamIds,
     int matchMinutes = 20,
     int breakMinutes = 0,
-    bool assignPlayers = true,
+    int groups = 1,
   }) async {
+    // Satu angka untuk baris turnamen dan pembagian grup; kalau berbeda,
+    // kolom `groups` bisa bilang 8 sementara jadwalnya dibuat untuk 3.
+    final g = groups.clamp(1, 8);
     final rows = await Db.query(
-      '''INSERT INTO tournaments (name, venue, starts_at, match_minutes, break_minutes)
-         VALUES (@n, @v, @s, @mm, @bm) RETURNING id''',
+      '''INSERT INTO tournaments (name, venue, starts_at, match_minutes, break_minutes, groups)
+         VALUES (@n, @v, @s, @mm, @bm, @g) RETURNING id''',
       params: {
         'n': name,
         'v': venue,
         's': startsAt.toUtc(),
         'mm': matchMinutes,
         'bm': breakMinutes,
+        'g': g,
       },
     );
     final id = rows.first['id'] as int;
-
-    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-    final teamIds = <int>[];
-    for (var i = 0; i < teamCount; i++) {
-      final r = await Db.query(
-        'INSERT INTO teams (tournament_id, name) VALUES (@t, @n) RETURNING id',
-        params: {'t': id, 'n': 'Tim ${letters[i % letters.length]}${i >= letters.length ? i + 1 : ''}'},
-      );
-      teamIds.add(r.first['id'] as int);
-    }
-
-    await _schedule(id, teamIds, startsAt, matchMinutes, breakMinutes);
-    if (assignPlayers) await autoAssign(id);
+    await assignGroups(id, teamIds, groups: g);
+    await _schedule(id, startsAt, matchMinutes, breakMinutes);
     return id;
   }
 
+  /// Ganti tim yang ikut turnamen lalu buat ulang jadwalnya.
+  ///
+  /// Ditolak kalau sudah ada laga berstatus `done`: skor tersimpan per slot,
+  /// jadi jadwal baru akan menempelkan hasil lama ke pasangan tim yang
+  /// berbeda. Turnamen yang masih kosong boleh diubah kapan saja.
+  static Future<void> updateTeams(
+    int id,
+    List<int> teamIds, {
+    required DateTime startsAt,
+    required int matchMinutes,
+    required int breakMinutes,
+    int groups = 1,
+  }) async {
+    if (teamIds.length < 2) throw Exception('Pilih minimal 2 tim');
+    final done = await Db.query(
+      "SELECT count(*)::int AS n FROM tournament_matches "
+      "WHERE tournament_id=@t AND status='done'",
+      params: {'t': id},
+    );
+    if ((done.first['n'] as int) > 0) {
+      throw Exception('Sudah ada laga dengan skor. Reset skornya dulu.');
+    }
+    final g = groups.clamp(1, 8);
+    await Db.execute(
+      'DELETE FROM tournament_matches WHERE tournament_id=@t',
+      params: {'t': id},
+    );
+    await assignGroups(id, teamIds, groups: g);
+    await Db.execute(
+      'UPDATE tournaments SET groups=@g, match_minutes=@mm, break_minutes=@bm '
+      'WHERE id=@t',
+      params: {'t': id, 'g': g, 'mm': matchMinutes, 'bm': breakMinutes},
+    );
+    await _schedule(id, startsAt, matchMinutes, breakMinutes);
+    await syncStatus(id);
+  }
+
+  /// Bagi tim ke grup (snake) lalu simpan ke `tournament_teams`.
+  static Future<void> assignGroups(int id, List<int> teamIds, {int groups = 1}) async {
+    if (teamIds.isEmpty) return;
+    final g = groups.clamp(1, teamIds.length);
+    await Db.execute(
+      'DELETE FROM tournament_teams WHERE tournament_id=@t',
+      params: {'t': id},
+    );
+    final vals = <String>[];
+    final params = <String, Object?>{};
+    for (var i = 0; i < teamIds.length; i++) {
+      final round = i ~/ g;
+      final idx = round.isEven ? i % g : g - 1 - (i % g);
+      vals.add('(@t, @team$i, @g$i)');
+      params['t'] = id;
+      params['team$i'] = teamIds[i];
+      params['g$i'] = idx + 1;
+    }
+    await Db.execute(
+      'INSERT INTO tournament_teams (tournament_id, team_id, group_no) '
+      'VALUES ${vals.join(',')} ON CONFLICT DO NOTHING',
+      params: params,
+    );
+  }
+
+  /// Jadwal round-robin per grup, urut waktu mulai.
   static Future<void> _schedule(
     int id,
-    List<int> teamIds,
     DateTime start,
     int minutes,
     int rest,
   ) async {
-    final fixtures = roundRobin(teamIds);
-    if (fixtures.isEmpty) return;
+    final rows = await Db.query(
+      'SELECT team_id, group_no FROM tournament_teams WHERE tournament_id=@t '
+      'ORDER BY group_no, team_id',
+      params: {'t': id},
+    );
+    final byGroup = <int, List<int>>{};
+    for (final r in rows) {
+      (byGroup[r['group_no'] as int] ??= []).add(r['team_id'] as int);
+    }
     final vals = <String>[];
     final params = <String, Object?>{};
-    for (var i = 0; i < fixtures.length; i++) {
-      final (round, home, away) = fixtures[i];
-      vals.add('(@t$i, @r$i, @s$i, @h$i, @a$i, @k$i)');
-      params['t$i'] = id;
-      params['r$i'] = round;
-      params['s$i'] = i + 1;
-      params['h$i'] = home;
-      params['a$i'] = away;
-      params['k$i'] = start.add(Duration(minutes: i * (minutes + rest))).toUtc();
+    var slot = 0;
+    for (final entry in byGroup.entries) {
+      for (final (round, home, away) in roundRobin(entry.value)) {
+        vals.add('(@t$slot, @g$slot, @r$slot, @s$slot, @h$slot, @a$slot, @k$slot)');
+        params['t$slot'] = id;
+        params['g$slot'] = entry.key;
+        params['r$slot'] = round;
+        params['s$slot'] = slot + 1;
+        params['h$slot'] = home;
+        params['a$slot'] = away;
+        params['k$slot'] = start.add(Duration(minutes: slot * (minutes + rest))).toUtc();
+        slot++;
+      }
     }
+    if (vals.isEmpty) return;
     await Db.execute(
       '''INSERT INTO tournament_matches
-           (tournament_id, round, slot, home_team_id, away_team_id, kickoff)
+           (tournament_id, group_no, round, slot, home_team_id, away_team_id, kickoff)
          VALUES ${vals.join(',')} ON CONFLICT DO NOTHING''',
       params: params,
     );
   }
 
-  /// Bagi pemain aktif ke tim secara merata (snake draft, urutan acak).
-  static Future<void> autoAssign(int id) async {
-    final teams = await Team.forTournament(id);
-    if (teams.isEmpty) return;
-    await Db.execute(
-      'DELETE FROM team_players WHERE team_id IN (SELECT id FROM teams WHERE tournament_id=@t)',
-      params: {'t': id},
-    );
-    final members = await Member.all(activeOnly: true);
-    if (members.isEmpty) return;
-    members.shuffle();
-
-    final vals = <String>[];
-    final params = <String, Object?>{};
-    for (var i = 0; i < members.length; i++) {
-      final round = i ~/ teams.length;
-      final idx = round.isEven ? i % teams.length : teams.length - 1 - (i % teams.length);
-      vals.add('(@t$i, @m$i)');
-      params['t$i'] = teams[idx].id;
-      params['m$i'] = members[i].id;
-    }
-    await Db.execute(
-      'INSERT INTO team_players (team_id, member_id) VALUES ${vals.join(',')} ON CONFLICT DO NOTHING',
-      params: params,
-    );
-  }
-
-  static Future<void> setStatus(int id, String status) => Db.execute(
-        'UPDATE tournaments SET status=@s WHERE id=@id',
-        params: {'id': id, 's': status},
+  /// Status mengikuti hasil: draft sampai ada skor, berjalan selama masih ada
+  /// laga kosong, selesai begitu semua laga terisi. Tanpa ini turnamen yang
+  /// sudah habis tetap tertulis "Berjalan" selamanya.
+  ///
+  /// Turnamen tanpa laga sama sekali kembali ke draft — itu keadaan setelah
+  /// timnya dihapus dan `ON DELETE CASCADE` membuang seluruh jadwalnya.
+  static Future<void> syncStatus(int id) => Db.execute(
+        '''UPDATE tournaments SET status = CASE
+             WHEN EXISTS (SELECT 1 FROM tournament_matches
+                          WHERE tournament_id=@t AND status <> 'done')
+               THEN CASE WHEN EXISTS (SELECT 1 FROM tournament_matches
+                                       WHERE tournament_id=@t AND status='done')
+                         THEN 'running' ELSE 'draft' END
+             WHEN EXISTS (SELECT 1 FROM tournament_matches WHERE tournament_id=@t)
+               THEN 'done'
+             ELSE 'draft' END
+           WHERE id=@t''',
+        params: {'t': id},
       );
 
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM tournaments WHERE id=@id', params: {'id': id});
 
-  static Future<List<Standing>> standings(int id) async {
+  /// Klasemen turnamen, dikelompokkan per grup.
+  static Future<Map<int, List<Standing>>> standingsByGroup(int id) async {
     final teams = await Team.forTournament(id);
     final matches = await TournamentMatch.forTournament(id);
-    return Standing.compute(teams, matches);
+    final out = <int, List<Standing>>{};
+    for (final group in teams.map((t) => t.groupNo).toSet()) {
+      final groupTeams = teams.where((t) => t.groupNo == group).toList();
+      final groupMatches = matches.where((m) => m.groupNo == group).toList();
+      out[group] = Standing.compute(groupTeams, groupMatches);
+    }
+    return out;
   }
 }
 
+/// Tim klub. 7-8 pemain per tim, dipakai di semua tanding dan turnamen.
 class Team {
   final int id;
-  final int tournamentId;
   final String name;
 
-  Team({required this.id, required this.tournamentId, required this.name});
+  /// Hanya terisi saat tim dibaca lewat konteks turnamen.
+  final int groupNo;
+
+  Team({required this.id, required this.name, this.groupNo = 1});
 
   factory Team.fromMap(Map<String, dynamic> m) => Team(
         id: m['id'] as int,
-        tournamentId: m['tournament_id'] as int,
         name: m['name'] as String,
+        groupNo: (m['group_no'] as int?) ?? 1,
       );
 
+  static Future<List<Team>> all() async {
+    final rows = await Db.query('SELECT * FROM teams ORDER BY name');
+    return rows.map(Team.fromMap).toList();
+  }
+
+  /// Tim yang ikut satu turnamen, lengkap dengan nomor grupnya.
   static Future<List<Team>> forTournament(int id) async {
     final rows = await Db.query(
-      'SELECT * FROM teams WHERE tournament_id=@t ORDER BY id',
+      '''SELECT t.*, tt.group_no FROM tournament_teams tt
+         JOIN teams t ON t.id = tt.team_id
+         WHERE tt.tournament_id=@t ORDER BY tt.group_no, t.name''',
       params: {'t': id},
     );
     return rows.map(Team.fromMap).toList();
   }
 
   /// Pemain per tim: {teamId: [Member...]}.
-  static Future<Map<int, List<Member>>> players(int tournamentId) async {
+  static Future<Map<int, List<Member>>> players({int? tournamentId}) async {
     final rows = await Db.query(
       '''SELECT tp.team_id, m.* FROM team_players tp
          JOIN members m ON m.id = tp.member_id
-         JOIN teams t ON t.id = tp.team_id
-         WHERE t.tournament_id=@t ORDER BY m.name''',
-      params: {'t': tournamentId},
+         ${tournamentId == null ? '' : 'JOIN tournament_teams tt ON tt.team_id = tp.team_id'}
+         ${tournamentId == null ? '' : 'WHERE tt.tournament_id=@t'}
+         ORDER BY m.name''',
+      params: tournamentId == null ? const {} : {'t': tournamentId},
     );
     final out = <int, List<Member>>{};
     for (final r in rows) {
       (out[r['team_id'] as int] ??= []).add(Member.fromMap(r));
     }
     return out;
+  }
+
+  static Future<int> insert(String name) async {
+    final rows = await Db.query(
+      'INSERT INTO teams (name) VALUES (@n) RETURNING id',
+      params: {'n': name},
+    );
+    return rows.first['id'] as int;
   }
 
   static Future<void> rename(int id, String name) => Db.execute(
@@ -957,13 +1261,60 @@ class Team {
         params: {'t': teamId, 'm': memberId},
       );
 
-  static Future<void> delete(int id) =>
-      Db.execute('DELETE FROM teams WHERE id=@id', params: {'id': id});
+  /// Dampak hapus tim. Laga internal tetap ada tanpa nama (`ON DELETE SET
+  /// NULL`), tapi laga turnamen ikut terhapus (`ON DELETE CASCADE`) dan
+  /// klasemen turnamen berubah — pemanggil perlu menyebut angka ini, bukan
+  /// menulis "riwayat tetap ada" untuk keduanya.
+  static Future<(int, int)> deletionImpact(int id) async {
+    final rows = await Db.query(
+      '''SELECT (SELECT count(*)::int FROM matches
+                WHERE home_team_id=@id OR away_team_id=@id) AS internal,
+              (SELECT count(*)::int FROM tournament_matches
+                WHERE home_team_id=@id OR away_team_id=@id) AS tournament''',
+      params: {'id': id},
+    );
+    final r = rows.first;
+    return (r['internal'] as int, r['tournament'] as int);
+  }
+
+  /// Hapus tim beserta jadwal turnamennya (`ON DELETE CASCADE`). Status
+  /// turnamen yang kehilangan laga harus dihitung ulang: tanpa ini turnamen
+  /// bisa tetap tertulis "Berjalan" padahal semua laganya sudah ikut hilang.
+  static Future<void> delete(int id) async {
+    final rows = await Db.query(
+      '''SELECT DISTINCT tournament_id FROM tournament_matches
+         WHERE home_team_id=@id OR away_team_id=@id''',
+      params: {'id': id},
+    );
+    final affected = rows.map((r) => r['tournament_id'] as int).toList();
+    await Db.execute('DELETE FROM teams WHERE id=@id', params: {'id': id});
+    for (final t in affected) {
+      await Tournament.syncStatus(t);
+    }
+  }
+
+  /// Klasemen abadi semua tim dari laga internal yang selesai.
+  static Future<List<Standing>> standings() async {
+    final rows = await Db.query(
+      '''SELECT * FROM v_team_standings
+         ORDER BY points DESC, (goals_for - goals_against) DESC, goals_for DESC, name''',
+    );
+    return rows
+        .map((r) => Standing(r['team_id'] as int, r['name'] as String)
+          ..played = r['played'] as int
+          ..won = r['won'] as int
+          ..drawn = r['drawn'] as int
+          ..lost = r['lost'] as int
+          ..goalsFor = r['goals_for'] as int
+          ..goalsAgainst = r['goals_against'] as int)
+        .toList();
+  }
 }
 
 class TournamentMatch {
   final int id;
   final int tournamentId;
+  final int groupNo;
   final int round;
   final int slot;
   final int homeTeamId;
@@ -976,6 +1327,7 @@ class TournamentMatch {
   TournamentMatch({
     required this.id,
     required this.tournamentId,
+    this.groupNo = 1,
     required this.round,
     required this.slot,
     required this.homeTeamId,
@@ -989,6 +1341,7 @@ class TournamentMatch {
   factory TournamentMatch.fromMap(Map<String, dynamic> m) => TournamentMatch(
         id: m['id'] as int,
         tournamentId: m['tournament_id'] as int,
+        groupNo: (m['group_no'] as int?) ?? 1,
         round: (m['round'] as int?) ?? 1,
         slot: (m['slot'] as int?) ?? 1,
         homeTeamId: m['home_team_id'] as int,
@@ -1015,17 +1368,17 @@ class TournamentMatch {
          WHERE id=@id''',
       params: {'id': id, 'h': home, 'a': away},
     );
-    await Db.execute(
-      "UPDATE tournaments SET status='running' WHERE id=@t AND status='draft'",
-      params: {'t': tournamentId},
-    );
+    await Tournament.syncStatus(tournamentId);
   }
 
-  Future<void> clearScore() => Db.execute(
-        '''UPDATE tournament_matches SET score_home=NULL, score_away=NULL,
-           status='scheduled' WHERE id=@id''',
-        params: {'id': id},
-      );
+  Future<void> clearScore() async {
+    await Db.execute(
+      '''UPDATE tournament_matches SET score_home=NULL, score_away=NULL,
+         status='scheduled' WHERE id=@id''',
+      params: {'id': id},
+    );
+    await Tournament.syncStatus(tournamentId);
+  }
 }
 
 class Standing {
@@ -1039,9 +1392,12 @@ class Standing {
   int get points => won * kPointsWin + drawn * kPointsDraw;
 
   /// Klasemen dari daftar laga. Dipisah dari DB biar gampang dites.
+  /// Hanya laga berstatus `done` yang dihitung, sama seperti `v_standings`:
+  /// skor tanpa status selesai (data lama) tidak boleh menaikkan poin.
   static List<Standing> compute(List<Team> teams, List<TournamentMatch> matches) {
     final map = {for (final t in teams) t.id: Standing(t.id, t.name)};
     for (final m in matches) {
+      if (!m.done) continue;
       final h = map[m.homeTeamId], a = map[m.awayTeamId];
       final hs = m.scoreHome, aw = m.scoreAway;
       if (h == null || a == null || hs == null || aw == null) continue;
@@ -1088,3 +1444,4 @@ double _num(dynamic v) => switch (v) {
       String s => double.tryParse(s) ?? 0,
       _ => 0,
     };
+

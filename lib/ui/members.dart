@@ -144,8 +144,13 @@ class _MembersPageState extends State<MembersPage> {
                             '${m.active ? '' : ' • nonaktif'}',
                         trailing: Auth.canWrite
                             ? iconAction(context, Icons.delete_outline, () async {
+                                // Pesan harus jujur: iuran ikut terhapus (kas
+                                // bulan lalu berubah), catatan gol tetap ada
+                                // tanpa nama. Menonaktifkan lebih aman.
                                 if (await confirm(context, 'Hapus anggota?',
-                                    '${m.name} beserta riwayat iuran dan catatan pertandingannya akan dihapus permanen.')) {
+                                    'Riwayat iuran ${m.name} ikut terhapus dan saldo kas '
+                                    'bulan lalu berubah. Catatan gol tetap ada tanpa nama. '
+                                    'Kalau hanya ingin menyembunyikan, matikan "Aktif" di form edit.')) {
                                   if (!context.mounted) return;
                                   if (await attempt(context, () => Member.delete(m.id), fail: 'Gagal menghapus')) {
                                     _reload();

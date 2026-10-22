@@ -34,6 +34,7 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
     final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Pengumuman',
+      subtitle: 'Info klub untuk anggota',
       actions: [
         if (Auth.canWrite)
           iconAction(context, Icons.add, () async {
@@ -90,7 +91,13 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                               ],
                             ),
                           ),
-                          if (Auth.canWrite)
+                          if (Auth.canWrite) ...[
+                            iconAction(context, Icons.edit_outlined, () async {
+                              if (await showAnnouncementForm(context, announcement: a)) {
+                                _reload();
+                              }
+                            }, tooltip: 'Ubah'),
+                            const SizedBox(width: 4),
                             iconAction(context, Icons.delete_outline, () async {
                               if (await confirm(context, 'Hapus pengumuman?', a.title)) {
                                 if (!context.mounted) return;
@@ -99,6 +106,7 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                                 }
                               }
                             }, tooltip: 'Hapus'),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 8),

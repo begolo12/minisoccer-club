@@ -3,7 +3,10 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/auth.dart';
 import '../data/models.dart';
+import 'announcements.dart';
+import 'bookings.dart';
 import 'finance.dart';
+import 'teams.dart';
 import 'fmt.dart';
 import 'forms.dart';
 import 'matches.dart';
@@ -20,7 +23,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardData {
   final List<Match> upcoming;
-  final List<Match> recent;
+  final List<Tournament> tournaments;
   final List<int> stats;
   final int members;
   final double income;
@@ -29,10 +32,14 @@ class _DashboardData {
   final List<Announcement> news;
   final List<Member> unpaid;
   final double? dues;
+  final List<Team> teams;
+  final Map<int, String> teamNames;
+  final List<Booking> bookings;
+  final List<Standing> standings;
 
   _DashboardData({
     required this.upcoming,
-    required this.recent,
+    required this.tournaments,
     required this.stats,
     required this.members,
     required this.income,
@@ -41,13 +48,53 @@ class _DashboardData {
     required this.news,
     required this.unpaid,
     required this.dues,
+    required this.teams,
+    required this.teamNames,
+    required this.bookings,
+    required this.standings,
   });
+
+  /// Laga yang sedang berlangsung — satu-satunya laga yang layak jadi papan
+  /// skor di beranda. Jadwal lain dibaca lewat turnamen.
+  Match? get liveMatch {
+    for (final m in upcoming) {
+      if (m.ongoing) return m;
+    }
+    return null;
+  }
+
+  /// Turnamen terakhir: yang sedang berjalan, kalau tidak ada, yang paling
+  /// baru selesai. Draft tidak dihitung — belum ada hasil untuk ditampilkan.
+  Tournament? get lastTournament {
+    for (final t in tournaments) {
+      if (t.status == 'running') return t;
+    }
+    for (final t in tournaments) {
+      if (t.status == 'done') return t;
+    }
+    return null;
+  }
+
+  /// Turnamen terdekat yang belum dimulai. Draft ikut dihitung: turnamen
+  /// memang disiapkan lebih dulu, dan justru itu yang perlu diumumkan.
+  Tournament? get nextTournament {
+    final now = DateTime.now();
+    Tournament? best;
+    for (final t in tournaments) {
+      // Turnamen yang sudah berjalan sedang tampil di kartu "terakhir";
+      // menampilkannya lagi sebagai "berikutnya" cuma mengulang.
+      if (t.status == 'running' || t.status == 'done') continue;
+      if (!t.startsAt.isAfter(now)) continue;
+      if (best == null || t.startsAt.isBefore(best.startsAt)) best = t;
+    }
+    return best;
+  }
 
   static Future<_DashboardData> load() async {
     final period = periodNow();
     final results = await Future.wait([
       Match.upcoming(),
-      Match.recentFinished(),
+      Tournament.all(),
       Match.stats(),
       Member.countActive(),
       ScorerRow.top(),
@@ -56,17 +103,21 @@ class _DashboardData {
       Payment.all(period: period),
       Transaction.all(period: period),
       Payment.standardAmount(),
+      Team.all(),
+      Booking.upcoming(),
+      Team.standings(),
     ]);
     final active = results[6] as List<Member>;
     final payments = results[7] as List<Payment>;
     final paid = {for (final p in payments) p.memberId};
+    final teams = results[10] as List<Team>;
     final cash = CashSummary.fromEntries(mergeCashLedger(
       payments: payments,
       transactions: results[8] as List<Transaction>,
     ));
     return _DashboardData(
       upcoming: results[0] as List<Match>,
-      recent: results[1] as List<Match>,
+      tournaments: results[1] as List<Tournament>,
       stats: results[2] as List<int>,
       members: results[3] as int,
       income: cash.dues,
@@ -75,12 +126,19 @@ class _DashboardData {
       news: results[5] as List<Announcement>,
       unpaid: active.where((m) => !paid.contains(m.id)).toList(),
       dues: results[9] as double?,
+      teams: teams,
+      teamNames: {for (final t in teams) t.id: t.name},
+      bookings: results[11] as List<Booking>,
+      standings: results[12] as List<Standing>,
     );
   }
 }
 
 class _DashboardPageState extends State<DashboardPage> with SingleTickerProviderStateMixin {
   late Future<_DashboardData> _future;
+
+  /// Naik tiap muat ulang; kartu turnamen memakainya untuk memuat hasil lagi.
+  int _gen = 0;
   late final AnimationController _in = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 420),
@@ -100,15 +158,25 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
 
   Future<void> _reload() async {
     final f = _DashboardData.load();
-    setState(() => _future = f);
+    setState(() {
+      _future = f;
+      _gen++;
+    });
     _in.forward(from: 0);
     await f;
+  }
+
+  /// Nama yang disapa: username dari sesi, kapital di huruf pertama.
+  String _name() {
+    final u = Auth.username?.trim();
+    if (u == null || u.isEmpty) return 'Klub';
+    return u[0].toUpperCase() + u.substring(1);
   }
 
   @override
   Widget build(BuildContext context) {
     return PageScaffold(
-      title: 'Halo, Klub',
+      title: 'Halo, ${_name()}',
       subtitle: fmtDate(DateTime.now()),
       actions: [iconAction(context, Icons.refresh, _reload, tooltip: 'Muat ulang')],
       child: AsyncView<_DashboardData>(
@@ -117,7 +185,7 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
         builder: (d) => LayoutBuilder(
           builder: (context, c) {
             final wide = c.maxWidth >= 880;
-            final main = _MainColumn(data: d, anim: _in, onChanged: _reload);
+            final main = _MainColumn(data: d, anim: _in, gen: _gen, onChanged: _reload);
             if (!wide) {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -132,7 +200,10 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                   children: [
                     Expanded(flex: 3, child: main),
                     const SizedBox(width: 28),
-                    Expanded(flex: 2, child: _RailColumn(data: d, anim: _in)),
+                    Expanded(
+                      flex: 2,
+                      child: _RailColumn(data: d, anim: _in, onChanged: _reload),
+                    ),
                   ],
                 ),
               ],
@@ -169,10 +240,16 @@ class _In extends StatelessWidget {
 }
 
 class _MainColumn extends StatelessWidget {
-  const _MainColumn({required this.data, required this.anim, required this.onChanged});
+  const _MainColumn({
+    required this.data,
+    required this.anim,
+    required this.gen,
+    required this.onChanged,
+  });
 
   final _DashboardData data;
   final Animation<double> anim;
+  final int gen;
   final Future<void> Function() onChanged;
 
   @override
@@ -180,7 +257,9 @@ class _MainColumn extends StatelessWidget {
     final t = ShadTheme.of(context);
     final d = data;
     final played = d.stats[0] + d.stats[1] + d.stats[2];
-    final m = d.upcoming.isNotEmpty ? d.upcoming.first : null;
+    final live = d.liveMatch;
+    final next = d.nextTournament;
+    final last = d.lastTournament;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -188,63 +267,94 @@ class _MainColumn extends StatelessWidget {
         _In(
           anim: anim,
           begin: 0,
-          child: _FixtureStrip(match: m, onChanged: onChanged),
+          child: live != null
+              ? _FixtureStrip(match: live, onChanged: onChanged)
+              : next != null
+                  ? _NextTournamentHero(tournament: next, onChanged: onChanged)
+                  : _EmptyHero(onChanged: onChanged),
         ),
+        if (live != null && next != null) ...[
+          const SectionTitle('Turnamen berikutnya', top: 14),
+          _In(
+            anim: anim,
+            begin: 0.03,
+            child: _TournamentRow(tournament: next, onChanged: onChanged),
+          ),
+        ],
+        if (last != null) ...[
+          SectionTitle(
+            'Turnamen terakhir',
+            action: TextButton(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TournamentsPage()),
+                );
+                await onChanged();
+              },
+              child: const Text('Semua'),
+            ),
+          ),
+          _In(
+            anim: anim,
+            begin: 0.06,
+            child: _LastTournamentCard(
+              tournament: last,
+              teamNames: d.teamNames,
+              gen: gen,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         _In(
           anim: anim,
-          begin: 0.08,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              border: Border.all(color: t.colorScheme.border),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: StatTile(label: 'Anggota', value: '${d.members}', hint: 'aktif')),
-                _divider(t),
-                Expanded(
-                  child: StatTile(
-                    label: 'Main',
-                    value: '$played',
-                    hint: '${d.stats[0]}M ${d.stats[1]}S ${d.stats[2]}K',
-                  ),
-                ),
-                _divider(t),
-                Expanded(
-                  child: StatTile(
-                    label: 'Iuran',
-                    value: fmtMoney(d.income),
-                    color: AppThemes.money(context),
-                    hint: '${d.members - d.unpaid.length}/${d.members} lunas',
-                  ),
-                ),
-              ],
-            ),
+          begin: 0.1,
+          child: StatStrip(
+            children: [
+              StatTile(
+                label: 'Anggota',
+                value: '${d.members}',
+                hint: '${d.teams.length} tim',
+              ),
+              StatTile(
+                label: 'Main',
+                value: '$played',
+                hint: 'laga selesai',
+              ),
+              StatTile(
+                label: 'Iuran',
+                value: fmtMoney(d.income),
+                color: AppThemes.money(context),
+                hint: '${d.members - d.unpaid.length}/${d.members} lunas',
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 6),
         _In(
           anim: anim,
-          begin: 0.12,
+          begin: 0.14,
           child: _CashBlock(cash: d.cash, onChanged: onChanged),
         ),
         if (Auth.canWrite)
           _In(
             anim: anim,
-            begin: 0.16,
+            begin: 0.18,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SectionTitle('Aksi cepat'),
                 _QuickGrid(
                   actions: [
-                    _QuickAction(Icons.person_add_alt, 'Anggota', () async {
-                      if (await showMemberForm(context)) onChanged();
+                    _QuickAction(Icons.shield_outlined, 'Tim', () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TeamsPage()),
+                      );
+                      onChanged();
                     }),
-                    _QuickAction(Icons.event, 'Tanding', () async {
+                    _QuickAction(Icons.event, 'Jadwal', () async {
                       if (await showMatchForm(context)) onChanged();
                     }),
                     _QuickAction(Icons.emoji_events_outlined, 'Turnamen', () async {
@@ -257,8 +367,8 @@ class _MainColumn extends StatelessWidget {
                     _QuickAction(Icons.payments, 'Iuran', () async {
                       if (await showPaymentForm(context)) onChanged();
                     }),
-                    _QuickAction(Icons.stadium_outlined, 'Booking', () async {
-                      if (await showBookingForm(context)) onChanged();
+                    _QuickAction(Icons.person_add_alt, 'Anggota', () async {
+                      if (await showMemberForm(context)) onChanged();
                     }),
                     _QuickAction(Icons.campaign_outlined, 'Umumkan', () async {
                       if (await showAnnouncementForm(context)) onChanged();
@@ -270,34 +380,23 @@ class _MainColumn extends StatelessWidget {
           ),
         _In(
           anim: anim,
-          begin: 0.24,
+          begin: 0.26,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SectionTitle('Pertandingan terakhir'),
-              if (d.recent.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text('Belum ada pertandingan.', style: t.textTheme.muted),
-                )
-              else
-                for (final r in d.recent.take(4))
-                  RowItem(
-                    leading: _Score(match: r),
-                    title: 'vs ${r.opponent}',
-                    subtitle: '${fmtDate(r.playedAt)}${r.venue == null ? '' : ' • ${r.venue}'}',
-                    trailing: _ResultTag(match: r),
-                  ),
-            ],
-          ),
-        ),
-        _In(
-          anim: anim,
-          begin: 0.32,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SectionTitle('Pengumuman'),
+              SectionTitle(
+                'Pengumuman',
+                action: TextButton(
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AnnouncementsPage()),
+                    );
+                    await onChanged();
+                  },
+                  child: const Text('Semua'),
+                ),
+              ),
               if (d.news.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
@@ -315,13 +414,464 @@ class _MainColumn extends StatelessWidget {
       ],
     );
   }
+}
 
-  Widget _divider(ShadThemeData t) => Container(
-        width: 1,
-        height: 44,
-        margin: const EdgeInsets.symmetric(horizontal: 14),
-        color: t.colorScheme.border,
-      );
+/// "3 hari lagi" — jarak yang lebih berguna daripada tanggal mentah saat
+/// turnamen masih dekat.
+String _countdown(DateTime d) {
+  final now = DateTime.now();
+  final days = DateTime(d.year, d.month, d.day)
+      .difference(DateTime(now.year, now.month, now.day))
+      .inDays;
+  if (days < 0) return '${-days} hari lalu';
+  if (days == 0) return 'hari ini';
+  if (days == 1) return 'besok';
+  return '$days hari lagi';
+}
+
+/// Turnamen terdekat sebagai kartu utama beranda.
+class _NextTournamentHero extends StatelessWidget {
+  const _NextTournamentHero({required this.tournament, required this.onChanged});
+
+  final Tournament tournament;
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final when = _countdown(tournament.startsAt);
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF0C1A12) : const Color(0xFFEAF6EE),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.colorScheme.primary.withValues(alpha: dark ? 0.45 : 0.35)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Pill('Turnamen berikutnya', color: t.colorScheme.primary),
+              const Spacer(),
+              if (tournament.venue?.isNotEmpty ?? false) Pill(tournament.venue!),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            tournament.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: t.textTheme.h1.copyWith(fontSize: 32, height: 1.05),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            [
+              fmtDateTime(tournament.startsAt),
+              when,
+              if (tournament.groups > 1) '${tournament.groups} grup',
+            ].join(' • '),
+            style: t.textTheme.small.copyWith(color: t.colorScheme.foreground),
+          ),
+          const SizedBox(height: 14),
+          ShadButton(
+            height: 38,
+            backgroundColor: t.colorScheme.primary,
+            foregroundColor: t.colorScheme.primaryForeground,
+            hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
+            onPressed: () => _open(context),
+            leading: const Icon(Icons.emoji_events_outlined, size: 16),
+            child: const Text('Lihat turnamen'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: tournament)),
+    );
+    await onChanged();
+  }
+}
+
+/// Beranda tanpa turnamen sama sekali: satu ajakan, bukan kotak kosong.
+class _EmptyHero extends StatelessWidget {
+  const _EmptyHero({required this.onChanged});
+
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Panel(
+      highlight: true,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Pill('Belum ada turnamen', color: t.colorScheme.primary),
+          const SizedBox(height: 8),
+          Text('Susun turnamen', style: t.textTheme.h1.copyWith(fontSize: 32)),
+          const SizedBox(height: 4),
+          Text(
+            'Pilih tim klub, bagi ke grup, jadwal round-robin dibuat otomatis.',
+            style: t.textTheme.small,
+          ),
+          if (Auth.canWrite) ...[
+            const SizedBox(height: 14),
+            ShadButton(
+              height: 38,
+              backgroundColor: t.colorScheme.primary,
+              foregroundColor: t.colorScheme.primaryForeground,
+              hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
+              onPressed: () async {
+                if (await showTournamentForm(context)) onChanged();
+              },
+              leading: const Icon(Icons.add, size: 16),
+              child: const Text('Buat turnamen'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Satu baris turnamen — dipakai saat papan skor laga hidup sudah memakai
+/// ruang utama, jadi turnamen berikutnya cukup satu baris.
+class _TournamentRow extends StatelessWidget {
+  const _TournamentRow({required this.tournament, required this.onChanged});
+
+  final Tournament tournament;
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return RowItem(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: tournament)),
+        );
+        await onChanged();
+      },
+      leading: Icon(Icons.emoji_events_outlined, size: 18, color: t.colorScheme.primary),
+      title: tournament.name,
+      // Tanggal pendek + hitung mundur: satu baris di HP. Lokasi ada di detail.
+      subtitle: [
+        '${fmtDay(tournament.startsAt)}, ${fmtShortDate(tournament.startsAt)}',
+        fmtTime(tournament.startsAt),
+        _countdown(tournament.startsAt),
+      ].join(' • '),
+      trailing: Icon(Icons.chevron_right, size: 18, color: t.colorScheme.mutedForeground),
+    );
+  }
+}
+
+/// Turnamen terakhir: ringkas saat tertutup, hasil pertandingannya muncul
+/// setelah diketuk. Di luar tetap tenang; detail hanya saat diminta.
+class _LastTournamentCard extends StatefulWidget {
+  const _LastTournamentCard({
+    required this.tournament,
+    required this.teamNames,
+    required this.gen,
+    required this.onChanged,
+  });
+
+  final Tournament tournament;
+  final Map<int, String> teamNames;
+
+  /// Berubah setiap beranda dimuat ulang, supaya hasil dimuat lagi.
+  final int gen;
+  final Future<void> Function() onChanged;
+
+  @override
+  State<_LastTournamentCard> createState() => _LastTournamentCardState();
+}
+
+class _LastTournamentCardState extends State<_LastTournamentCard> {
+  bool _open = false;
+  late Future<List<TournamentMatch>> _matches;
+
+  @override
+  void initState() {
+    super.initState();
+    // Dimuat sejak awal: kartu tertutup pun sudah bisa menunjukkan "3/6 laga".
+    _matches = TournamentMatch.forTournament(widget.tournament.id);
+  }
+
+  @override
+  void didUpdateWidget(_LastTournamentCard old) {
+    super.didUpdateWidget(old);
+    if (old.tournament.id != widget.tournament.id || old.gen != widget.gen) {
+      _matches = TournamentMatch.forTournament(widget.tournament.id);
+    }
+  }
+
+  void _toggle() => setState(() => _open = !_open);
+
+  Future<void> _openDetail() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: widget.tournament)),
+    );
+    await widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final tour = widget.tournament;
+    // Hijau = turnamen yang benar-benar berjalan atau sudah tuntas; abu-abu
+    // hanya untuk draft. Dulu yang selesai ikut abu-abu sehingga kartu
+    // "Turnamen terakhir" yang penuh hasil terlihat seperti nonaktif.
+    final statusColor = tour.status == 'draft'
+        ? t.colorScheme.mutedForeground
+        : t.colorScheme.primary;
+
+    return Panel(
+      padding: EdgeInsets.zero,
+      onTap: _toggle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.emoji_events_outlined, size: 18, color: statusColor),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        tour.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.textTheme.large.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    // Chevron saja tidak terbaca sebagai "ketuk untuk hasil".
+                    // Di 320px label ini memakan ruang nama turnamen, jadi
+                    // hanya ditampilkan kalau lebarnya cukup.
+                    if (MediaQuery.sizeOf(context).width >= 360) ...[
+                      Text(_open ? 'Tutup' : 'Hasil', style: t.textTheme.small),
+                      const SizedBox(width: 2),
+                    ],
+                    AnimatedRotation(
+                      turns: _open ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: Icon(Icons.expand_more, size: 20, color: t.colorScheme.mutedForeground),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.only(left: 26),
+                  child: Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Pill(Tournament.statusLabels[tour.status] ?? tour.status, color: statusColor),
+                      Text(
+                        [
+                          fmtDate(tour.startsAt),
+                          if (tour.venue?.isNotEmpty ?? false) tour.venue!,
+                          if (tour.groups > 1) '${tour.groups} grup',
+                        ].join(' • '),
+                        style: t.textTheme.small,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.only(left: 26),
+                  child: _Progress(matches: _matches, tournament: tour, color: statusColor),
+                ),
+              ],
+            ),
+          ),
+          if (_open) ...[
+            Divider(height: 1, color: t.colorScheme.border),
+            FutureBuilder<List<TournamentMatch>>(
+              future: _matches,
+              builder: (context, snap) {
+                if (snap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+                    child: Text('Gagal memuat hasil: ${snap.error}', style: t.textTheme.small),
+                  );
+                }
+                final all = snap.data;
+                if (all == null) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Center(
+                      child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+                  );
+                }
+                final done = all.where((m) => m.done).toList();
+                final left = all.length - done.length;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (done.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        child: Text('Belum ada hasil pertandingan.', style: t.textTheme.muted),
+                      )
+                    else ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+                        child: Text('HASIL PERTANDINGAN', style: t.textTheme.h4.copyWith(fontSize: 10.5)),
+                      ),
+                      for (final m in done)
+                        _ResultLine(match: m, names: widget.teamNames),
+                      if (left > 0)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: Text('$left laga belum dimainkan.', style: t.textTheme.small),
+                        ),
+                    ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: _openDetail,
+                          icon: const Icon(Icons.arrow_forward, size: 16),
+                          label: const Text('Buka detail turnamen'),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "3/6 laga" + bar tipis. Sebelum hasil dimuat, hanya teks yang tampil.
+class _Progress extends StatelessWidget {
+  const _Progress({required this.matches, required this.tournament, required this.color});
+
+  final Future<List<TournamentMatch>>? matches;
+  final Tournament tournament;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return FutureBuilder<List<TournamentMatch>>(
+      future: matches,
+      builder: (context, snap) {
+        final all = snap.data;
+        if (all == null) {
+          return Text('${tournament.matchMinutes} menit/laga', style: t.textTheme.small);
+        }
+        final done = all.where((m) => m.done).length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '$done/${all.length} laga',
+                  style: t.textTheme.table.copyWith(fontFeatures: AppThemes.tabular),
+                ),
+                const Spacer(),
+                Text('${tournament.matchMinutes} menit/laga', style: t.textTheme.small),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: all.isEmpty ? 0 : done / all.length,
+                minHeight: 4,
+                backgroundColor: t.colorScheme.muted,
+                color: color,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Satu hasil: jam, tim kiri, skor, tim kanan. Tim pemenang ditebalkan.
+class _ResultLine extends StatelessWidget {
+  const _ResultLine({required this.match, required this.names});
+
+  final TournamentMatch match;
+  final Map<int, String> names;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final homeWin = match.scoreHome! > match.scoreAway!;
+    final awayWin = match.scoreAway! > match.scoreHome!;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.6))),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 40,
+            child: Text(fmtTime(match.kickoff), style: t.textTheme.small),
+          ),
+          Expanded(
+            child: Text(
+              names[match.homeTeamId] ?? '—',
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: homeWin ? FontWeight.w600 : FontWeight.w400,
+                color: homeWin ? t.colorScheme.primary : t.colorScheme.foreground,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 54,
+            child: Text(
+              '${match.scoreHome}–${match.scoreAway}',
+              textAlign: TextAlign.center,
+              style: t.textTheme.h2.copyWith(fontSize: 18, fontFeatures: AppThemes.tabular),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              names[match.awayTeamId] ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: awayWin ? FontWeight.w600 : FontWeight.w400,
+                color: awayWin ? t.colorScheme.primary : t.colorScheme.foreground,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Ringkasan kas bulan ini. Ketuk untuk membuka buku kas lengkap.
@@ -348,22 +898,17 @@ class _CashBlock extends StatelessWidget {
           onTap: () => _open(context),
           borderRadius: BorderRadius.circular(8),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.only(bottom: 6),
+            child: StatStrip(
               children: [
-                Expanded(child: StatTile(label: 'Masuk', value: fmtMoney(cash.income))),
-                _divider(t),
-                Expanded(child: StatTile(label: 'Keluar', value: fmtMoney(cash.expense))),
-                _divider(t),
-                Expanded(
-                  child: StatTile(
-                    label: 'Saldo',
-                    value: fmtMoney(cash.balance),
-                    color: cash.balance < 0
-                        ? AppThemes.bad(context)
-                        : AppThemes.money(context),
-                  ),
+                StatTile(label: 'Masuk', value: fmtMoney(cash.income)),
+                StatTile(label: 'Keluar', value: fmtMoney(cash.expense)),
+                StatTile(
+                  label: 'Saldo',
+                  value: fmtMoney(cash.balance),
+                  color: cash.balance < 0
+                      ? AppThemes.bad(context)
+                      : AppThemes.money(context),
                 ),
               ],
             ),
@@ -388,21 +933,15 @@ class _CashBlock extends StatelessWidget {
     );
     await onChanged();
   }
-
-  Widget _divider(ShadThemeData t) => Container(
-        width: 1,
-        height: 44,
-        margin: const EdgeInsets.symmetric(horizontal: 10),
-        color: t.colorScheme.border,
-      );
 }
 
 /// Kolom kanan di layar lebar: uang dan top skor. Di HP ikut alur utama.
 class _RailColumn extends StatelessWidget {
-  const _RailColumn({required this.data, required this.anim});
+  const _RailColumn({required this.data, required this.anim, required this.onChanged});
 
   final _DashboardData data;
   final Animation<double> anim;
+  final Future<void> Function() onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -433,6 +972,18 @@ class _RailColumn extends StatelessWidget {
             ],
           ),
         ),
+        if (d.standings.any((s) => s.played > 0))
+          _In(
+            anim: anim,
+            begin: 0.14,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SectionTitle('Klasemen'),
+                StandingsTable(standings: d.standings.take(4).toList(), top: 1),
+              ],
+            ),
+          ),
         _In(
           anim: anim,
           begin: 0.2,
@@ -456,29 +1007,75 @@ class _RailColumn extends StatelessWidget {
                       ),
                     ),
                     title: d.scorers[i].name,
-                    subtitle: '${d.scorers[i].assists} assist',
+                    subtitle: d.scorers[i].assists > 0
+                        ? '${d.scorers[i].assists} assist'
+                        : 'pencetak gol',
                     trailing: Text('${d.scorers[i].goals}', style: t.textTheme.h2.copyWith(fontSize: 20)),
                   ),
             ],
           ),
         ),
+        if (d.bookings.isNotEmpty)
+          _In(
+            anim: anim,
+            begin: 0.26,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SectionTitle(
+                  'Sewa lapangan',
+                  action: TextButton(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const BookingsPage()),
+                      );
+                      onChanged();
+                    },
+                    child: const Text('Semua'),
+                  ),
+                ),
+                for (final b in d.bookings.take(3))
+                  RowItem(
+                    title: b.title,
+                    subtitle: fmtDateTime(b.startsAt),
+                    trailing: Text(
+                      fmtMoney(b.cost),
+                      style: t.textTheme.table.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: AppThemes.money(context),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
       ],
     );
   }
 }
 
-/// Laga berikutnya sebagai papan skor, bukan kartu gradien.
+/// Laga yang sedang berlangsung sebagai papan skor: dua nama tim mengapit
+/// skor, seperti papan stadion — bukan kartu gradien. Hanya muncul kalau
+/// memang ada laga hidup; jadwal lain dibaca lewat turnamen.
 class _FixtureStrip extends StatelessWidget {
   const _FixtureStrip({required this.match, required this.onChanged});
 
-  final Match? match;
+  final Match match;
   final Future<void> Function() onChanged;
+
+  Future<void> _open(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => MatchDetailPage(match: match)),
+    );
+    await onChanged();
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     final dark = t.brightness == Brightness.dark;
-    final m = match;
 
     return Container(
       decoration: BoxDecoration(
@@ -487,147 +1084,91 @@ class _FixtureStrip extends StatelessWidget {
         border: Border.all(color: t.colorScheme.primary.withValues(alpha: dark ? 0.45 : 0.35)),
       ),
       child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Pill(
-                      m == null
-                          ? 'Belum ada jadwal'
-                          : (m.status == 'ongoing' ? 'Sedang berlangsung' : 'Laga berikutnya'),
-                      color: t.colorScheme.primary,
-                    ),
-                    const Spacer(),
-                    if (m != null) Pill(m.isHome ? 'Kandang' : 'Tandang'),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      if (m != null)
-                        TextSpan(
-                          text: 'vs ',
-                          style: t.textTheme.h2.copyWith(
-                            fontSize: 24,
-                            color: t.colorScheme.mutedForeground,
-                          ),
-                        ),
-                      TextSpan(text: m == null ? 'Atur jadwal tanding' : m.opponent),
-                    ],
-                  ),
-                  style: t.textTheme.h1.copyWith(fontSize: 38),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  m == null
-                      ? 'Belum ada laga terjadwal. Buat satu supaya anggota tahu.'
-                      : '${fmtDateTime(m.playedAt)}${m.venue == null ? '' : ' • ${m.venue}'}',
-                  style: t.textTheme.small,
-                ),
-                const SizedBox(height: 14),
-                if (Auth.canWrite)
-                  ShadButton(
-                    height: 38,
-                    backgroundColor: t.colorScheme.primary,
-                    foregroundColor: t.colorScheme.primaryForeground,
-                    hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
-                    onPressed: () async {
-                      if (m == null) {
-                        if (await showMatchForm(context)) onChanged();
-                      } else {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => MatchDetailPage(match: m)),
-                        );
-                        await onChanged();
-                      }
-                    },
-                    leading: Icon(m == null ? Icons.add : Icons.scoreboard, size: 16),
-                    child: Text(m == null ? 'Buat jadwal' : 'Isi hasil'),
-                  )
-                else if (m != null)
-                  ShadButton.outline(
-                    height: 38,
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => MatchDetailPage(match: m)),
-                      );
-                      await onChanged();
-                    },
-                    child: const Text('Lihat detail'),
-                  ),
+                Pill('Sedang berlangsung', color: t.colorScheme.primary),
+                const Spacer(),
+                Pill(match.venue ?? 'Internal'),
               ],
             ),
-          ),
-    );
-  }
-}
-
-/// Skor sebagai angka sempit, di depan baris. Sama seperti halaman Tanding.
-class _Score extends StatelessWidget {
-  const _Score({required this.match});
-
-  final Match match;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    if (match.status != 'finished') {
-      return const SizedBox(width: 52, child: Icon(Icons.schedule, size: 17));
-    }
-    final win = match.goalsFor > match.goalsAgainst;
-    final draw = match.goalsFor == match.goalsAgainst;
-    return SizedBox(
-      width: 52,
-      child: Text(
-        '${match.goalsFor}–${match.goalsAgainst}',
-        style: t.textTheme.h1.copyWith(
-          fontSize: 26,
-          color: win
-              ? t.colorScheme.primary
-              : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    match.homeName,
+                    textAlign: TextAlign.end,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.h2.copyWith(fontSize: 22, height: 1.1),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Text(
+                    '${match.goalsFor}–${match.goalsAgainst}',
+                    style: t.textTheme.h1Large.copyWith(
+                      fontSize: 40,
+                      color: t.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    match.awayName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.h2.copyWith(fontSize: 22, height: 1.1),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${fmtDateTime(match.playedAt)}${match.venue == null ? '' : ' • ${match.venue}'}',
+              style: t.textTheme.small,
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                if (Auth.canWrite) ...[
+                  Expanded(
+                    child: ShadButton(
+                      height: 38,
+                      backgroundColor: t.colorScheme.primary,
+                      foregroundColor: t.colorScheme.primaryForeground,
+                      hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
+                      onPressed: () async {
+                        if (!await showFinishMatch(context, match)) return;
+                        // Toast dulu: onChanged() membuang context kartu ini.
+                        if (context.mounted) {
+                          toast(context, 'Hasil tersimpan · poin klasemen diperbarui');
+                        }
+                        await onChanged();
+                      },
+                      leading: const Icon(Icons.check, size: 16),
+                      child: const Text('Selesai'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: ShadButton.outline(
+                    height: 38,
+                    onPressed: () => _open(context),
+                    leading: const Icon(Icons.scoreboard, size: 16),
+                    child: Text(Auth.canWrite ? 'Detail' : 'Lihat detail'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ),
-    );
-  }
-}
-
-class _ResultTag extends StatelessWidget {
-  const _ResultTag({required this.match});
-
-  final Match match;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    if (match.status != 'finished') {
-      return Text(
-        match.status == 'ongoing' ? 'BERLANGSUNG' : 'TERJADWAL',
-        style: t.textTheme.small.copyWith(
-          fontFamily: AppThemes.display,
-          letterSpacing: 1.1,
-          fontWeight: FontWeight.w600,
-        ),
-      );
-    }
-    final win = match.goalsFor > match.goalsAgainst;
-    final draw = match.goalsFor == match.goalsAgainst;
-    return Text(
-      win ? 'MENANG' : (draw ? 'SERI' : 'KALAH'),
-      style: TextStyle(
-        fontFamily: AppThemes.display,
-        fontSize: 11.5,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.1,
-        color: win
-            ? t.colorScheme.primary
-            : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)),
       ),
     );
   }
@@ -711,3 +1252,4 @@ class _QuickAction extends StatelessWidget {
     );
   }
 }
+

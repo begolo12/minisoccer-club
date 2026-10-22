@@ -14,8 +14,10 @@ import 'ui/announcements.dart';
 import 'ui/bookings.dart';
 import 'ui/finance.dart';
 import 'ui/matches.dart';
+import 'ui/members.dart';
 import 'ui/settings.dart';
 import 'ui/stats.dart';
+import 'ui/teams.dart';
 import 'ui/theme.dart';
 import 'ui/tournament.dart';
 import 'ui/users.dart';
@@ -64,32 +66,48 @@ Future<void> main() async {
         locale: const Locale('id', 'ID'),
         supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
         scrollBehavior: const AppScrollBehavior(),
-        home: ShadSonner(child: _Page(name: page)),
+        home: ShadSonner(child: _Page(name: page, id: int.tryParse(q['id'] ?? ''))),
       ),
     ),
   );
 }
 
 class _Page extends StatelessWidget {
-  const _Page({required this.name});
+  const _Page({required this.name, required this.id});
 
   final String name;
+
+  /// `?id=` memilih baris tertentu (tim/laga) supaya halaman yang hanya
+  /// menampilkan data pertama tetap bisa diperiksa untuk baris lain.
+  final int? id;
 
   @override
   Widget build(BuildContext context) {
     return switch (name) {
       'bookings' => const BookingsPage(),
+      'members' => const MembersPage(),
       'finance' => const FinancePage(),
       'announcements' => const AnnouncementsPage(),
       'stats' => const StatsPage(),
       'users' => const UsersPage(),
       'settings' => const SettingsPage(),
       'tournaments' => const TournamentsPage(),
+      'team' => FutureBuilder<List<Team>>(
+          future: Team.all(),
+          builder: (context, s) {
+            final all = s.data ?? const <Team>[];
+            final t = all.where((t) => t.id == id).firstOrNull ?? all.firstOrNull;
+            if (t == null) return const SizedBox.shrink();
+            return TeamDetailPage(team: t);
+          },
+        ),
       'match' => FutureBuilder<List<Match>>(
           future: Match.all(),
           builder: (context, s) {
             final all = s.data ?? const <Match>[];
-            final m = all.where((m) => m.status == 'finished').firstOrNull ?? all.firstOrNull;
+            final m = all.where((m) => m.id == id).firstOrNull ??
+                all.where((m) => m.status == 'finished').firstOrNull ??
+                all.firstOrNull;
             if (m == null) return const SizedBox.shrink();
             return MatchDetailPage(match: m);
           },

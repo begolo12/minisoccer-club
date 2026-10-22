@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../data/models.dart';
+import 'fmt.dart';
 import 'theme.dart';
 
 /// Permukaan datar: satu bidang + garis rambut. Tanpa gradien, tanpa bayangan.
@@ -78,6 +80,54 @@ class Pill extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Label isi daftar (mis. nama pemain dalam satu tim): garis rambut, bukan
+/// chip Material yang berbingkai tebal.
+class TagChip extends StatelessWidget {
+  const TagChip(this.text, {super.key, this.onRemove, this.onTap});
+
+  final String text;
+  final VoidCallback? onRemove;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(7),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(7),
+        onTap: onTap,
+        child: Container(
+          height: 30,
+          padding: EdgeInsets.only(left: 9, right: onRemove == null ? 9 : 5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: t.colorScheme.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(text, style: const TextStyle(fontSize: 12)),
+              if (onRemove != null) ...[
+                const SizedBox(width: 2),
+                InkWell(
+                  onTap: onRemove,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Icon(Icons.close, size: 13, color: t.colorScheme.mutedForeground),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -307,7 +357,17 @@ class StatTile extends StatelessWidget {
           ),
         ),
         if (hint != null)
-          Text(hint!, style: t.textTheme.small.copyWith(fontFeatures: AppThemes.tabular)),
+          // Menyusut, bukan terpotong: "26/31 lunas" tetap terbaca utuh di
+          // layar 320px tanpa menggeser garis pemisah.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              hint!,
+              maxLines: 1,
+              style: t.textTheme.small.copyWith(fontFeatures: AppThemes.tabular),
+            ),
+          ),
       ],
     );
   }
@@ -316,6 +376,9 @@ class StatTile extends StatelessWidget {
 /// Satu baris data: label kiri, nilai kanan, garis pemisah rambut.
 /// Dipakai untuk daftar apa pun yang lebih penting dibandingkan daripada
 /// dibaca sebagai kartu.
+///
+/// [trailing] diletakkan di baris sendiri di bawah judul saat layar sempit,
+/// supaya label panjang (mis. "Tim Elang MENANG") tidak menabrak judul.
 class RowItem extends StatelessWidget {
   const RowItem({
     super.key,
@@ -324,6 +387,7 @@ class RowItem extends StatelessWidget {
     this.trailing,
     this.leading,
     this.onTap,
+    this.trailingBelow = false,
   });
 
   final String title;
@@ -332,28 +396,43 @@ class RowItem extends StatelessWidget {
   final Widget? leading;
   final VoidCallback? onTap;
 
+  /// Pindahkan [trailing] ke bawah judul (dipakai baris skor di HP).
+  final bool trailingBelow;
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
+    final texts = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: t.textTheme.large, maxLines: 1, overflow: TextOverflow.ellipsis),
+        if (subtitle != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(subtitle!, style: t.textTheme.small, maxLines: 2, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+    );
+
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 11),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (leading != null) ...[leading!, const SizedBox(width: 12)],
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: t.textTheme.large, maxLines: 1, overflow: TextOverflow.ellipsis),
-                if (subtitle != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(subtitle!, style: t.textTheme.small, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  ),
-              ],
-            ),
+            child: trailingBelow && trailing != null
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      texts,
+                      const SizedBox(height: 3),
+                      Align(alignment: Alignment.centerLeft, child: trailing!),
+                    ],
+                  )
+                : texts,
           ),
-          if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+          if (!trailingBelow && trailing != null) ...[const SizedBox(width: 12), trailing!],
         ],
       ),
     );
@@ -367,6 +446,446 @@ class RowItem extends StatelessWidget {
     );
   }
 }
+
+/// Satu strip angka ringkasan: beberapa [StatTile] dalam satu bidang,
+/// dipisah garis rambut. Dipakai Beranda, Tanding, Iuran, Kas, Tim, Statistik.
+class StatStrip extends StatelessWidget {
+  const StatStrip({super.key, required this.children, this.padding});
+
+  final List<Widget> children;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Container(
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        border: Border.all(color: t.colorScheme.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0)
+              Container(
+                width: 1,
+                height: 44,
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                color: t.colorScheme.border,
+              ),
+            Expanded(child: children[i]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Tabel klasemen. Satu implementasi untuk Tanding, Tim, dan Turnamen.
+///
+/// Di layar sempit hanya M/SG/POIN yang tampil supaya nama tim tetap terbaca;
+/// kolom W-D-L dan GM/GK muncul saat ada ruang.
+class StandingsTable extends StatelessWidget {
+  const StandingsTable({super.key, required this.standings, this.top = 0});
+
+  final List<Standing> standings;
+
+  /// Berapa baris teratas yang dianggap lolos/ditonjolkan.
+  final int top;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final head = t.textTheme.h4.copyWith(fontSize: 10.5, letterSpacing: 0.8);
+    final cell = t.textTheme.table;
+
+    Widget num(String text, {TextStyle? style}) => Text(
+          text,
+          textAlign: TextAlign.right,
+          style: (style ?? cell).copyWith(fontFeatures: AppThemes.tabular),
+        );
+
+    // Lebar wadah, bukan lebar layar: di rail desktop tabel ini sempit walau
+    // jendelanya lebar.
+    return LayoutBuilder(
+      builder: (context, c) {
+        final wide = c.maxWidth >= 520;
+        return Panel(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  const SizedBox(width: 22),
+                  Expanded(child: Text('TIM', style: head)),
+                  SizedBox(width: 24, child: Text('M', textAlign: TextAlign.right, style: head)),
+                  if (wide) ...[
+                    SizedBox(width: 22, child: Text('W', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 22, child: Text('D', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 22, child: Text('L', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 28, child: Text('GM', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 28, child: Text('GK', textAlign: TextAlign.right, style: head)),
+                  ],
+                  SizedBox(width: 32, child: Text('SG', textAlign: TextAlign.right, style: head)),
+                  SizedBox(width: 34, child: Text('POIN', textAlign: TextAlign.right, style: head)),
+                ],
+              ),
+              for (var i = 0; i < standings.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 22,
+                        child: Text(
+                          '${i + 1}',
+                          style: t.textTheme.h2.copyWith(
+                            fontSize: 16,
+                            color: i < top && standings[i].played > 0
+                                ? t.colorScheme.primary
+                                : t.colorScheme.mutedForeground,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          standings[i].name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: i < top && standings[i].played > 0
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 24, child: num('${standings[i].played}')),
+                      if (wide) ...[
+                        SizedBox(width: 22, child: num('${standings[i].won}')),
+                        SizedBox(width: 22, child: num('${standings[i].drawn}')),
+                        SizedBox(width: 22, child: num('${standings[i].lost}')),
+                        SizedBox(width: 28, child: num('${standings[i].goalsFor}')),
+                        SizedBox(width: 28, child: num('${standings[i].goalsAgainst}')),
+                      ],
+                      SizedBox(
+                        width: 32,
+                        child: num(
+                          standings[i].goalDiff > 0
+                              ? '+${standings[i].goalDiff}'
+                              : '${standings[i].goalDiff}',
+                        ),
+                      ),
+                      SizedBox(
+                        width: 34,
+                        child: num(
+                          '${standings[i].points}',
+                          style: cell.copyWith(
+                            fontFamily: AppThemes.display,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: t.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Baris satu pertandingan: skor di kiri, tim + waktu di tengah, status di
+/// kanan (turun ke bawah di layar sempit).
+class MatchRow extends StatelessWidget {
+  const MatchRow({
+    super.key,
+    required this.match,
+    this.onTap,
+    this.showResult = true,
+    this.onFinish,
+    this.forTeamId,
+  });
+
+  final Match match;
+  final VoidCallback? onTap;
+
+  /// Tampilkan pemenang ("Tim A MENANG") alih-alih status saja.
+  final bool showResult;
+
+  /// Tombol "Selesai" di baris. Null saat laga sudah selesai atau user hanya
+  /// boleh membaca.
+  final VoidCallback? onFinish;
+
+  /// Skor dan hasil dibaca dari sudut pandang tim ini. Di halaman tim, tim
+  /// bisa menjadi tim away — tanpa ini "5–3" dan "KALAH" terbalik.
+  final int? forTeamId;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final finished = match.finished;
+    final asHome = forTeamId == null || match.homeTeamId == forTeamId;
+    final own = asHome ? match.goalsFor : match.goalsAgainst;
+    final opp = asHome ? match.goalsAgainst : match.goalsFor;
+    final win = own > opp;
+    final draw = own == opp;
+    final color = !finished
+        ? (match.ongoing ? t.colorScheme.primary : t.colorScheme.mutedForeground)
+        : (draw
+            ? t.colorScheme.mutedForeground
+            : (win ? t.colorScheme.primary : AppThemes.bad(context)));
+
+    final String status;
+    if (finished) {
+      final points = match.pointsForWinner ?? 0;
+      final result = showResult
+          ? (draw ? 'SERI' : '${win ? match.homeName : match.awayName} MENANG')
+          : (win ? 'MENANG' : (draw ? 'SERI' : 'KALAH'));
+      status = '$result · $points POIN';
+    } else {
+      status = match.ongoing ? 'BERLANGSUNG' : 'AKAN DATANG';
+    }
+
+    return RowItem(
+      onTap: onTap,
+      leading: SizedBox(
+        width: 54,
+        // Laga berjalan juga menampilkan skor sementara: sebelum menekan
+        // "Selesai" skor yang akan dikunci harus terbaca di baris ini.
+        child: finished || match.ongoing
+            ? Text(
+                '$own–$opp',
+                style: t.textTheme.h1.copyWith(fontSize: 24, color: color),
+              )
+            : Icon(Icons.schedule, size: 18, color: color),
+      ),
+      title: forTeamId == null || asHome
+          ? '${match.homeName} vs ${match.awayName}'
+          : '${match.awayName} vs ${match.homeName}',
+      subtitle:
+          '${fmtDateTime(match.playedAt)}${match.venue == null ? '' : ' • ${match.venue}'}',
+      trailingBelow: true,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            status,
+            style: TextStyle(
+              fontFamily: AppThemes.display,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.1,
+              color: color,
+            ),
+          ),
+          // Tombol tetap mendampingi status: "AKAN DATANG" jangan hilang hanya
+          // karena baris ini bisa diselesaikan.
+          if (onFinish != null) ...[
+            const SizedBox(width: 12),
+            ShadButton.outline(
+              size: ShadButtonSize.sm,
+              onPressed: onFinish,
+              leading: const Icon(Icons.check, size: 14),
+              child: const Text('Selesai'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Satu baris skor: nama tim, tombol −, angka besar, tombol +. Disusun
+/// bertumpuk (bukan dua kolom berdampingan) supaya di 390px tombol tidak
+/// berdesakan dengan tanda pemisah skor. Dipakai laga internal & turnamen.
+class ScoreStepper extends StatelessWidget {
+  const ScoreStepper({
+    super.key,
+    required this.name,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String name;
+  final int value;
+
+  /// Null saat menyimpan, supaya skor tidak bisa diubah di tengah request.
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final enabled = onChanged != null;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: t.colorScheme.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: t.textTheme.large.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          _StepButton(
+            icon: Icons.remove,
+            onTap: enabled && value > 0 ? () => onChanged!(value - 1) : null,
+            label: 'Kurangi gol $name',
+          ),
+          SizedBox(
+            width: 48,
+            child: Text(
+              '$value',
+              textAlign: TextAlign.center,
+              style: t.textTheme.h1Large.copyWith(fontSize: 30, color: t.colorScheme.foreground),
+            ),
+          ),
+          _StepButton(
+            icon: Icons.add,
+            onTap: enabled ? () => onChanged!(value + 1) : null,
+            label: 'Tambah gol $name',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ringkasan hasil dari skor sementara: "Tim B menang 1–0 · 3 poin".
+/// Dipakai dialog skor supaya akibat satu gol langsung terbaca.
+String scoreOutcome(String homeName, String awayName, int home, int away) =>
+    home > away
+        ? '$homeName menang $home–$away · 3 poin'
+        : (home < away
+            ? '$awayName menang $away–$home · 3 poin'
+            : 'Seri $home–$away · 1 poin');
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({required this.icon, required this.onTap, required this.label});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final enabled = onTap != null;
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        // Nonaktif tetap bergaris: tombol − yang hilang total terbaca sebagai
+        // tombol rusak, bukan sebagai "skor sudah 0".
+        color: enabled ? t.colorScheme.muted : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+          side: BorderSide(color: enabled ? Colors.transparent : t.colorScheme.border),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(
+              icon,
+              size: 18,
+              color: enabled ? t.colorScheme.foreground : t.colorScheme.mutedForeground,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Deret chip periode bulan. [all] menambahkan pilihan "Semua".
+class PeriodChips extends StatelessWidget {
+  const PeriodChips({
+    super.key,
+    required this.periods,
+    required this.selected,
+    required this.onChanged,
+    this.all = false,
+    this.label,
+  });
+
+  /// Daftar periode `YYYY-MM`, terbaru dulu.
+  final List<String> periods;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+  final bool all;
+  final String Function(String)? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final items = <String?>[if (all) null, ...periods];
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: items.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final p = items[i];
+          final isSelected = p == selected;
+          return Material(
+            color: isSelected ? t.colorScheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(7),
+              onTap: () => onChanged(p),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: isSelected ? t.colorScheme.primary : t.colorScheme.border,
+                  ),
+                ),
+                child: Text(
+                  p == null ? 'Semua' : (label?.call(p) ?? periodLabel(p)),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    color: isSelected
+                        ? t.colorScheme.primaryForeground
+                        : t.colorScheme.mutedForeground,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Enam periode terakhir (bulan ini dan sebelumnya), terbaru dulu.
+List<String> recentPeriods({int count = 6}) => [
+      for (var i = 0; i < count; i++)
+        () {
+          final d = DateTime(DateTime.now().year, DateTime.now().month - i);
+          return '${d.year}-${d.month.toString().padLeft(2, '0')}';
+        }(),
+    ];
 
 /// Bungkus Future + loading/error/retry + pull-to-refresh.
 class AsyncView<T> extends StatelessWidget {

@@ -17,17 +17,40 @@ String fmtTime(DateTime d) =>
 
 String fmtDateTime(DateTime d) => '${fmtDay(d)}, ${fmtDate(d)} • ${fmtTime(d)}';
 
-String fmtMoney(num v) => 'Rp ${fmtNumber(v)}';
+/// Tanggal pendek untuk kolom sempit: "21 Okt".
+String fmtShortDate(DateTime d) {
+  const bulan = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+  return '${d.day} ${bulan[d.month - 1]}';
+}
+
+String fmtMoney(num v) =>
+    v < 0 ? '-Rp ${fmtNumber(v.abs())}' : 'Rp ${fmtNumber(v)}';
+
+/// Nominal ringkas untuk label sempit: "Rp 1,95 jt", "Rp 350 rb".
+String fmtShortMoney(num v) {
+  final a = v.abs();
+  String body;
+  if (a >= 1e9) {
+    body = '${(a / 1e9).toStringAsFixed(2).replaceAll('.', ',')} M';
+  } else if (a >= 1e6) {
+    body = '${(a / 1e6).toStringAsFixed(2).replaceAll('.', ',')} jt';
+  } else if (a >= 1e4) {
+    body = '${(a / 1e3).toStringAsFixed(0)} rb';
+  } else {
+    body = fmtNumber(a);
+  }
+  return v < 0 ? '-Rp $body' : 'Rp $body';
+}
 
 /// Angka ribuan tanpa awalan "Rp" — dipakai di label sempit.
 String fmtNumber(num v) {
-  final s = v.toStringAsFixed(0);
+  final s = v.abs().toStringAsFixed(0);
   final buf = StringBuffer();
   for (var i = 0; i < s.length; i++) {
     if (i > 0 && (s.length - i) % 3 == 0) buf.write('.');
     buf.write(s[i]);
   }
-  return buf.toString();
+  return v < 0 ? '-${buf.toString()}' : buf.toString();
 }
 
 String periodNow() {
@@ -92,6 +115,17 @@ void toast(BuildContext context, String msg) {
 
 /// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
 /// tidak berhenti sebagai exception tanpa penjelasan.
+/// Pesan yang bisa dibaca user. `Exception(...)` dari model adalah teks
+/// Indonesia yang memang ditujukan ke user; prefix kelasnya hanya noise —
+/// "Exception: Sudah ada laga dengan skor" tidak lebih jelas daripada
+/// "Sudah ada laga dengan skor".
+String errText(Object e) => e
+    .toString()
+    .replaceFirst(RegExp(r'^(Exception|ApiException):\s*'), '')
+    .trim();
+
+/// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
+/// tidak berhenti sebagai exception tanpa penjelasan.
 Future<bool> attempt(
   BuildContext context,
   Future<void> Function() action, {
@@ -101,7 +135,7 @@ Future<bool> attempt(
     await action();
     return true;
   } catch (e) {
-    if (context.mounted) toast(context, '$fail: $e');
+    if (context.mounted) toast(context, '$fail: ${errText(e)}');
     return false;
   }
 }

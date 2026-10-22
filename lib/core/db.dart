@@ -71,7 +71,19 @@ class SecureStore {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  static Future<String?> read(String key) => _storage.read(key: key);
+  /// Nilai yang tidak bisa didekripsi (storage rusak, kunci berubah, atau
+  /// sisa versi lama) dibuang supaya app tidak gagal start dengan layar kosong.
+  static Future<String?> read(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (_) {
+      try {
+        await _storage.delete(key: key);
+      } catch (_) {}
+      return null;
+    }
+  }
+
   static Future<void> write(String key, String value) => _storage.write(key: key, value: value);
   static Future<void> delete(String key) => _storage.delete(key: key);
 }

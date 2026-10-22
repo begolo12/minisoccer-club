@@ -16,11 +16,11 @@ class MatchesPage extends StatefulWidget {
 }
 
 class _MatchesPageState extends State<MatchesPage> {
-  late Future<(List<Match>, List<int>)> _future;
+  late Future<(List<Match>, List<int>, List<Standing>)> _future;
 
-  Future<(List<Match>, List<int>)> _load() async {
-    final r = await Future.wait([Match.all(), Match.stats()]);
-    return (r[0] as List<Match>, r[1] as List<int>);
+  Future<(List<Match>, List<int>, List<Standing>)> _load() async {
+    final r = await Future.wait([Match.all(), Match.stats(), Team.standings()]);
+    return (r[0] as List<Match>, r[1] as List<int>, r[2] as List<Standing>);
   }
 
   @override
@@ -37,31 +37,36 @@ class _MatchesPageState extends State<MatchesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Tanding',
-      subtitle: 'Jadwal & hasil pertandingan',
+      subtitle: 'Laga internal antar tim klub',
       actions: [
         if (Auth.canWrite)
-          iconAction(context, Icons.add, () async {
-            if (await showMatchForm(context)) _reload();
-          }, tooltip: 'Jadwal baru'),
+          ShadButton.outline(
+            size: ShadButtonSize.sm,
+            onPressed: () async {
+              if (await showMatchForm(context)) _reload();
+            },
+            leading: const Icon(Icons.add, size: 15),
+            child: const Text('Jadwal'),
+          ),
       ],
-      child: AsyncView<(List<Match>, List<int>)>(
+      child: AsyncView<(List<Match>, List<int>, List<Standing>)>(
         future: _future,
         onRefresh: _reload,
         builder: (data) {
           final matches = data.$1;
           final stats = data.$2;
-          if (matches.isEmpty) {
+          final standings = data.$3;
+          if (matches.isEmpty && standings.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 const SizedBox(height: 80),
                 EmptyState(
                   icon: Icons.sports_soccer_outlined,
-                  title: 'Belum ada pertandingan',
-                  message: 'Buat jadwal tanding pertama.',
+                  title: 'Belum ada tanding',
+                  message: 'Buat tim dulu, lalu jadwalkan laga antar tim klub.',
                   actionLabel: Auth.canWrite ? 'Buat jadwal' : null,
                   onAction: Auth.canWrite
                       ? () async {
@@ -72,54 +77,30 @@ class _MatchesPageState extends State<MatchesPage> {
               ],
             );
           }
-          final upcoming = matches.where((m) => m.status != 'finished').toList()
+          final live = matches.where((m) => m.status != 'finished').toList()
             ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
-          final finished = matches.where((m) => m.status == 'finished').toList();
-          final hasOngoing = upcoming.any((m) => m.status == 'ongoing');
+          final done = matches.where((m) => m.status == 'finished').toList();
+          final ongoing = live.where((m) => m.ongoing).toList();
+          final scheduled = live.where((m) => !m.ongoing).toList();
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  border: Border.all(color: t.colorScheme.border),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: StatTile(
-                        label: 'Menang',
-                        value: '${stats[0]}',
-                        color: t.colorScheme.primary,
-                      ),
-                    ),
-                    _rule(t),
-                    Expanded(child: StatTile(label: 'Seri', value: '${stats[1]}')),
-                    _rule(t),
-                    Expanded(
-                      child: StatTile(
-                        label: 'Kalah',
-                        value: '${stats[2]}',
-                        color: AppThemes.bad(context),
-                      ),
-                    ),
-                    _rule(t),
-                    Expanded(child: StatTile(label: 'Gol', value: '${stats[3]}')),
-                    _rule(t),
-                    Expanded(child: StatTile(label: 'Bobol', value: '${stats[4]}')),
-                  ],
-                ),
-              ),
-              if (upcoming.isNotEmpty) ...[
-                SectionTitle(hasOngoing ? 'Berlangsung & akan datang' : 'Akan datang'),
-                ...upcoming.map((m) => _MatchTile(match: m, onChanged: _reload)),
-                const SizedBox(height: 18),
+              _StatsStrip(stats: stats),
+              if (ongoing.isNotEmpty) ...[
+                const SectionTitle('Sedang berlangsung'),
+                for (final m in ongoing) _MatchTile(match: m, onChanged: _reload),
               ],
-              if (finished.isNotEmpty) ...[
-                const SectionTitle('Selesai'),
-                ...finished.map((m) => _MatchTile(match: m, onChanged: _reload)),
+              if (scheduled.isNotEmpty) ...[
+                const SectionTitle('Jadwal berikutnya'),
+                for (final m in scheduled) _MatchTile(match: m, onChanged: _reload),
+              ],
+              if (standings.isNotEmpty) ...[
+                const SectionTitle('Klasemen tim'),
+                StandingsTable(standings: standings, top: 1),
+              ],
+              if (done.isNotEmpty) ...[
+                const SectionTitle('Riwayat hasil'),
+                for (final m in done) _MatchTile(match: m, onChanged: _reload),
               ],
             ],
           );
@@ -129,12 +110,44 @@ class _MatchesPageState extends State<MatchesPage> {
   }
 }
 
-Widget _rule(ShadThemeData t) => Container(
-      width: 1,
-      height: 40,
-      margin: const EdgeInsets.symmetric(horizontal: 8),
-      color: t.colorScheme.border,
+/// Ringkasan seluruh laga internal. W/D/L sengaja tidak ditampilkan: semua
+/// laga mempertemukan dua tim klub, jadi setiap laga selalu punya pemenang
+/// dan pecundang — "2M 1S 1K" di level klub tidak berarti apa-apa.
+class _StatsStrip extends StatelessWidget {
+  const _StatsStrip({required this.stats});
+
+  final List<int> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final played = stats[0] + stats[1] + stats[2];
+    // `goals_for` = gol tim home, `goals_against` = gol tim away. Keduanya
+    // gol klub di laga internal, jadi total gol adalah jumlahnya.
+    final goals = stats[3] + stats[4];
+    final perMatch = played == 0 ? null : goals / played;
+    return StatStrip(
+      children: [
+        StatTile(
+          label: 'Main',
+          value: '$played',
+          hint: 'laga selesai',
+        ),
+        StatTile(
+          label: 'Gol',
+          value: '$goals',
+          hint: perMatch == null ? 'belum ada laga' : '${perMatch.toStringAsFixed(1)} per laga',
+        ),
+        StatTile(
+          label: 'Seri',
+          value: '${stats[1]}',
+          hint: played == 0 ? 'belum ada laga' : '${(stats[1] * 100 / played).round()}% laga',
+          color: t.colorScheme.primary,
+        ),
+      ],
     );
+  }
+}
 
 class _MatchTile extends StatelessWidget {
   const _MatchTile({required this.match, required this.onChanged});
@@ -144,51 +157,22 @@ class _MatchTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    final finished = match.status == 'finished';
-    final win = finished && match.goalsFor > match.goalsAgainst;
-    final draw = finished && match.goalsFor == match.goalsAgainst;
-
-    return RowItem(
+    return MatchRow(
+      match: match,
+      // Hasil bisa dikunci langsung dari daftar: satu ketukan ke dialog skor,
+      // tanpa membuka detail laga dulu.
+      onFinish: Auth.canWrite && !match.finished
+          ? () async {
+              if (!await showFinishMatch(context, match)) return;
+              // Toast dulu, baru muat ulang: reload membuang context baris ini.
+              if (context.mounted) toast(context, 'Hasil tersimpan · poin klasemen diperbarui');
+              await onChanged();
+            }
+          : null,
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => MatchDetailPage(match: match)),
       ).then((_) => onChanged()),
-      leading: finished
-          ? SizedBox(
-              width: 52,
-              child: Text(
-                '${match.goalsFor}–${match.goalsAgainst}',
-                style: t.textTheme.h1.copyWith(
-                  fontSize: 26,
-                  color: win
-                      ? t.colorScheme.primary
-                      : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)),
-                ),
-              ),
-            )
-          : const SizedBox(
-              width: 52,
-              child: Icon(Icons.schedule, size: 18),
-            ),
-      title: 'vs ${match.opponent}',
-      subtitle: '${fmtDateTime(match.playedAt)}${match.venue != null ? " • ${match.venue}" : ""}',
-      trailing: Text(
-        finished
-            ? (win ? 'MENANG' : (draw ? 'SERI' : 'KALAH'))
-            : (match.status == 'ongoing'
-                ? 'BERLANGSUNG'
-                : (match.isHome ? 'KANDANG' : 'TANDANG')),
-        style: TextStyle(
-          fontFamily: AppThemes.display,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.2,
-          color: finished
-              ? (win ? t.colorScheme.primary : (draw ? t.colorScheme.mutedForeground : AppThemes.bad(context)))
-              : (match.status == 'ongoing' ? t.colorScheme.primary : t.colorScheme.mutedForeground),
-        ),
-      ),
     );
   }
 }
@@ -206,6 +190,10 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
   late Future<List<MatchEvent>> _events;
   late Future<List<MatchSession>> _sessions;
 
+  /// Salinan laga yang selalu ikut diperbarui. Tanpa ini header tetap
+  /// menampilkan skor saat halaman dibuka, walau sesi baru menaikkan totalnya.
+  late Match _match = widget.match;
+
   @override
   void initState() {
     super.initState();
@@ -216,20 +204,49 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
   Future<void> _reload() async {
     final e = MatchEvent.forMatch(widget.match.id);
     final s = MatchSession.forMatch(widget.match.id);
+    final fresh = Match.byId(widget.match.id);
     setState(() {
       _events = e;
       _sessions = s;
     });
-    await Future.wait([e, s]);
+    final results = await Future.wait([e, s, fresh]);
+    if (!mounted) return;
+    setState(() {
+      final m = results[2] as Match?;
+      if (m != null) _match = m;
+      _events = Future.value(results[0] as List<MatchEvent>);
+      _sessions = Future.value(results[1] as List<MatchSession>);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    final m = widget.match;
+    final m = _match;
     final finished = m.status == 'finished';
     return PageScaffold(
-      title: 'vs ${m.opponent}',
+      title: '${m.homeName} vs ${m.awayName}',
+      // Ubah jadwal & hapus ada di kepala halaman, bukan di dalam kartu skor:
+      // di 320px dua tombol ikon tambahan di kartu membuat baris aksi pecah
+      // ke baris kedua sendirian.
+      actions: [
+        if (Auth.canWrite)
+          iconAction(context, Icons.edit_outlined, () async {
+            if (await showMatchForm(context, match: m)) {
+              if (!context.mounted) return;
+              await _reload();
+            }
+          }, tooltip: 'Ubah jadwal'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.delete_outline, () async {
+            if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
+              if (!context.mounted) return;
+              if (await attempt(context, () => Match.delete(m.id), fail: 'Gagal menghapus')) {
+                if (context.mounted) Navigator.pop(context, true);
+              }
+            }
+          }, tooltip: 'Hapus pertandingan'),
+      ],
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
         children: [
@@ -244,54 +261,109 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
               children: [
                 Text('${fmtDateTime(m.playedAt)}${m.venue != null ? " • ${m.venue}" : ""}',
                     textAlign: TextAlign.center, style: t.textTheme.small),
-                const SizedBox(height: 10),
-                Text(
-                  finished ? '${m.goalsFor}–${m.goalsAgainst}' : 'VS',
-                  style: t.textTheme.h1Large.copyWith(
-                    fontSize: 56,
-                    color: finished
-                        ? (m.goalsFor > m.goalsAgainst
-                            ? t.colorScheme.primary
-                            : (m.goalsFor == m.goalsAgainst
-                                ? t.colorScheme.mutedForeground
-                                : AppThemes.bad(context)))
-                        : t.colorScheme.foreground,
-                  ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        m.homeName,
+                        textAlign: TextAlign.end,
+                        maxLines: 2,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        finished || m.ongoing ? '${m.goalsFor}–${m.goalsAgainst}' : 'VS',
+                        style: t.textTheme.h1Large.copyWith(
+                          fontSize: 44,
+                          color: finished
+                              ? (m.goalsFor > m.goalsAgainst
+                                  ? t.colorScheme.primary
+                                  : (m.goalsFor == m.goalsAgainst
+                                      ? t.colorScheme.mutedForeground
+                                      : AppThemes.bad(context)))
+                              : (m.ongoing
+                                  ? t.colorScheme.primary
+                                  : t.colorScheme.foreground),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        m.awayName,
+                        maxLines: 2,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   finished
                       ? (m.goalsFor > m.goalsAgainst
-                          ? 'Menang'
-                          : (m.goalsFor == m.goalsAgainst ? 'Seri' : 'Kalah'))
+                          ? '${m.homeName} menang'
+                          : (m.goalsFor == m.goalsAgainst ? 'Seri' : '${m.awayName} menang'))
                       : (m.status == 'ongoing' ? 'Sedang berlangsung' : 'Belum dimainkan'),
                   style: t.textTheme.muted,
                 ),
                 const SizedBox(height: 16),
                 if (Auth.canWrite)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ShadButton.outline(
-                          onPressed: () async {
-                            if (await showFinishMatch(context, m)) {
-                              if (!context.mounted) return;
-                              Navigator.pop(context, true);
-                            }
-                          },
-                          child: Text(finished ? 'Ubah skor' : 'Isi hasil'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      iconAction(context, Icons.delete_outline, () async {
-                        if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
-                          if (!context.mounted) return;
-                          if (await attempt(context, () => Match.delete(m.id), fail: 'Gagal menghapus')) {
-                            if (context.mounted) Navigator.pop(context, true);
-                          }
-                        }
-                      }, tooltip: 'Hapus pertandingan'),
-                    ],
+                  FutureBuilder<List<MatchSession>>(
+                    future: _sessions,
+                    builder: (context, snap) {
+                      final hasSessions = (snap.data ?? const <MatchSession>[]).isNotEmpty;
+                      return Column(
+                        children: [
+                          // `Wrap`, bukan `Row`: di 320px tombol "Selesai"
+                          // + "Mulai" + dua ikon tidak muat satu baris dan
+                          // tombol hapus terpotong tepi kartu.
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              // Tombol tetap ada walau skor berasal dari sesi:
+                              // menyelesaikan laga tidak boleh memaksa user
+                              // kembali ke daftar dulu.
+                              ShadButton.outline(
+                                onPressed: () async {
+                                  if (await showFinishMatch(context, m)) {
+                                    if (!context.mounted) return;
+                                    Navigator.pop(context, true);
+                                  }
+                                },
+                                child: Text(finished ? 'Ubah hasil' : 'Selesaikan'),
+                              ),
+                              if (m.status == 'scheduled')
+                                // Papan skor beranda hanya menampilkan laga
+                                // `ongoing`; tanpa tombol ini laga 0–0 yang
+                                // baru dimulai tidak bisa tampil sebagai laga
+                                // hidup sebelum ada gol.
+                                ShadButton(
+                                  onPressed: () async {
+                                    if (await attempt(context, m.start, fail: 'Gagal memulai')) {
+                                      await _reload();
+                                    }
+                                  },
+                                  leading: const Icon(Icons.play_arrow_rounded, size: 16),
+                                  child: const Text('Mulai'),
+                                ),
+                            ],
+                          ),
+                          if (hasSessions)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                'Skor = jumlah ${snap.data!.length} sesi di bawah',
+                                style: t.textTheme.small,
+                              ),
+                            ),
+                        ],
+                      );
+                    },
                   ),
               ],
             ),
@@ -368,18 +440,29 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
           ),
           const SizedBox(height: 20),
           SectionTitle(
+            // Judul menyebut sendiri bahwa ini bukan sumber skor: 2 gol di
+            // daftar bawah tidak menggeser papan skor, karena skor laga
+            // dihitung dari sesi. Tanpa keterangan ini angkanya terlihat
+            // seperti bug.
             'Catatan pertandingan',
             action: Auth.canWrite
                 ? ShadButton.ghost(
                     size: ShadButtonSize.sm,
                     onPressed: () async {
-                      if (await _addEvent(context)) _reload();
+                      if (await _openEventPad(context)) _reload();
                     },
                     child: const Row(
-                      children: [Icon(Icons.add, size: 14), SizedBox(width: 4), Text('Tambah')],
+                      children: [Icon(Icons.touch_app_outlined, size: 14), SizedBox(width: 4), Text('Catat')],
                     ),
                   )
                 : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              'Catatan pemain (gol/assist/kartu). Skor laga tetap dari sesi.',
+              style: t.textTheme.small,
+            ),
           ),
           AsyncView<List<MatchEvent>>(
             future: _events,
@@ -446,8 +529,10 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
         (existing.isEmpty
             ? 1
             : existing.map((s) => s.sessionNo).reduce((a, b) => a > b ? a : b) + 1);
-    final home = TextEditingController(text: '${session?.scoreHome ?? 0}');
-    final away = TextEditingController(text: '${session?.scoreAway ?? 0}');
+    // Stepper yang sama dengan dialog hasil laga: memasukkan skor di aplikasi
+    // ini selalu lewat tombol −/+, tidak pernah keyboard angka.
+    var home = session?.scoreHome ?? 0;
+    var away = session?.scoreAway ?? 0;
     var saving = false;
 
     final ok = await showShadDialog<bool>(
@@ -488,14 +573,14 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                           id: session?.id,
                           matchId: widget.match.id,
                           sessionNo: nextNo,
-                          home: int.tryParse(home.text) ?? 0,
-                          away: int.tryParse(away.text) ?? 0,
+                          home: home,
+                          away: away,
                         );
                         if (ctx.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (ctx.mounted) {
                           setLocal(() => saving = false);
-                          toast(ctx, 'Gagal simpan: $e');
+                          toast(ctx, 'Gagal simpan: ${errText(e)}');
                         }
                       }
                     },
@@ -505,27 +590,22 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: ShadInput(
-                      controller: home,
-                      placeholder: const Text('Skor kita'),
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
-                    child: Text('—'),
-                  ),
-                  Expanded(
-                    child: ShadInput(
-                      controller: away,
-                      placeholder: const Text('Skor lawan'),
-                      keyboardType: TextInputType.number,
-                    ),
-                  ),
-                ],
+              ScoreStepper(
+                name: _match.homeName,
+                value: home,
+                onChanged: saving ? null : (v) => setLocal(() => home = v),
+              ),
+              const SizedBox(height: 8),
+              ScoreStepper(
+                name: _match.awayName,
+                value: away,
+                onChanged: saving ? null : (v) => setLocal(() => away = v),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                scoreOutcome(_match.homeName, _match.awayName, home, away),
+                textAlign: TextAlign.center,
+                style: ShadTheme.of(ctx).textTheme.small,
               ),
             ],
           ),
@@ -535,78 +615,272 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
     return ok ?? false;
   }
 
-  Future<bool> _addEvent(BuildContext context) async {
-    final members = await Member.all();
+  /// Papan catat cepat: daftar pemain kedua tim dengan empat tombol per
+  /// baris (gol/assist/kuning/merah). Satu ketukan = satu catatan; dialog
+  /// tetap terbuka supaya rentetan kejadian dalam satu laga tidak perlu
+  /// membuka dialog berkali-kali.
+  Future<bool> _openEventPad(BuildContext context) async {
+    final players = await Team.players();
+    final all = await Member.all(activeOnly: true);
     if (!context.mounted) return false;
-    if (members.isEmpty) {
+    if (all.isEmpty) {
       toast(context, 'Tambah anggota dulu');
       return false;
     }
-    var memberId = members.first.id;
-    var type = 'goal';
-    final minute = TextEditingController();
-    var saving = false;
+
+    final m = _match;
+    final groups = <(String, List<Member>)>[];
+    final home = m.homeTeamId == null ? null : players[m.homeTeamId];
+    final away = m.awayTeamId == null ? null : players[m.awayTeamId];
+    if (home != null && home.isNotEmpty) groups.add((m.homeName, home));
+    if (away != null && away.isNotEmpty) groups.add((m.awayName, away));
+    if (groups.isEmpty) groups.add(('Pemain', all));
+
+    var minute = '';
+    var recorded = 0;
+    // Satu tim sekaligus: 8 pemain sudah memenuhi tinggi dialog, dan daftar
+    // gabungan dua tim menuntut scroll di dalam dialog — di HP itu gesekan
+    // yang tidak perlu saat mencatat sambil menonton.
+    var group = 0;
 
     final ok = await showShadDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => ShadDialog(
-          title: const Text('Catatan baru'),
-          actions: [
-            ShadButton.outline(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-            ShadButton(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      setLocal(() => saving = true);
-                      try {
-                        await MatchEvent.insert(
-                          matchId: widget.match.id,
-                          memberId: memberId,
-                          minute: int.tryParse(minute.text),
-                          type: type,
-                        );
-                        if (ctx.mounted) Navigator.pop(ctx, true);
-                      } catch (e) {
-                        if (ctx.mounted) toast(ctx, 'Gagal: $e');
-                      } finally {
-                        if (ctx.mounted) setLocal(() => saving = false);
-                      }
-                    },
-              child: const Text('Simpan'),
+        builder: (ctx, setLocal) {
+          Future<void> add(Member member, String type) async {
+            try {
+              await MatchEvent.insert(
+                matchId: m.id,
+                memberId: member.id,
+                minute: int.tryParse(minute),
+                type: type,
+              );
+              setLocal(() => recorded++);
+            } catch (e) {
+              if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
+            }
+          }
+
+          final t = ShadTheme.of(ctx);
+          return ShadDialog(
+            title: const Text('Catat kejadian'),
+            description: Text(
+              'Ketuk tombol di baris pemain. Menit opsional — kosongkan kalau '
+              'tidak dicatat.',
             ),
-          ],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ShadSelect<int>(
-                placeholder: const Text('Pemain'),
-                initialValue: memberId,
-                options: members.map((m) => ShadOption(value: m.id, child: Text(m.name))).toList(),
-                selectedOptionBuilder: (c, v) => Text(members.firstWhere((m) => m.id == v).name),
-                onChanged: (v) => setLocal(() => memberId = v ?? memberId),
-              ),
-              const SizedBox(height: 10),
-              ShadSelect<String>(
-                placeholder: const Text('Jenis'),
-                initialValue: type,
-                options: MatchEvent.typeLabels.entries
-                    .map((e) => ShadOption(value: e.key, child: Text(e.value)))
-                    .toList(),
-                selectedOptionBuilder: (c, v) => Text(MatchEvent.typeLabels[v] ?? v),
-                onChanged: (v) => setLocal(() => type = v ?? type),
-              ),
-              const SizedBox(height: 10),
-              ShadInput(
-                controller: minute,
-                placeholder: const Text('Menit (opsional)'),
-                keyboardType: TextInputType.number,
+            actions: [
+              ShadButton(
+                onPressed: () => Navigator.pop(ctx, recorded > 0),
+                child: Text(recorded == 0 ? 'Tutup' : 'Selesai ($recorded)'),
               ),
             ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 96,
+                      child: ShadInput(
+                        placeholder: const Text('Menit'),
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) => minute = v,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        recorded == 0
+                            ? 'Belum ada catatan baru'
+                            : '$recorded catatan tersimpan',
+                        style: t.textTheme.small.copyWith(
+                          color: recorded == 0
+                              ? t.colorScheme.mutedForeground
+                              : t.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Catatan ini tidak mengubah skor — skor laga diisi lewat sesi.',
+                  style: t.textTheme.small.copyWith(color: t.colorScheme.mutedForeground),
+                ),
+                if (groups.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (var i = 0; i < groups.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        Expanded(
+                          child: _PadTab(
+                            label: groups[i].$1,
+                            selected: group == i,
+                            onTap: () => setLocal(() => group = i),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 8),
+                // Daftar satu tim (maks 8 pemain) muat tanpa scroll; kalau
+                // timnya lebih besar, list ini tetap bisa digeser.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 330),
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final p in groups[group].$2)
+                          _EventPadRow(member: p, onTap: (type) => add(p, type)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    return ok ?? false;
+  }
+}
+
+/// Satu baris papan catat: nama pemain + empat tombol kejadian.
+///
+/// Tombol dibuat 34px dan ikonnya berbeda bentuk (bola, tangan, kotak) supaya
+/// bisa ditekan cepat tanpa membaca, termasuk saat mencatat sambil menonton.
+class _EventPadRow extends StatelessWidget {
+  const _EventPadRow({required this.member, required this.onTap});
+
+  final Member member;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              member.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+          _PadButton(
+            icon: Icons.sports_soccer,
+            color: t.colorScheme.primary,
+            label: 'Gol ${member.name}',
+            onTap: () => onTap('goal'),
+          ),
+          _PadButton(
+            icon: Icons.handshake_outlined,
+            color: t.colorScheme.mutedForeground,
+            label: 'Assist ${member.name}',
+            onTap: () => onTap('assist'),
+          ),
+          _PadButton(
+            icon: Icons.square_rounded,
+            color: const Color(0xFFFACC15),
+            label: 'Kartu kuning ${member.name}',
+            onTap: () => onTap('yellow'),
+          ),
+          _PadButton(
+            icon: Icons.square_rounded,
+            color: t.colorScheme.destructive,
+            label: 'Kartu merah ${member.name}',
+            onTap: () => onTap('red'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PadButton extends StatelessWidget {
+  const _PadButton({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 34,
+              height: 34,
+              child: Icon(icon, size: 17, color: color),
+            ),
           ),
         ),
       ),
     );
-    return ok ?? false;
+  }
+}
+
+/// Tab pemilih tim di papan catat. Lebar penuh, dua tombol saja.
+class _PadTab extends StatelessWidget {
+  const _PadTab({required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Material(
+      color: selected ? t.colorScheme.primary : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: selected ? t.colorScheme.primary : t.colorScheme.border,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          height: 34,
+          child: Center(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? t.colorScheme.primaryForeground : t.colorScheme.foreground,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

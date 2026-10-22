@@ -47,6 +47,7 @@ class _UsersPageState extends State<UsersPage> {
     }
     return PageScaffold(
       title: 'Pengguna',
+      subtitle: 'Akun & hak akses',
       actions: [
         iconAction(context, Icons.person_add_alt, () async {
           if (await _form(context)) _reload();
@@ -131,7 +132,7 @@ class _UsersPageState extends State<UsersPage> {
                 await AppUser.setPassword(u.id, ctrl.text);
                 if (ctx.mounted) Navigator.pop(ctx, true);
               } catch (e) {
-                if (ctx.mounted) toast(ctx, 'Gagal: $e');
+                if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
               }
             },
             child: const Text('Simpan'),
@@ -183,7 +184,7 @@ class _UsersPageState extends State<UsersPage> {
                       } catch (e) {
                         if (ctx.mounted) {
                           setLocal(() => saving = false);
-                          toast(ctx, 'Gagal simpan: $e');
+                          toast(ctx, 'Gagal simpan: ${errText(e)}');
                         }
                       }
                     },

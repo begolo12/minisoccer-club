@@ -4,8 +4,8 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
-import 'theme.dart';
 import 'forms.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 class BookingsPage extends StatefulWidget {
@@ -32,7 +32,6 @@ class _BookingsPageState extends State<BookingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Booking lapangan',
       subtitle: 'Sewa lapangan & biaya',
@@ -65,93 +64,135 @@ class _BookingsPageState extends State<BookingsPage> {
               ],
             );
           }
-          final total = items.where((b) => b.status != 'canceled').fold<double>(0, (s, b) => s + b.cost);
+          final now = DateTime.now();
+          final active = items.where((b) => b.status != 'canceled').toList();
+          final total = active.fold<double>(0, (s, b) => s + b.cost);
+          final next = items
+              .where((b) => b.status == 'booked' && b.startsAt.isAfter(now))
+              .toList()
+            ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+          final past = items.where((b) => !next.contains(b)).toList();
+
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
-              StatTile(
-                label: 'Total biaya sewa',
-                value: fmtMoney(total),
-                color: AppThemes.money(context),
+              StatStrip(
+                children: [
+                  StatTile(
+                    label: 'Total sewa',
+                    value: fmtMoney(total),
+                    hint: '${active.length} booking',
+                    color: AppThemes.money(context),
+                  ),
+                  StatTile(
+                    label: 'Berikutnya',
+                    value: next.isEmpty ? '—' : fmtShortDate(next.first.startsAt),
+                    hint: next.isEmpty ? 'belum ada' : fmtTime(next.first.startsAt),
+                  ),
+                ],
               ),
-              for (final b in items)
-                Container(
+              if (next.isNotEmpty) ...[
+                const SectionTitle('Akan datang'),
+                for (final b in next) _BookingRow(booking: b, onChanged: _reload, upcoming: true),
+              ],
+              const SectionTitle('Riwayat'),
+              if (past.isEmpty)
+                Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7)),
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              b.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.textTheme.large,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${fmtDateTime(b.startsAt)} • ${b.durationMin} menit'
-                              ' • ${Booking.statusLabels[b.status] ?? b.status}',
-                              style: t.textTheme.small,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            fmtMoney(b.cost),
-                            style: t.textTheme.table.copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: AppThemes.money(context),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          if (Auth.canWrite)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (b.status == 'booked') ...[
-                                  iconAction(context, Icons.check, () async {
-                                    if (await attempt(context, () => b.setStatus('done'), fail: 'Gagal menyimpan')) {
-                                      _reload();
-                                    }
-                                  }, tooltip: 'Tandai selesai'),
-                                  const SizedBox(width: 6),
-                                  iconAction(context, Icons.block, () async {
-                                    if (await attempt(context, () => b.setStatus('canceled'), fail: 'Gagal menyimpan')) {
-                                      _reload();
-                                    }
-                                  }, tooltip: 'Batalkan'),
-                                  const SizedBox(width: 6),
-                                ],
-                                iconAction(context, Icons.delete_outline, () async {
-                                  if (await confirm(context, 'Hapus booking?', b.title)) {
-                                    if (!context.mounted) return;
-                                    if (await attempt(context, () => Booking.delete(b.id), fail: 'Gagal menghapus')) {
-                                      _reload();
-                                    }
-                                  }
-                                }, tooltip: 'Hapus'),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                  child: Text('Belum ada booking sebelumnya.', style: ShadTheme.of(context).textTheme.muted),
+                )
+              else
+                for (final b in past) _BookingRow(booking: b, onChanged: _reload),
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _BookingRow extends StatelessWidget {
+  const _BookingRow({required this.booking, required this.onChanged, this.upcoming = false});
+
+  final Booking booking;
+  final Future<void> Function() onChanged;
+  final bool upcoming;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final b = booking;
+    final canceled = b.status == 'canceled';
+    final statusColor = switch (b.status) {
+      'done' => t.colorScheme.mutedForeground,
+      'canceled' => AppThemes.bad(context),
+      _ => upcoming ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+    };
+
+    return RowItem(
+      leading: SizedBox(
+        width: 52,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              fmtShortDate(b.startsAt),
+              maxLines: 1,
+              style: t.textTheme.small.copyWith(
+                fontFeatures: AppThemes.tabular,
+                color: statusColor,
+              ),
+            ),
+            Text(
+              fmtTime(b.startsAt),
+              maxLines: 1,
+              style: t.textTheme.h1.copyWith(fontSize: 21, color: statusColor),
+            ),
+          ],
+        ),
+      ),
+      title: b.title,
+      subtitle: '${b.durationMin} menit • ${Booking.statusLabels[b.status] ?? b.status}'
+          '${b.cost <= 0 ? '' : (b.inCash ? ' • sudah di kas' : ' • belum di kas')}',
+      trailingBelow: true,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            fmtMoney(b.cost),
+            style: t.textTheme.table.copyWith(
+              fontWeight: FontWeight.w600,
+              color: canceled ? t.colorScheme.mutedForeground : AppThemes.money(context),
+              decoration: canceled ? TextDecoration.lineThrough : null,
+            ),
+          ),
+          if (Auth.canWrite && b.status == 'booked') ...[
+            const SizedBox(width: 8),
+            iconAction(context, Icons.check, () async {
+              if (await attempt(context, () => b.setStatus('done'), fail: 'Gagal menyimpan')) {
+                await onChanged();
+              }
+            }, tooltip: 'Tandai selesai'),
+            const SizedBox(width: 6),
+            iconAction(context, Icons.block, () async {
+              if (await attempt(context, () => b.setStatus('canceled'), fail: 'Gagal menyimpan')) {
+                await onChanged();
+              }
+            }, tooltip: 'Batalkan'),
+          ],
+          if (Auth.canWrite) ...[
+            const SizedBox(width: 6),
+            iconAction(context, Icons.delete_outline, () async {
+              if (await confirm(context, 'Hapus booking?', b.title)) {
+                if (!context.mounted) return;
+                if (await attempt(context, () => Booking.delete(b.id), fail: 'Gagal menghapus')) {
+                  await onChanged();
+                }
+              }
+            }, tooltip: 'Hapus'),
+          ],
+        ],
       ),
     );
   }

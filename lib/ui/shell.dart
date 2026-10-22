@@ -3,10 +3,10 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/db.dart';
 import 'dashboard.dart';
-import 'members.dart';
 import 'matches.dart';
 import 'payments.dart';
 import 'more.dart';
+import 'teams.dart';
 import 'theme.dart';
 
 /// Navigasi utama. Di HP: bar bawah. Di layar lebar: rail kiri, karena bar
@@ -27,16 +27,16 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   static const _pages = [
     DashboardPage(),
-    MembersPage(),
     MatchesPage(),
+    TeamsPage(),
     PaymentsPage(),
     MorePage(),
   ];
 
   static const _dest = [
     (Icons.home_outlined, Icons.home_rounded, 'Beranda'),
-    (Icons.groups_outlined, Icons.groups_rounded, 'Anggota'),
     (Icons.sports_soccer_outlined, Icons.sports_soccer, 'Tanding'),
+    (Icons.shield_outlined, Icons.shield_rounded, 'Tim'),
     (Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'Iuran'),
     (Icons.grid_view_outlined, Icons.grid_view_rounded, 'Lainnya'),
   ];

@@ -105,12 +105,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           Text(Auth.username ?? '—',
                               style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 2),
+                          // Role sudah tampil di label kanan; baris ini
+                          // menjelaskan artinya, bukan mengulang namanya.
                           Text(
-                            switch (Auth.role) {
-                              'admin' => 'Admin',
-                              'treasurer' => 'Bendahara',
-                              _ => 'Anggota',
-                            },
+                            Auth.canWrite ? 'Bisa mengubah data' : 'Hanya membaca',
                             style: t.textTheme.small,
                           ),
                         ],
@@ -135,7 +133,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 12),
                 ShadButton.outline(
                   onPressed: () async {
-                    if (!await confirm(context, 'Keluar?', 'Kamu perlu login lagi untuk masuk.')) return;
+                    if (!await confirm(context, 'Keluar?', 'Kamu perlu login lagi untuk masuk.',
+                        confirmLabel: 'Keluar')) {
+                      return;
+                    }
                     await Auth.logout();
                     if (!context.mounted) return;
                     Navigator.of(context).popUntil((r) => r.isFirst);
