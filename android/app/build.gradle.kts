@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -18,11 +20,11 @@ plugins {
 // git). Kalau berkas itu tidak ada — mis. orang lain meng-clone repo ini —
 // build rilis jatuh ke kunci debug dengan peringatan, supaya `flutter run
 // --release` tetap bisa dipakai untuk mencoba.
-val keystoreProperties = java.util.Properties()
+val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKey = keystorePropertiesFile.exists()
 if (hasReleaseKey) {
-    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+    keystorePropertiesFile.inputStream().use { stream -> keystoreProperties.load(stream) }
 }
 
 android {
