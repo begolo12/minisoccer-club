@@ -31,3 +31,6 @@ design/ref/
 # Baseline yang dipakai dokumentasi tetap di `design/current/`.
 .shots/
 .claude/
+
+# Log crash flutter_tools (dibuat lokal saat perintah flutter gagal).
+flutter_*.log
