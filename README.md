@@ -127,7 +127,7 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 189 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
+| `flutter test` | 201 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
@@ -336,6 +336,22 @@ kapan saja dan tidak menyentuh data klub asli.
   ```bash
   git tag v1.8.0 && git push origin v1.8.0
   ```
+
+### Pembaruan aplikasi
+
+| Platform | Perilaku |
+|---|---|
+| **Web** | Otomatis. Tidak ada yang perlu dipasang: service worker memperbarui berkas di latar, dan versi baru terpakai saat halaman dimuat ulang. |
+| **Android** | Otomatis **sampai** tahap pemasangan. Saat app dibuka, versi terbaru diperiksa di latar; kalau ada, muncul tawaran dengan satu tombol **Perbarui sekarang** yang mengunduh APK (dengan progres) lalu membuka installer Android. Ketukan terakhir **"Pasang"** tetap milik pengguna — Android tidak mengizinkan aplikasi biasa memasang APK secara senyap. |
+
+Tawaran hanya muncul **sekali per versi**: menekan "Nanti" tidak memunculkannya
+lagi untuk versi itu, tetapi versi berikutnya tetap ditawarkan. Titik hijau di
+baris **Pengaturan** (tab Lainnya) tetap ada sebagai jalan masuk manual, dan di
+sana tersedia tombol "Cek pembaruan".
+
+Unduhan diverifikasi dengan `sha256` dari GitHub; berkas yang rusak dihapus dan
+tidak dipasang. Pemeriksaan dibatasi sekali per 12 jam supaya tidak kena batas
+API GitHub (60 permintaan/jam per IP tanpa token).
 
 ### Kunci penandatangan APK — jangan sampai hilang
 

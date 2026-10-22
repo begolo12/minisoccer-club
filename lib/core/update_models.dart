@@ -65,6 +65,18 @@ enum InstallOutcome {
   failed,
 }
 
+/// Apakah pembaruan ini perlu DITAWARKAN ke pengguna?
+///
+/// [dismissedVersion] adalah versi yang pernah ditutup pengguna dengan
+/// "Nanti". Satu versi hanya ditawarkan sekali, supaya dialog tidak muncul
+/// setiap aplikasi dibuka — tetapi versi yang lebih baru tetap ditawarkan.
+bool shouldOfferUpdate(UpdateCheck? check, String? dismissedVersion) {
+  final release = check?.release;
+  if (release == null) return false;
+  if (dismissedVersion != null && dismissedVersion == release.version) return false;
+  return true;
+}
+
 /// Bandingkan dua versi numerik per komponen: `1.7.0` < `1.10.0`.
 /// Bagian non-angka (mis. `-beta`) diabaikan; jumlah komponen boleh berbeda.
 int compareVersions(String a, String b) {

@@ -31,6 +31,9 @@ const kLatestReleaseApi = 'https://api.github.com/repos/$kRepoSlug/releases/late
 const _checkInterval = Duration(hours: 12);
 const _lastCheckKey = 'update_checked_at';
 
+/// Versi yang sudah ditutup pengguna dengan "Nanti".
+const _dismissedKey = 'update_dismissed_version';
+
 /// Pemeriksa versi. Tanpa efek samping: hanya membaca API publik GitHub.
 class UpdateChecker {
   UpdateChecker({this.client, this.current = kAppVersion});
@@ -110,14 +113,30 @@ class UpdateService {
   static final ValueNotifier<UpdateCheck?> latest = ValueNotifier(null);
   static bool _running = false;
 
+  /// Pemeriksaan yang sedang berjalan.
+  ///
+  /// Dipakai supaya pemanggil kedua bisa MENUNGGU hasilnya, bukan langsung
+  /// dapat `null`. Tanpa ini, layar yang ingin menawarkan pembaruan tepat
+  /// setelah app dibuka bisa membaca [latest] sebelum pemeriksaan selesai dan
+  /// menyimpulkan "tidak ada pembaruan".
+  static Future<void>? _inFlight;
+
   /// Pemeriksaan latar saat start. Tidak pernah melempar: kegagalan hanya
   /// mengisi [UpdateCheck.error] dan tidak mengganggu layar lain.
   ///
   /// Di web tidak dijalankan sama sekali: CSP produksi memblokir
   /// `api.github.com`, dan versi web selalu terbaru setelah halaman dimuat
   /// ulang — memeriksa hanya akan menghasilkan error yang tidak berguna.
-  static Future<void> autoCheck() async {
-    if (kIsWeb) return;
+  static Future<void> autoCheck() {
+    if (kIsWeb) return Future<void>.value();
+    final running = _inFlight;
+    if (running != null) return running;
+    final f = _runAutoCheck().whenComplete(() => _inFlight = null);
+    _inFlight = f;
+    return f;
+  }
+
+  static Future<void> _runAutoCheck() async {
     if (_running) return;
     _running = true;
     try {
@@ -131,6 +150,24 @@ class UpdateService {
       // Diam: ini pemeriksaan latar, bukan aksi user.
     } finally {
       _running = false;
+    }
+  }
+
+  /// Versi yang pernah ditutup pengguna dengan "Nanti" (null = belum pernah).
+  static Future<String?> dismissedVersion() async {
+    try {
+      return await SecureStore.read(_dismissedKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Tandai satu versi tidak perlu ditawarkan lagi.
+  static Future<void> dismiss(String version) async {
+    try {
+      await SecureStore.write(_dismissedKey, version);
+    } catch (_) {
+      // Gagal menyimpan hanya berarti dialog muncul lagi lain waktu.
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/db.dart';
 import '../core/offline.dart';
+import '../core/update.dart';
 import 'dashboard.dart';
 import 'fmt.dart';
 import 'login.dart';
@@ -11,6 +12,7 @@ import 'payments.dart';
 import 'more.dart';
 import 'teams.dart';
 import 'theme.dart';
+import 'update_prompt.dart';
 import 'widgets.dart';
 
 /// Navigasi utama. Di HP: bar bawah. Di layar lebar: rail kiri, karena bar
@@ -68,7 +70,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // Sinkron pertama saat app dibuka: antrean bisa berisi tulisan dari sesi
     // sebelumnya yang belum sempat terkirim.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _trySync());
+    //
+    // Setelah itu tawarkan pembaruan. Menunggu `autoCheck` selesai penting:
+    // kalau tidak, hasilnya belum ada dan tawaran tidak pernah muncul.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _trySync();
+      await UpdateService.autoCheck();
+      if (!mounted) return;
+      await maybePromptUpdate(context);
+    });
   }
 
   @override
