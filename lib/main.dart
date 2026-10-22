@@ -82,6 +82,9 @@ class _BootstrapState extends State<Bootstrap> {
   Future<void> _check() async {
     if (mounted) setState(() => _checking = true);
     await Auth.restore();
+    // Antrean tulis offline dibaca dari disk sebelum layar apa pun tampil,
+    // supaya banner "N perubahan menunggu" langsung benar.
+    await Db.loadOffline();
 
     // Belum ada sesi: mode publik. Aplikasi langsung terbuka dalam mode
     // baca-saja; layar masuk hanya muncul saat tombol "Masuk" ditekan.

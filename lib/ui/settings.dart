@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/api.dart';
 import '../core/db.dart';
+import '../core/offline.dart';
 import '../core/update.dart';
 import 'login.dart';
 import '../core/version.dart';
@@ -93,6 +94,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
+          const SizedBox(height: 22),
+          const SectionTitle('Data offline'),
+          _OfflinePanel(),
           const SizedBox(height: 22),
           const SectionTitle('Akun'),
           Panel(
@@ -423,6 +427,150 @@ class _UpdatePanelState extends State<_UpdatePanel> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Panel mode offline: berapa perubahan menunggu, tombol sinkron, dan cara
+/// membuang antrean. Ini satu-satunya tempat pengguna bisa melihat apa yang
+/// belum terkirim — penting karena data itu belum ada di cloud.
+class _OfflinePanel extends StatefulWidget {
+  const _OfflinePanel();
+
+  @override
+  State<_OfflinePanel> createState() => _OfflinePanelState();
+}
+
+class _OfflinePanelState extends State<_OfflinePanel> {
+  bool _busy = false;
+
+  Future<void> _sync() async {
+    setState(() => _busy = true);
+    try {
+      final r = await Db.sync();
+      if (!mounted) return;
+      if (r.sent > 0) {
+        toast(context, '${r.sent} perubahan terkirim');
+      } else if (r.offline) {
+        toast(context, 'Masih offline — coba lagi nanti');
+      } else if (r.remaining == 0) {
+        toast(context, 'Tidak ada yang perlu dikirim');
+      }
+      if (r.failed > 0 && mounted) {
+        toast(context, '${r.failed} perubahan ditolak server');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _discardFailed() async {
+    final n = Outbox.failedCount;
+    if (n == 0) return;
+    if (!await confirm(
+      context,
+      'Buang $n perubahan?',
+      'Perubahan yang ditolak server akan dihapus dari antrean. '
+          'Data di cloud tidak terpengaruh.',
+    )) {
+      return;
+    }
+    await Db.dropFailedWrites();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _discardAll() async {
+    final n = Outbox.pending.value;
+    if (n == 0) return;
+    if (!await confirm(
+      context,
+      'Buang semua perubahan offline?',
+      '$n perubahan yang belum terkirim akan hilang dan tidak bisa dikembalikan.',
+    )) {
+      return;
+    }
+    await Db.clearOutbox();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return ValueListenableBuilder<int>(
+      valueListenable: Outbox.pending,
+      builder: (context, pending, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: Db.offline,
+          builder: (context, offline, _) {
+            return Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        offline ? Icons.cloud_off : Icons.cloud_done_outlined,
+                        size: 16,
+                        color: offline ? t.colorScheme.mutedForeground : t.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          offline ? 'Offline' : 'Tersambung',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      if (pending > 0)
+                        Pill('$pending menunggu', color: t.colorScheme.primary),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    pending == 0
+                        ? 'Semua perubahan sudah tersimpan di server. '
+                            'Data klub tetap bisa dibaca saat offline.'
+                        : '$pending perubahan tersimpan di HP dan akan dikirim '
+                            'otomatis saat tersambung. Data offline diutamakan '
+                            'dan akan menimpa data cloud.',
+                    style: t.textTheme.small,
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ShadButton.outline(
+                        onPressed: _busy || pending == 0 ? null : _sync,
+                        leading: const Icon(Icons.sync, size: 15),
+                        child: Text(_busy ? 'Mengirim…' : 'Sinkron sekarang'),
+                      ),
+                      if (Outbox.failedCount > 0)
+                        ShadButton.outline(
+                          onPressed: _busy ? null : _discardFailed,
+                          leading: const Icon(Icons.delete_outline, size: 15),
+                          child: Text('Buang ${Outbox.failedCount} yang gagal'),
+                        ),
+                      if (pending > 0)
+                        ShadButton.outline(
+                          onPressed: _busy ? null : _discardAll,
+                          child: const Text('Buang semua'),
+                        ),
+                    ],
+                  ),
+                  if (Outbox.failedCount > 0) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      'Sebagian perubahan ditolak server (mis. datanya sudah '
+                      'dihapus di cloud). Periksa lalu buang agar tidak menumpuk.',
+                      style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

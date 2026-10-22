@@ -1,19 +1,48 @@
-/// Cache hasil query untuk mode offline.
+/// Cache hasil query + antrean tulis untuk mode offline.
 ///
-/// Setiap pembacaan yang berhasil disimpan per kunci `sql + params`. Saat
-/// jaringan mati, pembacaan yang sama dikembalikan dari cache sehingga app
-/// masih bisa dibuka dan dibaca — hanya tidak bisa menulis.
+/// Model offline-first:
+///   * **Baca** — setiap pembacaan yang berhasil disimpan per kunci
+///     `sql + params`. Saat jaringan mati, pembacaan yang sama dikembalikan
+///     dari cache.
+///   * **Tulis** — saat jaringan mati, tulis masuk antrean (`offline.dart`),
+///     lalu cache di atas **ditambal** supaya hasilnya langsung terlihat
+///     (`row_patch.dart`). Saat online, antrean dikirim ulang dan menimpa
+///     data cloud — data lokal yang diutamakan.
 ///
-/// Berkas ini hanya berisi kontrak; implementasi platform ada di
-/// `cache_io.dart` (Android/desktop, file JSON) dan `cache_stub.dart` (web,
-/// memori saja).
+/// Karena penambalan butuh tahu query apa yang tersimpan, entri cache
+/// menyimpan `sql` dan `params` aslinya, bukan hanya hash kuncinya.
 library;
 
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
-/// Satu entri cache: baris + waktu penyimpanan.
+/// Satu entri cache: query asal, baris hasil, dan waktu penyimpanan.
+class CacheEntry {
+  const CacheEntry({
+    required this.key,
+    required this.sql,
+    required this.params,
+    required this.rows,
+    required this.savedAt,
+  });
+
+  final String key;
+  final String sql;
+  final Map<String, Object?> params;
+  final List<Map<String, dynamic>> rows;
+  final DateTime savedAt;
+
+  CacheEntry copyWith({List<Map<String, dynamic>>? rows}) => CacheEntry(
+        key: key,
+        sql: sql,
+        params: params,
+        rows: rows ?? this.rows,
+        savedAt: savedAt,
+      );
+}
+
+/// Hasil pembacaan cache.
 class CachedRows {
   const CachedRows(this.rows, this.savedAt);
 
@@ -34,4 +63,13 @@ String cacheKey(String sql, Map<String, Object?> params) {
     },
   });
   return sha256.convert(utf8.encode(canonical)).toString().substring(0, 32);
+}
+
+/// Penyimpanan cache. Implementasi per platform ada di `cache_io.dart`
+/// (Android/desktop) dan `cache_stub.dart` (web); tes memakai versi memori.
+abstract interface class CacheStore {
+  Future<void> writeEntry(CacheEntry entry);
+  Future<List<CacheEntry>> listEntries();
+  Future<CachedRows?> readRows(String key);
+  Future<int> clear();
 }

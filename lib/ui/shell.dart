@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/db.dart';
+import '../core/offline.dart';
 import 'dashboard.dart';
 import 'fmt.dart';
 import 'login.dart';
@@ -17,6 +18,10 @@ import 'theme.dart';
 /// Tab dibangun saat pertama kali dibuka (bukan semuanya saat start), dan
 /// dimuat ulang saat dibuka lagi setelah ada data yang berubah — jadi tab
 /// lain tidak menampilkan angka lama.
+///
+/// Shell juga mengurus **sinkron offline**: mencoba mengirim antrean saat app
+/// kembali ke depan, saat tab berpindah, dan tiap kali ada tulis baru yang
+/// menunggu. Semua percobaan lewat `_trySync` supaya tidak menumpuk.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key, this.initialTab = 0, this.readOnly = false});
 
@@ -31,7 +36,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   static const _pages = [
     DashboardPage(),
     MatchesPage(),
@@ -53,11 +58,57 @@ class _HomeShellState extends State<HomeShell> {
   final Set<int> _built = {};
   final List<int> _version = List.filled(_pages.length, 0);
   int _seenWrites = Db.writes.value;
+  bool _syncing = false;
 
   @override
   void initState() {
     super.initState();
     _built.add(_index);
+    WidgetsBinding.instance.addObserver(this);
+    // Sinkron pertama saat app dibuka: antrean bisa berisi tulisan dari sesi
+    // sebelumnya yang belum sempat terkirim.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _trySync());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Kembali ke depan = kesempatan paling wajar untuk mengirim antrean
+    // (pengguna baru saja membuka HP, mungkin sudah dapat sinyal).
+    if (state == AppLifecycleState.resumed) _trySync();
+  }
+
+  /// Kirim antrean offline, lalu muat ulang semua tab kalau ada yang terkirim
+  /// (data dari server sekarang berbeda dengan yang tampil dari cache).
+  Future<void> _trySync() async {
+    if (_syncing || !mounted) return;
+    if (Outbox.pending.value == 0) return;
+    _syncing = true;
+    try {
+      final result = await Db.sync();
+      if (!mounted) return;
+      if (result.sent > 0) {
+        setState(() {
+          for (var i = 0; i < _version.length; i++) {
+            _version[i]++;
+          }
+          _seenWrites = Db.writes.value;
+        });
+        toast(context, '${result.sent} perubahan terkirim');
+      }
+      if (result.failed > 0 && mounted) {
+        toast(context, '${result.failed} perubahan ditolak server — buka Pengaturan');
+      }
+    } catch (_) {
+      // Masih offline / sesi habis: banner tetap menampilkan sisa antrean.
+    } finally {
+      _syncing = false;
+    }
   }
 
   @override
@@ -86,6 +137,8 @@ class _HomeShellState extends State<HomeShell> {
         _version[i]++;
       }
     });
+    // Setelah masuk, antrean offline milik akun ini boleh dikirim.
+    _trySync();
   }
 
   void _select(int i) {
@@ -98,6 +151,8 @@ class _HomeShellState extends State<HomeShell> {
       _index = i;
       _built.add(i);
     });
+    // Berpindah tab = pengguna sedang aktif; coba kirim antrean.
+    _trySync();
   }
 
   @override
@@ -117,10 +172,11 @@ class _HomeShellState extends State<HomeShell> {
     );
 
     // Bilah status di atas isi: mode publik (ada tombol Masuk) dan/atau
-    // mode offline (data dari cache). Keduanya tidak menutupi halaman.
+    // status offline + jumlah perubahan yang menunggu sinkron.
     final strip = _StatusStrip(
       readOnly: _readOnly,
       onLogin: _openLogin,
+      onSync: _trySync,
     );
 
     if (wide) {
@@ -284,15 +340,20 @@ class _RailItem extends StatelessWidget {
 }
 
 /// Bilah tipis di atas isi: "Mode publik" (dengan tombol Masuk) dan/atau
-/// "Offline" (data dari cache).
+/// status offline (data dari cache + perubahan yang menunggu sinkron).
 ///
 /// Dua keadaan ini bisa terjadi bersamaan (tamu membuka app tanpa jaringan),
 /// jadi keduanya ditampilkan sebagai dua baris, bukan saling menimpa.
 class _StatusStrip extends StatelessWidget {
-  const _StatusStrip({required this.readOnly, required this.onLogin});
+  const _StatusStrip({
+    required this.readOnly,
+    required this.onLogin,
+    required this.onSync,
+  });
 
   final bool readOnly;
   final VoidCallback onLogin;
+  final VoidCallback onSync;
 
   @override
   Widget build(BuildContext context) {
@@ -300,68 +361,110 @@ class _StatusStrip extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: Db.offline,
       builder: (context, offline, _) {
-        if (!readOnly && !offline) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (offline)
-              Container(
-                color: t.colorScheme.muted,
-                padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
-                child: Row(
+        return ValueListenableBuilder<int>(
+          valueListenable: Outbox.pending,
+          builder: (context, pending, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: Outbox.syncing,
+              builder: (context, syncing, _) {
+                if (!readOnly && !offline && pending == 0) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.cloud_off, size: 14, color: t.colorScheme.mutedForeground),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        Db.offlineSince == null
-                            ? 'Offline — menampilkan data tersimpan'
-                            : 'Offline — data tersimpan ${fmtDate(Db.offlineSince!)} '
-                                '${fmtTime(Db.offlineSince!)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.small,
+                    if (offline || pending > 0)
+                      Container(
+                        color: t.colorScheme.muted,
+                        padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+                        child: Row(
+                          children: [
+                            Icon(
+                              syncing
+                                  ? Icons.sync
+                                  : (pending > 0 ? Icons.cloud_upload_outlined : Icons.cloud_off),
+                              size: 14,
+                              color: pending > 0
+                                  ? t.colorScheme.primary
+                                  : t.colorScheme.mutedForeground,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _offlineText(offline, pending, syncing),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t.textTheme.small,
+                              ),
+                            ),
+                            if (pending > 0 && !syncing)
+                              TextButton(
+                                onPressed: onSync,
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                                  minimumSize: const Size(0, 32),
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text('Sinkron'),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
+                    if (readOnly)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: t.colorScheme.primary.withValues(alpha: 0.10),
+                          border: Border(
+                            bottom: BorderSide(color: t.colorScheme.border),
+                          ),
+                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                        child: Row(
+                          children: [
+                            Icon(Icons.visibility_outlined,
+                                size: 14, color: t.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Mode publik — hanya lihat',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t.textTheme.small
+                                    .copyWith(color: t.colorScheme.foreground),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: onLogin,
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                minimumSize: const Size(0, 32),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('Masuk'),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
-                ),
-              ),
-            if (readOnly)
-              Container(
-                decoration: BoxDecoration(
-                  color: t.colorScheme.primary.withValues(alpha: 0.10),
-                  border: Border(
-                    bottom: BorderSide(color: t.colorScheme.border),
-                  ),
-                ),
-                padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                child: Row(
-                  children: [
-                    Icon(Icons.visibility_outlined, size: 14, color: t.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Mode publik — hanya lihat',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.small.copyWith(color: t.colorScheme.foreground),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: onLogin,
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        minimumSize: const Size(0, 32),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text('Masuk'),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+                );
+              },
+            );
+          },
         );
       },
     );
+  }
+
+  /// Kalimat status: yang paling penting lebih dulu — jumlah perubahan yang
+  /// belum terkirim, karena itu yang berisiko hilang kalau app dihapus.
+  String _offlineText(bool offline, int pending, bool syncing) {
+    if (syncing) return 'Menyinkronkan $pending perubahan…';
+    if (pending > 0 && offline) {
+      return 'Offline — $pending perubahan menunggu, akan dikirim saat online';
+    }
+    if (pending > 0) return '$pending perubahan menunggu dikirim';
+    if (Db.offlineSince == null) return 'Offline — menampilkan data tersimpan';
+    return 'Offline — data tersimpan ${fmtDate(Db.offlineSince!)} '
+        '${fmtTime(Db.offlineSince!)}';
   }
 }

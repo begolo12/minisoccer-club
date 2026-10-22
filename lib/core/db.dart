@@ -2,8 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'cache.dart';
-import 'cache_stub.dart' if (dart.library.io) 'cache_io.dart';
+import 'cache_store.dart';
 import 'db_web.dart' as driver;
+import 'net.dart' as net;
+import 'offline.dart';
+import 'row_patch.dart';
 
 /// Dilempar driver saat token ditolak server (sesi habis).
 class Unauthorized implements Exception {
@@ -13,6 +16,11 @@ class Unauthorized implements Exception {
 
 /// Akses DB dari UI. Semua platform lewat `/api/sql` (Vercel Function),
 /// jadi tidak ada kredensial Postgres di HP maupun browser.
+///
+/// **Offline-first.** Tulis dicoba ke server dulu; kalau gagal karena jaringan,
+/// tulis masuk antrean ([Outbox]) dan efeknya ditambal ke cache, jadi pengguna
+/// tetap bisa mengisi data tanpa internet. Saat online, antrean dikirim ulang
+/// dan menimpa data cloud — data lokal yang diutamakan.
 class Db {
   /// Token sesi (diisi `Auth` setelah login).
   static String? authToken;
@@ -21,74 +29,73 @@ class Db {
   /// kembali ke layar masuk, jadi user tidak melihat error di tiap halaman.
   static Future<void> Function()? onSessionExpired;
 
-  /// Naik setiap tulis berhasil. Halaman yang dibuka lagi setelah angka ini
-  /// berubah memuat ulang datanya, jadi tab lain tidak menampilkan data basi.
+  /// Naik setiap tulis berhasil (ke server maupun ke antrean offline).
+  /// Halaman yang dibuka lagi setelah angka ini berubah memuat ulang datanya.
   static final ValueNotifier<int> writes = ValueNotifier(0);
 
   /// True sejak satu pembacaan jatuh ke cache. Halaman menampilkan banner
-  /// "mode offline" selama ini menyala, supaya angka yang terlihat tidak
-  /// disangka data terbaru.
+  /// "mode offline" selama ini menyala.
   static final ValueNotifier<bool> offline = ValueNotifier(false);
 
   /// Waktu data cache terakhir dipakai (untuk label banner).
   static DateTime? offlineSince;
 
-  /// Pembacaan yang gagal karena jaringan dikembalikan dari cache. Tulis
-  /// tidak pernah di-cache: menulis saat offline akan tampak berhasil padahal
-  /// tidak tersimpan di server.
+  /// Sinkron berjalan sekarang.
+  static bool get syncing => Outbox.syncing.value;
+
+  /// Jumlah tulis yang belum terkirim.
+  static int get pendingWrites => Outbox.pending.value;
+
+  /// Pembacaan: server dulu, cache saat jaringan mati.
+  ///
+  /// Statement tulis yang lewat sini (`INSERT ... RETURNING id`) juga ikut
+  /// masuk antrean saat offline, dan mengembalikan id sementara supaya
+  /// pemanggil bisa melanjutkan (mis. buat tim lalu tambah pemain).
   static Future<List<Map<String, dynamic>>> query(
     String sql, {
     Map<String, Object?> params = const {},
   }) async {
+    final write = _isWrite(sql);
     final key = cacheKey(sql, params);
     try {
       final rows = await driver.query(sql, params: params);
-      // INSERT/UPDATE/DELETE ... RETURNING juga lewat query.
-      if (_isWrite(sql)) {
+      if (write) {
         writes.value++;
       } else {
-        await writeCache(key, rows);
+        await activeCacheStore.writeEntry(CacheEntry(
+          key: key,
+          sql: sql,
+          params: params,
+          rows: rows,
+          savedAt: DateTime.now(),
+        ));
       }
-      if (offline.value) {
-        offline.value = false;
-        offlineSince = null;
-      }
+      _markOnline();
       return rows;
     } on Unauthorized {
       await _expire();
       rethrow;
     } catch (e) {
-      // Hanya kegagalan jaringan/ server yang jatuh ke cache; query yang
-      // ditolak (400/403) adalah bug atau izin, bukan alasan menampilkan data
-      // lama yang mungkin sudah tidak sah.
-      if (!_isNetworkFailure(e)) rethrow;
-      final hit = await readCache(key);
+      // Hanya kegagalan jaringan yang jatuh ke cache/antrean; query yang
+      // ditolak (400/403) adalah bug atau izin, bukan alasan menyimpan data
+      // yang mungkin tidak sah.
+      if (!net.isNetworkFailure(e)) rethrow;
+
+      if (write) {
+        final tempId = await Outbox.enqueue(sql, params);
+        await _patchCache(sql, params, tempId);
+        writes.value++;
+        _markOffline();
+        return tempId == null ? const [] : [
+          {'id': tempId},
+        ];
+      }
+
+      final hit = await activeCacheStore.readRows(key);
       if (hit == null) rethrow;
-      offline.value = true;
-      offlineSince = hit.savedAt;
+      _markOffline(hit.savedAt);
       return hit.rows;
     }
-  }
-
-  /// Kegagalan yang pantas ditutup cache: server tidak terjangkau atau
-  /// timeout. `ApiException` dari server (mis. "Query gagal dijalankan")
-  /// tidak termasuk — itu jawaban, bukan gangguan jaringan.
-  static bool _isNetworkFailure(Object e) {
-    if (e is Unauthorized) return false;
-    final msg = e.toString();
-    return msg.contains('Tidak bisa menghubungi server') ||
-        msg.contains('Server tidak merespons') ||
-        msg.contains('SocketException') ||
-        msg.contains('Failed host lookup') ||
-        msg.contains('Connection refused') ||
-        msg.contains('ClientException');
-  }
-
-  /// Kosongkan cache offline (dipakai Pengaturan).
-  static Future<int> clearOfflineCache() async {
-    offline.value = false;
-    offlineSince = null;
-    return clearCache();
   }
 
   static Future<int> execute(
@@ -98,12 +105,115 @@ class Db {
     try {
       final n = await driver.execute(sql, params: params);
       if (_isWrite(sql)) writes.value++;
+      _markOnline();
       return n;
     } on Unauthorized {
       await _expire();
       rethrow;
+    } catch (e) {
+      if (!_isWrite(sql) || !net.isNetworkFailure(e)) rethrow;
+      await Outbox.enqueue(sql, params);
+      await _patchCache(sql, params, null);
+      writes.value++;
+      _markOffline();
+      return 1;
     }
   }
+
+  /// Terapkan efek tulis ke semua entri cache yang menyentuh tabelnya.
+  static Future<void> _patchCache(
+    String sql,
+    Map<String, Object?> params,
+    int? tempId,
+  ) async {
+    final op = parseWrite(sql, params);
+    if (op == null || !op.patchable) return;
+    try {
+      final entries = await activeCacheStore.listEntries();
+      for (final entry in entries) {
+        final patched = applyOp(entry.rows, op, querySql: entry.sql, tempId: tempId);
+        if (identical(patched, entry.rows)) continue;
+        final ordered = sortLikeQuery(patched, entry.sql);
+        final trimmed = trimLikeQuery(ordered, entry.sql, entry.params);
+        await activeCacheStore.writeEntry(entry.copyWith(rows: trimmed));
+      }
+    } catch (_) {
+      // Penambalan adalah kenyamanan; kegagalannya tidak boleh menggagalkan
+      // penyimpanan ke antrean yang sudah berhasil.
+    }
+  }
+
+  static void _markOffline([DateTime? since]) {
+    offlineSince = since ?? offlineSince ?? DateTime.now();
+    if (!offline.value) offline.value = true;
+  }
+
+  static void _markOnline() {
+    if (offline.value) {
+      offline.value = false;
+      offlineSince = null;
+    }
+  }
+
+  /// Kegagalan yang pantas ditutup cache: server tidak terjangkau atau
+  /// timeout. `ApiException` dari server (mis. "Query gagal dijalankan")
+  /// tidak termasuk — itu jawaban, bukan gangguan jaringan.
+  static bool isNetworkFailure(Object e) => net.isNetworkFailure(e);
+
+  /// Kirim antrean tulis offline ke server.
+  ///
+  /// Dipanggil saat app dibuka, saat app kembali ke depan, saat tab berpindah,
+  /// dan dari tombol di banner.
+  static Future<SyncResult> sync() async {
+    await Outbox.load();
+    if (Outbox.pending.value == 0) return const SyncResult();
+
+    final result = await Outbox.flush(
+      query: (sql, params) => driver.query(sql, params: params),
+      execute: (sql, params) => driver.execute(sql, params: params),
+      // Sesi kedaluwarsa BUKAN alasan membuang tulisan pengguna: pengguna
+      // tinggal masuk lagi, lalu antrean dikirim. Hanya penolakan server
+      // yang menandai tulis gagal permanen.
+      isRetryable: (e) => e is Unauthorized || net.isNetworkFailure(e),
+    );
+
+    if (result.sent > 0) {
+      _markOnline();
+      // Cache sekarang tidak lagi menggambarkan server; buang supaya
+      // pembacaan berikutnya mengambil keadaan sebenarnya. Halaman yang
+      // terbuka akan memuat ulang lewat `writes`.
+      await activeCacheStore.clear();
+      writes.value++;
+    } else if (result.offline) {
+      _markOffline();
+    }
+    return result;
+  }
+
+  /// Muat antrean tersimpan. Dipanggil sekali saat app start.
+  static Future<void> loadOffline() async {
+    await Outbox.load();
+    if (Outbox.pending.value > 0) offline.value = true;
+  }
+
+  /// Kosongkan cache offline (dipakai Pengaturan).
+  static Future<int> clearOfflineCache() async {
+    offline.value = false;
+    offlineSince = null;
+    return activeCacheStore.clear();
+  }
+
+  /// Buang antrean tulis yang belum terkirim (dipakai Pengaturan).
+  static Future<void> clearOutbox() async {
+    await Outbox.clear();
+    if (Outbox.pending.value == 0) {
+      offline.value = false;
+      offlineSince = null;
+    }
+  }
+
+  /// Buang tulis yang ditolak permanen.
+  static Future<void> dropFailedWrites() => Outbox.removeFailed();
 
   static bool _isWrite(String sql) {
     final head = sql.trimLeft().toUpperCase();
