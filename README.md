@@ -67,6 +67,41 @@ role anggota.
 Catatan: APK sekarang selalu lewat `/api` (token sesi). Connection string DB
 hanya ada di env server, tidak lagi disimpan di HP.
 
+## Mode offline-first
+
+Aplikasi bisa **diisi datanya tanpa internet**, lalu sinkron otomatis saat
+tersambung. Data offline diutamakan: antrean lokal dikirim setelah keadaan
+cloud, sehingga tulisan lokal menimpa data cloud.
+
+| Keadaan | Perilaku |
+|---|---|
+| Online | Tulis langsung ke server seperti biasa; hasil baca disimpan ke cache |
+| Offline — baca | Pembacaan yang pernah berhasil dikembalikan dari cache |
+| Offline — tulis | Tulis masuk antrean, cache ditambal sehingga datanya **langsung terlihat** |
+| Kembali online | Antrean dikirim berurutan; cache dibuang supaya pembacaan berikutnya mengambil keadaan server |
+| Server menolak | Tulis ditandai gagal (tidak memblokir sisanya), bisa dibuang dari Pengaturan |
+| Sesi habis | Antrean **tidak** dibuang — dikirim lagi setelah masuk |
+
+Kapan sinkron dicoba: saat app dibuka, saat app kembali ke depan, saat tab
+berpindah, dan dari tombol **Sinkron** di banner atau di Pengaturan → Data
+offline.
+
+Banner di atas isi menampilkan jumlah perubahan yang belum terkirim, karena
+itulah data yang belum ada di cloud. Pengaturan → **Data offline** menunjukkan
+status, tombol sinkron, dan tombol buang antrean.
+
+> **Batasannya jujur:** penambalan cache hanya mengenali bentuk SQL yang
+> dipakai app ini. Tulis yang memakai ekspresi SQL (`CASE`, `COALESCE(subquery)`,
+> agregat) tidak ditambal — data tampil apa adanya sampai sinkron berhasil.
+> Lebih baik menampilkan data lama daripada angka karangan. `INSERT` banyak
+> baris (jadwal turnamen) juga tidak ditambal; jadwalnya muncul setelah sinkron.
+
+Implementasi: `lib/core/row_patch.dart` (urai SQL + tambal baris),
+`lib/core/offline.dart` (antrean + pemetaan id sementara),
+`lib/core/cache_*.dart` dan `outbox_store_*.dart` (berkas di Android,
+localStorage di web). Diuji oleh `test/row_patch_test.dart`,
+`test/offline_test.dart`, dan `test/offline_first_test.dart`.
+
 ## Setup database Neon (Vercel)
 
 1. [Vercel Dashboard](https://vercel.com/dashboard) → **Storage** → database Neon → **Open in Neon**
@@ -162,7 +197,9 @@ Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
 ```
 lib/
-  core/   api.dart (URL API) · db.dart (akses DB + secure storage) · db_web.dart (HTTP driver)
+  core/   api.dart (URL API) · db.dart (akses DB, offline-first) · db_web.dart (HTTP driver)
+          cache.dart + cache_io/stub (cache baca) · row_patch.dart (tambal cache setelah tulis)
+          offline.dart (antrean tulis) · outbox_store_* (penyimpanan antrean) · net.dart
   data/   models.dart (model + query) · auth.dart (login, sesi, kelola user)
   ui/     theme (token warna/font + ThemeController), widgets (RowItem, Panel,
           StatStrip, StandingsTable, MatchRow, PeriodChips, PageScaffold,
