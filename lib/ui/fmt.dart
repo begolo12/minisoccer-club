@@ -31,14 +31,19 @@ String fmtMoney(num v) =>
     v < 0 ? '-Rp ${fmtNumber(v.abs())}' : 'Rp ${fmtNumber(v)}';
 
 /// Nominal ringkas untuk label sempit: "Rp 1,95 jt", "Rp 350 rb".
+///
+/// Satuan dipilih dari hasil PEMBULATAN, bukan dari nilai mentah: 999.999
+/// dibulatkan ke ribuan menjadi 1.000 rb, dan "Rp 1000 rb" salah — seharusnya
+/// naik ke "Rp 1,00 jt". Karena itu ambangnya memakai batas bawah satuan
+/// berikutnya dikurangi setengah satuan pembulatan.
 String fmtShortMoney(num v) {
   final a = v.abs();
   String body;
-  if (a >= 1e9) {
+  if (a >= 999_500_000) {
     body = '${(a / 1e9).toStringAsFixed(2).replaceAll('.', ',')} M';
-  } else if (a >= 1e6) {
+  } else if (a >= 999_500) {
     body = '${(a / 1e6).toStringAsFixed(2).replaceAll('.', ',')} jt';
-  } else if (a >= 1e4) {
+  } else if (a >= 9_500) {
     body = '${(a / 1e3).toStringAsFixed(0)} rb';
   } else {
     body = fmtNumber(a);
@@ -55,6 +60,78 @@ String fmtNumber(num v) {
     buf.write(s[i]);
   }
   return v < 0 ? '-${buf.toString()}' : buf.toString();
+}
+
+/// Baca nominal uang yang diketik pengguna.
+///
+/// Input uang di app ini ditulis dengan gaya Indonesia (titik = ribuan, koma =
+/// desimal), tapi orang juga mengetik gaya lain: "1.500.000", "1500000",
+/// "1.500,50", bahkan "100000.50". Aturan lama — buang semua titik, ganti koma
+/// jadi titik — membuat "100000.50" terbaca 10000050: nominal jadi 100× lebih
+/// besar dan tetap lolos validasi "harus > 0". Uang yang salah catat lebih
+/// buruk daripada input yang ditolak, jadi di sini pola yang ambigu ditolak.
+///
+/// Aturan:
+///   * hanya angka, titik, koma, spasi, dan tanda minus di depan;
+///   * kalau ada titik DAN koma → yang paling kanan adalah pemisah desimal;
+///   * hanya koma → pemisah desimal;
+///   * hanya titik → ribuan kalau berpola `1.234` / `1.234.567`, selain itu
+///     desimal (`100000.50`), dan `1.500` dibaca ribuan (kebiasaan Indonesia).
+///
+/// Return null kalau tidak bisa dibaca sebagai angka — pemanggil wajib
+/// menampilkan pesan, bukan diam-diam menyimpan 0.
+double? parseMoney(String input) {
+  var s = input.trim().replaceAll(' ', '').replaceAll('Rp', '').replaceAll('rp', '');
+  if (s.isEmpty) return null;
+
+  var negative = false;
+  if (s.startsWith('-')) {
+    negative = true;
+    s = s.substring(1);
+  }
+  if (s.isEmpty) return null;
+  // Selain digit dan pemisah = bukan nominal.
+  if (!RegExp(r'^[0-9.,]+$').hasMatch(s)) return null;
+
+  final hasDot = s.contains('.');
+  final hasComma = s.contains(',');
+
+  String normalized;
+  if (hasDot && hasComma) {
+    // Yang paling kanan adalah desimal; sisanya pemisah ribuan.
+    final lastDot = s.lastIndexOf('.');
+    final lastComma = s.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      normalized = '${s.substring(0, lastComma).replaceAll('.', '').replaceAll(',', '')}'
+          '.${s.substring(lastComma + 1)}';
+    } else {
+      normalized = '${s.substring(0, lastDot).replaceAll('.', '').replaceAll(',', '')}'
+          '.${s.substring(lastDot + 1)}';
+    }
+  } else if (hasComma) {
+    final parts = s.split(',');
+    if (parts.length != 2) return null; // "1,234,567" gaya Inggris: ambigu
+    normalized = '${parts[0]}.${parts[1]}';
+  } else if (hasDot) {
+    final parts = s.split('.');
+    final looksGrouped = parts.length > 1 &&
+        parts[0].length <= 3 &&
+        parts.skip(1).every((p) => p.length == 3);
+    if (looksGrouped) {
+      normalized = parts.join();
+    } else if (parts.length == 2) {
+      // "100000.50" → desimal; "1.500" sudah tertangkap looksGrouped.
+      normalized = '${parts[0]}.${parts[1]}';
+    } else {
+      return null;
+    }
+  } else {
+    normalized = s;
+  }
+
+  final v = double.tryParse(normalized);
+  if (v == null) return null;
+  return negative ? -v : v;
 }
 
 String periodNow() {
@@ -117,8 +194,6 @@ void toast(BuildContext context, String msg) {
     ));
 }
 
-/// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
-/// tidak berhenti sebagai exception tanpa penjelasan.
 /// Jalankan aksi tulis dan tampilkan pesan kalau gagal, supaya error jaringan
 /// tidak berhenti sebagai exception tanpa penjelasan.
 Future<bool> attempt(

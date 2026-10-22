@@ -5,13 +5,16 @@
   "scripts": {
     "db:init": "node scripts/init-db.mjs",
     "db:harden": "node scripts/harden-db.mjs",
+    "db:rotate": "node scripts/rotate-db-password.mjs",
+    "db:fix": "node scripts/fix-data.mjs",
     "dev:api": "node scripts/dev-api.mjs",
     "test": "node --test \"api/*.test.mjs\"",
     "check:schema": "node scripts/check-schema.mjs",
     "check:e2e": "node scripts/e2e-check.mjs",
     "check:flow": "node scripts/flow-check.mjs",
+    "check:money": "node scripts/money-check.mjs",
+    "check:audit": "node scripts/audit-queries.mjs",
     "check:live": "node scripts/security-check.mjs",
-    "db:fix": "node scripts/fix-data.mjs",
     "preview": "node design/mock/server.mjs",
     "preview:build": "flutter build web --release -t lib/preview_main.dart -o build/preview"
   },

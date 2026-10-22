@@ -176,6 +176,19 @@ class _BookingRow extends StatelessWidget {
             }, tooltip: 'Tandai selesai'),
             const SizedBox(width: 6),
             iconAction(context, Icons.block, () async {
+              // Membatalkan booking ikut menghapus pengeluaran sewanya dari
+              // kas, jadi sebutkan akibatnya sebelum jalan.
+              if (b.cost > 0 && b.inCash) {
+                if (!await confirm(
+                  context,
+                  'Batalkan booking?',
+                  'Catatan kas ${fmtMoney(b.cost)} untuk sewa ini ikut dihapus.',
+                  confirmLabel: 'Batalkan',
+                )) {
+                  return;
+                }
+                if (!context.mounted) return;
+              }
               if (await attempt(context, () => b.setStatus('canceled'), fail: 'Gagal menyimpan')) {
                 await onChanged();
               }

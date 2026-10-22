@@ -1,6 +1,16 @@
 // Batasi koneksi web ke role `app_web`: tanpa DDL, tanpa kolom password.
 // Jalankan sekali: `node scripts/harden-db.mjs` (butuh DATABASE_URL owner).
 // Password role dibuat acak dan dicetak sebagai DATABASE_URL_WEB — simpan di Vercel.
+//
+// Dua mode:
+//   * role belum ada  → buat role, pasang password acak, cetak URL-nya.
+//   * role sudah ada  → JANGAN sentuh password; hanya perbaiki izin.
+//
+// Kenapa begitu: dulu skrip ini selalu `ALTER ROLE ... PASSWORD` dengan nilai
+// acak baru. Akibatnya setiap kali dijalankan (mis. setelah `db:init` yang
+// membuat ulang view), kredensial di Vercel jadi kedaluwarsa dan seluruh app
+// menjawab "Query gagal dijalankan" sampai env diperbarui. Untuk merotasi
+// password dengan sengaja, pakai `npm run db:rotate -- app_web`.
 import { randomBytes } from 'node:crypto';
 
 import { makeRunner } from './_neon.mjs';
@@ -14,13 +24,24 @@ if (!owner) {
 
 const runOwner = await makeRunner(owner);
 
-const password = process.env.APP_WEB_PASSWORD || randomBytes(18).toString('base64url');
-
 const exists = await runOwner("SELECT 1 FROM pg_roles WHERE rolname = 'app_web'");
-if (!exists.rows?.length) await runOwner('CREATE ROLE app_web LOGIN');
+const isNew = !exists.rows?.length;
+// Password hanya dipasang kalau role baru dibuat, atau kalau pemanggil
+// menuliskan password secara eksplisit lewat APP_WEB_PASSWORD. Tanpa dua
+// syarat itu, password lama dibiarkan supaya kredensial di Vercel tetap sah.
+const explicitPassword = process.env.APP_WEB_PASSWORD;
+const setPassword = isNew || Boolean(explicitPassword);
+const password = explicitPassword || randomBytes(18).toString('base64url');
+
+if (isNew) {
+  await runOwner(`CREATE ROLE app_web LOGIN PASSWORD '${password}'`);
+} else if (setPassword) {
+  await runOwner(`ALTER ROLE app_web WITH LOGIN PASSWORD '${password}'`);
+} else {
+  await runOwner('ALTER ROLE app_web WITH LOGIN');
+}
 
 const setup = [
-  `ALTER ROLE app_web WITH LOGIN PASSWORD '${password}'`,
   'REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_web',
   'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM app_web',
   'REVOKE ALL ON SCHEMA public FROM app_web',
@@ -36,9 +57,11 @@ const setup = [
 
 for (const q of setup) await runOwner(q);
 
+// Uji batas akses hanya mungkin kalau password-nya kita ketahui.
+const knownPassword = setPassword;
 const web = new URL(owner);
 web.username = 'app_web';
-web.password = password;
+if (knownPassword) web.password = password;
 const runWeb = await makeRunner(web.toString());
 
 // ---- uji batas akses ----
@@ -54,6 +77,15 @@ const mustFail = [
 ];
 
 let bad = 0;
+if (!knownPassword) {
+  // Password tidak diketahui (role lama, tidak diset lewat env), jadi koneksi
+  // sebagai app_web tidak bisa diuji. Izin tetap sudah diperbaiki di atas;
+  // uji batas akses lengkap ada di `npm run check:e2e` yang memakai token app.
+  console.log('OK — izin app_web diperbarui (password tidak diubah).');
+  console.log('     Uji batas akses: npm run check:e2e');
+  process.exit(0);
+}
+
 for (const q of mustOk) {
   try {
     await runWeb(q);
@@ -78,5 +110,10 @@ if (bad) {
   process.exit(1);
 }
 
-console.log('OK — role app_web siap, 6 pemeriksaan akses lulus.');
-console.log(`DATABASE_URL_WEB=${web.toString()}`);
+console.log(`OK — role app_web ${isNew ? 'dibuat' : 'diperbarui'}, 6 pemeriksaan akses lulus.`);
+if (setPassword) {
+  console.log(`DATABASE_URL_WEB=${web.toString()}`);
+} else {
+  console.log('Password app_web tidak diubah (pakai password yang sudah ada di Vercel).');
+  console.log('Untuk merotasi dengan sengaja: npm run db:rotate -- app_web');
+}

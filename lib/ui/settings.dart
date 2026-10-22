@@ -84,7 +84,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         await Db.query('SELECT 1');
                         if (context.mounted) toast(context, 'Koneksi OK');
                       } catch (e) {
-                        if (context.mounted) toast(context, 'Gagal: $e');
+                        if (context.mounted) toast(context, 'Gagal: ${errText(e)}');
                       }
                     },
                     child: const Text('Tes koneksi'),

@@ -1,4 +1,19 @@
-# Flutter
+# =====================================================================
+# Yang TIDAK boleh masuk repo.
+#
+# Aturan umum: hanya sumber yang dibutuhkan untuk membangun/menjalankan app
+# yang di-commit. Semua hasil build, kredensial, dan artefak kerja lokal
+# tinggal di mesin masing-masing.
+#
+# File yang WAJIB tetap ada di repo (jangan pernah diabaikan):
+#   .env.example        template env; tanpa ini orang tidak tahu variabel apa
+#                       yang harus diisi
+#   pubspec.lock        versi paket terkunci, supaya build CI = lokal
+#   package-lock.json   idem untuk dependensi Node
+#   design/current/     baseline screenshot untuk dokumentasi
+# =====================================================================
+
+# ---------- Flutter / Dart ----------
 .dart_tool/
 .packages
 build/
@@ -8,36 +23,71 @@ build/
 .idea/
 .vscode/
 local.properties
+flutter_*.log
+*.dill
+
+# ---------- Android ----------
 android/local.properties
 android/key.properties
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
 *.jks
 *.keystore
 
-# OS
-.DS_Store
+# ---------- Artefak rilis ----------
+# APK/AAB dihasilkan CI dan diunggah ke GitHub Releases, bukan ke git:
+# 60 MB per file akan membengkakkan riwayat selamanya.
+*.apk
+*.aab
+*.ipa
 
-# Node / Vercel
+# ---------- Node / Vercel ----------
 node_modules/
-.env
 .vercel/
 .vercel
-.env.production
+.env
 .env.local
+.env.production
+.env.development
 
-# Screenshot pembanding milik produk lain — jangan ikut repo.
+# ---------- Kredensial ----------
+# Jangan pernah commit nilai rahasia. `.env.example` sengaja dikecualikan di
+# bawah: itu template kosong, bukan kredensial.
+*.pem
+*.key
+*.p12
+*.pfx
+*secret*
+*credential*
+
+# ---------- Artefak kerja lokal ----------
+# Hasil generate tes audit query (`flutter test test/queries_audit_test.dart`)
+# berisi SQL + nilai contoh; tidak perlu ikut repo dan bisa dibuat ulang.
+.audit/
+
+# Screenshot kerja harness `design/mock/`. Baseline dokumentasi ada di
+# `design/current/` (di-commit), folder ini hanya untuk tangkapan sementara.
+.shots/
+
+# Konfigurasi tooling lokal.
+.claude/
+design/mock/.broken
+mock.log
+
+# Screenshot pembanding milik produk lain.
 design/ref/
 
-# Screenshot kerja (harness `design/mock/`) dan konfigurasi tooling lokal.
-# Baseline yang dipakai dokumentasi tetap di `design/current/`.
-.shots/
-.claude/
-
-# Log crash flutter_tools (dibuat lokal saat perintah flutter gagal).
-flutter_*.log
-
-.env*
-design/mock/.broken
-
-# File kerja sementara (mis. connection string saat debug) — jangan pernah commit.
+# File kerja sementara (mis. connection string saat debug).
 *.tmp
-mock.log
+*.bak
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Pengecualian ----------
+# Template env harus tetap terlacak meskipun pola `.env*` di atas.
+!.env.example

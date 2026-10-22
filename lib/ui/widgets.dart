@@ -644,9 +644,17 @@ class MatchRow extends StatelessWidget {
 
     final String status;
     if (finished) {
-      final points = match.pointsForWinner ?? 0;
+      // Poin dihitung dari sudut pandang baris ini, bukan "poin pemenang".
+      // Dulu selalu memakai `pointsForWinner` (3), sehingga baris tim yang
+      // KALAH pun berbunyi "KALAH · 3 POIN".
+      final points = draw ? kPointsDraw : (win ? kPointsWin : 0);
+      // Nama pemenang juga harus dari sudut pandang yang sama: kalau tim ini
+      // bermain sebagai away, `match.homeName` adalah lawan.
+      final winnerName = asHome
+          ? (win ? match.homeName : match.awayName)
+          : (win ? match.awayName : match.homeName);
       final result = showResult
-          ? (draw ? 'SERI' : '${win ? match.homeName : match.awayName} MENANG')
+          ? (draw ? 'SERI' : '$winnerName MENANG')
           : (win ? 'MENANG' : (draw ? 'SERI' : 'KALAH'));
       status = '$result · $points POIN';
     } else {
@@ -888,13 +896,27 @@ List<String> recentPeriods({int count = 6}) => [
     ];
 
 /// Bungkus Future + loading/error/retry + pull-to-refresh.
-class AsyncView<T> extends StatelessWidget {
+///
+/// Stateful dengan sengaja: setiap `_reload()` mengganti `future`, dan kalau
+/// widget ini memakai FutureBuilder polos, `connectionState` kembali
+/// `waiting` sehingga SELURUH halaman diganti skeleton — pull-to-refresh
+/// kehilangan indikatornya dan posisi scroll terlempar ke atas. Lebih buruk
+/// lagi, reload yang gagal (jaringan putus sesaat) membuang data lama dan
+/// menampilkan layar error penuh, padahal datanya masih valid untuk dibaca.
+///
+/// Aturannya sekarang:
+///   * belum pernah ada data  → skeleton, lalu layar error kalau gagal;
+///   * sudah ada data         → data tetap tampil selama refresh; kalau
+///     refresh gagal, data lama dipertahankan dan kegagalannya dilaporkan
+///     lewat [onRefreshError] (halaman menampilkan DegradedNotice/toast).
+class AsyncView<T> extends StatefulWidget {
   const AsyncView({
     super.key,
     required this.future,
     required this.builder,
     required this.onRefresh,
     this.loading,
+    this.onRefreshError,
   });
 
   final Future<T> future;
@@ -902,20 +924,82 @@ class AsyncView<T> extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final Widget? loading;
 
+  /// Dipanggil saat refresh gagal padahal data lama masih ditampilkan.
+  final void Function(Object error)? onRefreshError;
+
+  @override
+  State<AsyncView<T>> createState() => _AsyncViewState<T>();
+}
+
+class _AsyncViewState<T> extends State<AsyncView<T>> {
+  /// Data terakhir yang berhasil dimuat. Dipertahankan lintas reload.
+  T? _data;
+  bool _hasData = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _watch();
+  }
+
+  @override
+  void didUpdateWidget(AsyncView<T> old) {
+    super.didUpdateWidget(old);
+    if (widget.future != old.future) _watch();
+  }
+
+  void _watch() {
+    final f = widget.future;
+    f.then((v) {
+      if (!mounted) return;
+      setState(() {
+        _data = v;
+        _hasData = true;
+      });
+    }, onError: (Object e) {
+      if (!mounted) return;
+      if (_hasData) {
+        // Data lama masih sah: jangan ganti layar dengan error penuh. Beri
+        // tahu lewat callback halaman, atau toast kalau halaman tidak
+        // menyediakannya — kegagalan diam-diam lebih buruk daripada data
+        // yang terlihat tidak berubah tanpa penjelasan.
+        final handler = widget.onRefreshError;
+        if (handler != null) {
+          handler(e);
+        } else if (context.mounted) {
+          toast(context, 'Gagal menyegarkan: ${errText(e)}');
+        }
+        setState(() {}); // lepas status menunggu
+      } else {
+        setState(() {}); // biarkan FutureBuilder menampilkan ErrorState
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<T>(
-      future: future,
+      future: widget.future,
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return loading ?? const SkeletonList();
+        // Selama belum pernah ada data sama sekali, tampilkan loading/error.
+        if (!_hasData) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return widget.loading ?? const SkeletonList();
+          }
+          if (snap.hasError) {
+            return ErrorState(error: snap.error!, onRetry: () => widget.onRefresh());
+          }
+          final fresh = snap.data;
+          if (fresh == null) return widget.loading ?? const SkeletonList();
+          return RefreshIndicator(
+            onRefresh: widget.onRefresh,
+            child: widget.builder(fresh),
+          );
         }
-        if (snap.hasError) {
-          return ErrorState(error: snap.error!, onRetry: () => onRefresh());
-        }
+        // Sudah ada data: pertahankan isi halaman, refresh berjalan diam-diam.
         return RefreshIndicator(
-          onRefresh: onRefresh,
-          child: builder(snap.data as T),
+          onRefresh: widget.onRefresh,
+          child: widget.builder(_data as T),
         );
       },
     );

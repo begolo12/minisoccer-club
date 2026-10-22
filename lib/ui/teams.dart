@@ -73,7 +73,7 @@ class _TeamsPageState extends State<TeamsPage> {
                 await Team.insert(v);
                 if (ctx.mounted) Navigator.pop(ctx, true);
               } catch (e) {
-                if (ctx.mounted) toast(ctx, 'Gagal: $e');
+                if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
               }
             },
             child: const Text('Simpan'),
@@ -243,14 +243,34 @@ class TeamDetailPage extends StatefulWidget {
 }
 
 class _TeamDetailPageState extends State<TeamDetailPage> {
-  late Future<(List<Member>, List<Match>, List<String>)> _future;
+  late Future<(List<Member>, List<Match>, List<int>, List<String>)> _future;
 
-  Future<(List<Member>, List<Match>, List<String>)> _load() async {
+  /// Nama tim yang sedang tampil. `widget.team` adalah objek beku dari daftar
+  /// sebelumnya: setelah "Ganti nama" berhasil, judul halaman dan dialog
+  /// "Tambah ke ..." masih menyebut nama lama sepanjang halaman ini terbuka.
+  late String _name = widget.team.name;
+
+  /// Statistik tim dihitung dari SEMUA laga selesai (lihat
+  /// `Match.statsForTeam`), bukan dari riwayat yang ditampilkan — riwayat
+  /// dibatasi supaya halaman tidak memanjang tanpa ujung.
+  ///
+  /// Statistik ikut di dalam hasil Future, bukan field terpisah yang diisi
+  /// sebagai efek samping: field seperti itu bisa terbaca sebelum terisi
+  /// (halaman sempat menampilkan "MAIN 0" padahal ada hasil), dan membuat
+  /// builder bergantung pada urutan eksekusi.
+  Future<(List<Member>, List<Match>, List<int>, List<String>)> _load() async {
     final r = await Future.wait<Soft<Object?>>([
       soft('Pemain tim', _players, fallback: const <Member>[]),
       soft('Riwayat laga', () => Match.forTeam(widget.team.id), fallback: const <Match>[]),
+      soft('Statistik tim', () => Match.statsForTeam(widget.team.id),
+          fallback: const <int>[0, 0, 0, 0, 0, 0]),
     ]);
-    return (r[0].value! as List<Member>, r[1].value! as List<Match>, settle(r));
+    return (
+      r[0].value! as List<Member>,
+      r[1].value! as List<Match>,
+      r[2].value! as List<int>,
+      settle(r),
+    );
   }
 
   Future<List<Member>> _players() async {
@@ -271,7 +291,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   }
 
   Future<void> _rename() async {
-    final c = TextEditingController(text: widget.team.name);
+    final c = TextEditingController(text: _name);
     final ok = await showShadDialog<bool>(
       context: context,
       builder: (ctx) => ShadDialog(
@@ -281,7 +301,10 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           ShadButton(
             onPressed: () async {
               final v = c.text.trim();
-              if (v.isEmpty) return;
+              if (v.isEmpty) {
+                toast(ctx, 'Nama tim wajib diisi');
+                return;
+              }
               if (await attempt(ctx, () => Team.rename(widget.team.id, v), fail: 'Gagal mengganti nama')) {
                 if (ctx.mounted) Navigator.pop(ctx, true);
               }
@@ -292,11 +315,25 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
         child: ShadInput(controller: c, placeholder: const Text('Nama tim')),
       ),
     );
-    if (ok ?? false) await _reload();
+    if (ok ?? false) {
+      // Nama baru dipakai judul halaman & dialog berikutnya.
+      final v = c.text.trim();
+      if (v.isNotEmpty) setState(() => _name = v);
+      await _reload();
+    }
+    c.dispose();
   }
 
   Future<void> _addPlayer(List<Member> current) async {
-    final all = await Member.all(activeOnly: true);
+    // Await sebelum dialog bisa gagal; tanpa try/catch tombol tambah pemain
+    // diam saja saat jaringan/server bermasalah.
+    final List<Member> all;
+    try {
+      all = await Member.all(activeOnly: true);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal memuat anggota: ${errText(e)}');
+      return;
+    }
     if (!mounted) return;
     final taken = current.map((p) => p.id).toSet();
     final free = all.where((m) => !taken.contains(m.id)).toList();
@@ -367,26 +404,26 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           }, tooltip: 'Hapus tim'),
         ],
       ],
-      child: AsyncView<(List<Member>, List<Match>, List<String>)>(
+      child: AsyncView<(List<Member>, List<Match>, List<int>, List<String>)>(
         future: _future,
         onRefresh: _reload,
         builder: (data) {
           final players = data.$1;
           final matches = data.$2;
-          final failures = data.$3;
+          final stats = data.$3;
+          final failures = data.$4;
           final done = matches.where((m) => m.finished).toList();
           final upcoming = matches.where((m) => !m.finished).toList()
             ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
-          final played = done.length;
-          final results = [
-            for (final m in done)
-              (m.goalsForTeam(widget.team.id), m.goalsAgainstTeam(widget.team.id)),
-          ];
-          final won = results.where((r) => r.$1 > r.$2).length;
-          final drawn = results.where((r) => r.$1 == r.$2).length;
-          final lost = played - won - drawn;
-          final gf = results.fold<int>(0, (s, r) => s + r.$1);
-          final ga = results.fold<int>(0, (s, r) => s + r.$2);
+          // Statistik dari agregat DB (semua laga selesai), bukan dari daftar
+          // riwayat: riwayat dibatasi supaya halaman tidak memanjang, jadi
+          // "Main" di sini bisa lebih kecil dari klasemen kalau memakainya.
+          final played = stats[0];
+          final won = stats[1];
+          final drawn = stats[2];
+          final lost = stats[3];
+          final gf = stats[4];
+          final ga = stats[5];
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [

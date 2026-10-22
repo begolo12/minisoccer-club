@@ -112,7 +112,16 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
 /// Form jadwal laga. [match] terisi = mengubah jadwal yang ada; tanpa itu
 /// form membuat laga baru.
 Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
-  final teams = await Team.all();
+  // Await sebelum dialog bisa gagal (jaringan/server). Tanpa try/catch,
+  // exception naik ke pemanggil dan tombol "Jadwal" tampak tidak bereaksi
+  // sama sekali — tanpa pesan apa pun.
+  final List<Team> teams;
+  try {
+    teams = await Team.all();
+  } catch (e) {
+    if (context.mounted) toast(context, 'Gagal memuat tim: ${errText(e)}');
+    return false;
+  }
   if (!context.mounted) return false;
   if (teams.length < 2) {
     toast(context, 'Buat minimal 2 tim dulu di menu Tim');
@@ -270,7 +279,14 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
 /// adalah hasil yang sah, dan dua sumber skor yang berbeda akan saling
 /// menimpa begitu sesi berikutnya disimpan.
 Future<bool> showFinishMatch(BuildContext context, Match match) async {
-  final sessions = await MatchSession.forMatch(match.id);
+  // Await sebelum dialog bisa gagal; tanpa ini tombol "Selesai" diam saja.
+  final List<MatchSession> sessions;
+  try {
+    sessions = await MatchSession.forMatch(match.id);
+  } catch (e) {
+    if (context.mounted) toast(context, 'Gagal memuat sesi: ${errText(e)}');
+    return false;
+  }
   if (!context.mounted) return false;
   final fromSessions = sessions.isNotEmpty;
   var home = fromSessions ? sessions.fold<int>(0, (s, e) => s + e.scoreHome) : match.goalsFor;
@@ -319,7 +335,7 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
                         } catch (e) {
                           if (ctx.mounted) {
                             setLocal(() => saving = false);
-                            toast(ctx, 'Gagal membuka lagi: $e');
+                            toast(ctx, 'Gagal membuka lagi: ${errText(e)}');
                           }
                         }
                       },
@@ -453,20 +469,24 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
-          final amt = double.tryParse(amount.text.replaceAll('.', '').replaceAll(',', '.')) ?? 0;
-          if (amt <= 0) {
-            toast(ctx, 'Nominal harus lebih dari 0');
-            return;
-          }
-          if (await Payment.existsFor(selected, per)) {
-            final name = members.firstWhere((m) => m.id == selected).name;
-            if (ctx.mounted) {
-              toast(ctx, 'Iuran $name untuk ${periodLabel(per)} sudah tercatat');
-            }
-            return;
-          }
+          // `saving` diset SEBELUM await apa pun: sebelumnya flag baru
+          // menyala setelah cek duplikat, jadi dua ketukan cepat pada Simpan
+          // menjalankan dua alur simpan dan bisa menghasilkan iuran ganda.
           setLocal(() => saving = true);
+          final amt = parseMoney(amount.text);
+          if (amt == null || amt <= 0) {
+            setLocal(() => saving = false);
+            toast(ctx, 'Nominal harus diisi angka lebih dari 0');
+            return;
+          }
           try {
+            if (await Payment.existsFor(selected, per)) {
+              if (ctx.mounted) {
+                final name = members.firstWhere((m) => m.id == selected).name;
+                toast(ctx, 'Iuran $name untuk ${periodLabel(per)} sudah tercatat');
+              }
+              return;
+            }
             await Payment.insert(memberId: selected, amount: amt, period: per, note: _nullIfEmpty(note.text));
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
@@ -541,16 +561,15 @@ Future<bool> showTransactionForm(
         final categories = Transaction.categoriesFor(kind);
 
         Future<void> save() async {
-          final amt =
-              double.tryParse(
-                amount.text.replaceAll('.', '').replaceAll(',', '.'),
-              ) ??
-              0;
-          if (amt <= 0) {
-            toast(ctx, 'Nominal harus lebih dari 0');
+          // `saving` diset lebih dulu supaya dua ketukan cepat tidak
+          // menyimpan dua baris kas.
+          setLocal(() => saving = true);
+          final amt = parseMoney(amount.text);
+          if (amt == null || amt <= 0) {
+            setLocal(() => saving = false);
+            toast(ctx, 'Nominal harus diisi angka lebih dari 0');
             return;
           }
-          setLocal(() => saving = true);
           try {
             if (editing) {
               await transaction.update(
@@ -692,12 +711,22 @@ Future<bool> showBookingForm(BuildContext context) async {
       builder: (ctx, setLocal) {
         Future<void> save() async {
           setLocal(() => saving = true);
+          // Biaya sewa: kosong = 0 (boleh, sewa bisa gratis), tapi angka yang
+          // tidak terbaca atau negatif harus ditolak. Sebelumnya nilai negatif
+          // tersimpan apa adanya dan input tak terbaca jadi 0 diam-diam.
+          final raw = cost.text.trim();
+          final parsed = raw.isEmpty ? 0.0 : parseMoney(raw);
+          if (parsed == null || parsed < 0) {
+            setLocal(() => saving = false);
+            toast(ctx, 'Biaya harus angka 0 atau lebih');
+            return;
+          }
           try {
             await Booking.insert(
               title: title.text.trim().isEmpty ? 'Sewa lapangan' : title.text.trim(),
               startsAt: DateTime(date.year, date.month, date.day, time.hour, time.minute),
               durationMin: duration,
-              cost: double.tryParse(cost.text.replaceAll('.', '')) ?? 0,
+              cost: parsed,
               postToCash: postToCash,
             );
             if (ctx.mounted) Navigator.pop(ctx, true);

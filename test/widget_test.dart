@@ -29,6 +29,74 @@ void main() {
     expect(fmtShortMoney(-350000), '-Rp 350 rb');
   });
 
+  test('fmtShortMoney tidak melewati ambang satuan', () {
+    // Regresi: 999.999 dulu jadi "Rp 1000 rb" dan 999.999.999 jadi
+    // "Rp 1000,00 jt" — angka benar tapi satuannya salah, dan "1000 rb"
+    // terbaca seperti nominal berbeda.
+    expect(fmtShortMoney(999999), 'Rp 1,00 jt');
+    expect(fmtShortMoney(999999999), 'Rp 1,00 M');
+    expect(fmtShortMoney(999499), 'Rp 999 rb');
+    expect(fmtShortMoney(9999), 'Rp 10 rb');
+    expect(fmtShortMoney(9499), 'Rp 9.499');
+  });
+
+  test('poin baris laga dari sudut pandang tim, bukan poin pemenang', () {
+    // Regresi: baris tim yang KALAH dulu berbunyi "KALAH · 3 POIN" karena
+    // memakai `pointsForWinner` (selalu 3 untuk laga selesai).
+    final menang = Match(
+      id: 1, playedAt: DateTime(2026, 1, 1), status: 'finished',
+      goalsFor: 3, goalsAgainst: 1, homeTeamId: 1, awayTeamId: 2,
+      homeName: 'Tim A', awayName: 'Tim B',
+    );
+    expect(menang.pointsForWinner, kPointsWin);
+
+    // Tim away yang menang: golnya ada di goals_against.
+    final awayMenang = Match(
+      id: 2, playedAt: DateTime(2026, 1, 1), status: 'finished',
+      goalsFor: 1, goalsAgainst: 3, homeTeamId: 1, awayTeamId: 2,
+      homeName: 'Tim A', awayName: 'Tim B',
+    );
+    expect(awayMenang.goalsForTeam(2), 3, reason: 'tim away mencetak 3');
+    expect(awayMenang.goalsAgainstTeam(2), 1);
+    expect(awayMenang.goalsForTeam(1), 1, reason: 'tim home mencetak 1');
+
+    // Seri: kedua tim dapat 1 poin.
+    final seri = Match(
+      id: 3, playedAt: DateTime(2026, 1, 1), status: 'finished',
+      goalsFor: 2, goalsAgainst: 2, homeTeamId: 1, awayTeamId: 2,
+    );
+    expect(seri.pointsForWinner, kPointsDraw);
+  });
+
+  test('parseMoney: gaya Indonesia dan gaya lain', () {
+    // Gaya Indonesia: titik ribuan, koma desimal.
+    expect(parseMoney('1.500.000'), 1500000);
+    expect(parseMoney('1500000'), 1500000);
+    expect(parseMoney('1.500'), 1500, reason: 'kebiasaan Indonesia: 1.500 = seribu lima ratus');
+    expect(parseMoney('1.500,50'), 1500.5);
+    expect(parseMoney('100000,50'), 100000.5);
+
+    // Regresi: "100000.50" dulu dibaca 10000050 (100x lebih besar) karena
+    // semua titik dibuang lebih dulu. Titik di sini desimal, bukan ribuan.
+    expect(parseMoney('100000.50'), 100000.5);
+    expect(parseMoney('12.75'), 12.75);
+
+    // Titik + koma: yang paling kanan adalah desimal.
+    expect(parseMoney('1.234.567,89'), 1234567.89);
+
+    // Boleh ada spasi/awalan Rp dan tanda minus.
+    expect(parseMoney(' Rp 25.000 '), 25000);
+    expect(parseMoney('-5000'), -5000);
+
+    // Input tak terbaca harus null (pemanggil menampilkan pesan), bukan 0
+    // yang diam-diam tersimpan.
+    expect(parseMoney(''), isNull);
+    expect(parseMoney('abc'), isNull);
+    expect(parseMoney('12abc'), isNull);
+    expect(parseMoney('1,2,3'), isNull, reason: 'pemisah ganda ambigu');
+    expect(parseMoney('-'), isNull);
+  });
+
   test('pemenang sesi dari skor', () {
     expect(sessionWinner(2, 1), 'home');
     expect(sessionWinner(0, 3), 'away');

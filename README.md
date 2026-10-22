@@ -17,6 +17,27 @@ Versi web: **https://minisoccer-club.vercel.app**
 2. Buka file → izinkan "Install unknown apps" untuk browser/file manager → **Install**.
 3. Buka app → **Masuk** dengan akun dari admin. (Tanpa connection string; data lewat server.)
 
+## Tampilan
+
+| Beranda (desktop) | Tanding |
+|---|---|
+| ![Beranda](design/current/beranda-desktop.png) | ![Tanding](design/current/tanding.png) |
+
+| Tim & klasemen | Kas klub |
+|---|---|
+| ![Tim](design/current/tim.png) | ![Kas](design/current/kas.png) |
+
+| Turnamen | Detail laga |
+|---|---|
+| ![Turnamen](design/current/turnamen.png) | ![Detail laga](design/current/detail-laga.png) |
+
+| Beranda (HP) | Tema terang |
+|---|---|
+| ![Beranda HP](design/current/beranda-hp.png) | ![Terang](design/current/beranda-terang.png) |
+
+Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
+[`design/current/`](design/current/).
+
 ## Fitur
 
 | Fitur | Isi |
@@ -25,7 +46,7 @@ Versi web: **https://minisoccer-club.vercel.app**
 | **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol/assist/kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
 | **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
 | **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif |
-| **Turnamen internal** | Pilih tim klub, bagi ke grup (1–4), jadwal round-robin otomatis per grup, klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga |
+| **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal round-robin otomatis per grup, klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga |
 | **Iuran** | Bayar per bulan, siapa yang belum (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat |
 | **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan) |
 | **Booking lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu booking = satu catatan kas) |
@@ -156,17 +177,21 @@ db/schema.sql               Schema Neon (idempoten + migrasi dari v1)
 design/                     catatan desain + mock server & preview (dev saja)
 lib/preview_main.dart       entrypoint preview tanpa DB (dev saja)
 scripts/init-db.mjs         Jalankan schema (npm run db:init)
-scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:harden)
+scripts/harden-db.mjs       Buat role app_web + izin tabel (npm run db:harden)
+scripts/rotate-db-password.mjs  Ganti password role DB (npm run db:rotate)
 scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
 scripts/dev-api.mjs         API lokal tanpa `vercel dev` (npm run dev:api)
 scripts/check-schema.mjs    Deteksi schema produksi ketinggalan (npm run check:schema)
 scripts/e2e-check.mjs       Semua query app untuk tiap role (npm run check:e2e)
-scripts/flow-check.mjs      Alur admin ujung ke ujung: anggota→tim→laga→klasemen (npm run check:flow)
-scripts/rotate-db-password.mjs  Ganti password role DB (dipakai setelah kredensial bocor)
+scripts/flow-check.mjs      Alur admin ujung ke ujung (npm run check:flow)
+scripts/money-check.mjs     Aturan uang: booking↔kas, iuran unik, poin (npm run check:money)
+scripts/audit-queries.mjs   Jalankan SQL ASLI tiap method model (npm run check:audit)
+scripts/_sql-probe.mjs      Ubah query tulis jadi probe SELECT (tanpa menulis)
 scripts/_app-queries.mjs    Daftar query app — satu sumber untuk tes & e2e
 scripts/_grants.mjs         Daftar tabel/view yang boleh diakses app_web
 scripts/_neon.mjs           Runner Neon (IPv4 dipaksa) + pemecah statement SQL
 scripts/security-check.mjs  Uji endpoint live (npm run check:live)
+test/queries_audit_test.dart  Merekam SQL asli dari setiap method model
 .github/workflows/build.yml Build APK otomatis
 ```
 
@@ -175,18 +200,33 @@ scripts/security-check.mjs  Uji endpoint live (npm run check:live)
 ```bash
 npm test                 # filter SQL, pengikat parameter, semua query app
 flutter analyze          # wajib bersih
-flutter test             # unit: format, round-robin, klasemen, buku kas, soft()
+flutter test             # unit: format, uang, round-robin, klasemen, buku kas, soft()
 npm run check:schema     # schema produksi vs db/schema.sql (tanpa kredensial)
 npm run check:e2e        # semua query app untuk tamu/anggota/bendahara/admin
 npm run check:flow       # alur admin: anggota→tim→laga→sesi→klasemen→kas
+npm run check:money      # booking↔kas, iuran unik, poin klasemen
 npm run check:live       # keamanan endpoint produksi
 ```
 
-`check:e2e`, `check:flow`, dan `check:live` membuat data sementara, menguji
-batas baca/tulis, lalu menghapusnya lagi. Jalankan setelah deploy, bukan di CI
-biasa (menyentuh data produksi). `check:flow` membuktikan rangkaian yang dipakai
-admin benar-benar saling menyambung — id dari INSERT dipakai query berikutnya,
-status ikut berubah, dan klasemen menghitung hasilnya.
+### Audit query (menangkap drift schema)
+
+Daftar query yang disalin manual bisa berbeda dari yang benar-benar dikirim app
+— itu persis yang dulu terjadi: `npm test` hijau, produksi gagal. Karena itu
+`check:audit` memakai SQL **asli**:
+
+```bash
+flutter test test/queries_audit_test.dart   # rekam SQL tiap method model
+npm run check:audit                         # jalankan ke server sungguhan
+```
+
+Tahap pertama mencegat transport HTTP app, jadi yang terekam adalah string final
+setelah interpolasi. Tahap kedua memastikan setiap query lolos filter, semua
+parameter `@nama` terkirim, dan tabel/kolomnya ada di DB — tanpa mengeksekusi
+tulis apa pun.
+
+`check:e2e`, `check:flow`, `check:money`, dan `check:live` membuat data
+sementara, menguji perilaku, lalu menghapusnya lagi. Jalankan setelah deploy,
+bukan di CI biasa (menyentuh data produksi).
 
 ## CI/CD
 
@@ -203,9 +243,9 @@ status ikut berubah, dan klasemen menghitung hasilnya.
 | Login | Password di-hash bcrypt oleh Postgres (`pgcrypto`), 6–200 karakter, username maks 40 |
 | Sesi | Token HMAC-SHA256, berlaku 12 jam, ditandatangani `AUTH_SECRET`; token ditolak → app otomatis kembali ke layar masuk |
 | Kunci akun | 5× salah password → terkunci 10 menit; maks 30 percobaan / 5 menit per IP |
-| Jalur data | Semua query lewat `/api/sql`, wajib `Authorization: Bearer <token>` |
+| Jalur data | Semua query lewat `/api/sql`. **Tamu tanpa token boleh membaca** (mode publik read-only); menulis wajib `Authorization: Bearer <token>` |
 | Role DB | `app_web`: tanpa DDL, tanpa akses `password_hash` (dibuat `npm run db:harden`) |
-| Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `member` read-only dan tidak bisa membaca daftar pengguna |
+| Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `public`/`member` read-only dan tidak bisa membaca daftar pengguna |
 | Parameter | `@nama` → positional hanya di luar string/komentar; parameter yang tidak dikirim ditolak (bukan NULL diam-diam) |
 | Kelola user | Tambah/reset/hapus hanya lewat `/api/auth` (admin), bukan lewat SQL |
 | Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |
@@ -215,3 +255,30 @@ server. `APP_KEY` lama sudah tidak dipakai.
 
 Belum ada: reset password via email, 2FA, dan rate limit lintas instance
 (penghitung per instance). Tambahkan kalau app dipakai di luar klub sendiri.
+
+## Kebersihan repo
+
+Yang **tidak** pernah masuk git (lihat `.gitignore`):
+
+| Kategori | Contoh | Alasan |
+|---|---|---|
+| Hasil build | `build/`, `.dart_tool/`, `node_modules/` | dibuat ulang tiap build |
+| Artefak rilis | `*.apk`, `*.aab` | 60 MB/file; didistribusikan lewat GitHub Releases |
+| Kredensial | `.env`, `.env.local`, `*.jks`, `*.keystore`, `*.pem` | rahasia; `.env.example` tetap di-commit sebagai template |
+| Artefak kerja | `.audit/`, `.shots/`, `*.tmp` | hasil generate lokal, bisa dibuat ulang |
+| Konfigurasi mesin | `.vercel/`, `.idea/`, `.vscode/`, `local.properties` | spesifik tiap developer |
+
+Aturan yang dipakai: **hanya sumber yang dibutuhkan untuk membangun app** yang
+di-commit. Kalau ragu, tambahkan ke `.gitignore` dulu — menghapus file dari
+riwayat git jauh lebih mahal daripada menambahkannya nanti.
+
+Sebelum commit, cek cepat:
+
+```bash
+git status --short              # apa yang akan masuk
+git ls-files --others --exclude-standard   # file baru yang belum diabaikan
+```
+
+Kalau kredensial sudah terlanjur ter-commit, menghapus filenya **tidak cukup** —
+nilainya ada di riwayat. Rotasi dulu (`npm run db:rotate -- <role>`), baru
+bersihkan riwayat dan pasang nilai baru di env Vercel.

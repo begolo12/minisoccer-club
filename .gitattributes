@@ -11,3 +11,21 @@ db/*.sql text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
 *.json text eol=lf
+*.md text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# Biner: jangan pernah dinormalisasi. Tanpa ini git bisa menganggap PNG/APK
+# sebagai teks dan merusaknya saat checkout di mesin lain.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.apk binary
+*.aab binary
+*.zip binary

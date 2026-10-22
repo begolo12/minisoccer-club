@@ -135,10 +135,20 @@ class _MorePageState extends State<MorePage> {
           future: _future,
           builder: (context, snap) {
             final c = snap.data;
+            // Semua sumber gagal = server/jaringan bermasalah. Tanpa cabang
+            // ini halaman tetap tampil dengan subjudul statis ("Belum ada
+            // jadwal sewa"), sehingga gangguan server terbaca seperti data
+            // kosong dan tidak ada cara mencoba lagi.
+            final error = snap.hasError ? snap.error : null;
             return ListView(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
             children: [
               _AccountStrip(),
+              if (error != null)
+                DegradedNotice(
+                  failures: ['Data klub: ${errText(error)}'],
+                  onRetry: _reload,
+                ),
               if (c != null && c.failures.isNotEmpty)
                 DegradedNotice(failures: c.failures, onRetry: _reload),
               if (Auth.isGuest)

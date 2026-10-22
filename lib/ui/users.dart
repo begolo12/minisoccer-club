@@ -115,36 +115,50 @@ class _UsersPageState extends State<UsersPage> {
 
   Future<bool> _resetPassword(BuildContext context, AppUser u) async {
     final ctrl = TextEditingController();
+    var saving = false;
     final ok = await showShadDialog<bool>(
       context: context,
-      builder: (ctx) => ShadDialog(
-        title: Text('Password baru — ${u.username}'),
-        description: const Text('Minimal 6 karakter. Beri tahu pemiliknya setelah disimpan.'),
-        actions: [
-          ShadButton.outline(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          ShadButton(
-            onPressed: () async {
-              if (ctrl.text.length < 6) {
-                toast(ctx, 'Password minimal 6 karakter');
-                return;
-              }
-              try {
-                await AppUser.setPassword(u.id, ctrl.text);
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              } catch (e) {
-                if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
-              }
-            },
-            child: const Text('Simpan'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => ShadDialog(
+          title: Text('Password baru — ${u.username}'),
+          description: const Text('Minimal 6 karakter. Beri tahu pemiliknya setelah disimpan.'),
+          actions: [
+            ShadButton.outline(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            ShadButton(
+              // Guard busy: tanpa ini dua ketukan cepat mengirim dua reset.
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (ctrl.text.length < 6) {
+                        toast(ctx, 'Password minimal 6 karakter');
+                        return;
+                      }
+                      setLocal(() => saving = true);
+                      try {
+                        await AppUser.setPassword(u.id, ctrl.text);
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setLocal(() => saving = false);
+                          toast(ctx, 'Gagal: ${errText(e)}');
+                        }
+                      }
+                    },
+              child: Text(saving ? 'Menyimpan…' : 'Simpan'),
+            ),
+          ],
+          child: ShadInput(
+            controller: ctrl,
+            placeholder: const Text('Password baru'),
+            obscureText: true,
           ),
-        ],
-        child: ShadInput(
-          controller: ctrl,
-          placeholder: const Text('Password baru'),
-          obscureText: true,
         ),
       ),
     );
+    ctrl.dispose();
     return ok ?? false;
   }
 

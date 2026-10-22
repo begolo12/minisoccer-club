@@ -60,6 +60,18 @@ class _HomeShellState extends State<HomeShell> {
     _built.add(_index);
   }
 
+  @override
+  void didUpdateWidget(HomeShell old) {
+    super.didUpdateWidget(old);
+    // Bootstrap membangun ulang HomeShell saat status sesi berubah. Tanpa ini
+    // `_readOnly` tetap nilai pertama: login lewat halaman Lainnya/Pengaturan
+    // meninggalkan bilah "Mode publik" (padahal sudah masuk), dan sebaliknya
+    // sesi yang habis tidak memunculkan tombol Masuk lagi.
+    if (widget.readOnly != old.readOnly && widget.readOnly != _readOnly) {
+      setState(() => _readOnly = widget.readOnly);
+    }
+  }
+
   Future<void> _openLogin() async {
     final ok = await Navigator.push<bool>(
       context,

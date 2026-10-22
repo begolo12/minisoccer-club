@@ -159,9 +159,12 @@ class _FinancePageState extends State<FinancePage> {
                           _MonthLabel(month: d.entries[i].date),
                         _LedgerRow(
                           entry: d.entries[i],
-                          transaction: d.entries[i].transactionId == null
-                              ? null
-                              : d.byId[d.entries[i].transactionId],
+                          // Baris kas yang lahir dari booking tidak boleh
+                          // diedit/dihapus dari sini: nominalnya harus sama
+                          // dengan `bookings.cost`, kalau tidak "Total sewa"
+                          // dan saldo kas menghitung angka berbeda untuk uang
+                          // yang sama (dan mencatat ulang manual = dobel).
+                          transaction: _manualTx(d, d.entries[i]),
                           onChanged: _reload,
                         ),
                       ],
@@ -175,6 +178,20 @@ class _FinancePageState extends State<FinancePage> {
       ),
     );
   }
+}
+
+/// Transaksi yang boleh dikoreksi dari buku kas.
+///
+/// Null untuk iuran (dikelola di halaman Iuran) dan untuk pengeluaran sewa
+/// yang lahir dari booking (dikelola lewat booking-nya). Tanpa penyaringan
+/// ini, mengubah nominal sewa di Kas memutus tautan `booking_id` sehingga
+/// "Total sewa" dan saldo kas menampilkan angka berbeda.
+Transaction? _manualTx(_FinanceData d, CashEntry entry) {
+  final id = entry.transactionId;
+  if (id == null) return null;
+  final tx = d.byId[id];
+  if (tx == null || tx.fromBooking) return null;
+  return tx;
 }
 
 /// Pemisah bulan di buku kas "Semua": label kecil, bukan judul bagian —
@@ -263,7 +280,9 @@ class _LedgerRow extends StatelessWidget {
             const SizedBox(width: 6),
             SizedBox(
               width: 34,
-              child: entry.transactionId == null
+              // `transaction` null untuk iuran DAN sewa booking; keduanya
+              // tidak boleh dihapus dari buku kas.
+              child: transaction == null
                   ? null
                   : iconAction(context, Icons.delete_outline, () async {
                       if (await confirm(
@@ -272,7 +291,7 @@ class _LedgerRow extends StatelessWidget {
                         '${entry.label} ${fmtMoney(entry.amount.abs())} dihapus dari buku kas.',
                       )) {
                         if (!context.mounted) return;
-                        if (await attempt(context, () => Transaction.delete(entry.transactionId!),
+                        if (await attempt(context, () => Transaction.delete(transaction!.id),
                             fail: 'Gagal menghapus')) {
                           await onChanged();
                         }

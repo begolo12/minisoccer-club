@@ -215,15 +215,30 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
   /// menolak kalau sudah ada laga berskor — jadwal baru akan menempelkan
   /// hasil lama ke pasangan tim yang berbeda.
   Future<void> _manageTeams() async {
-    final all = await Team.all();
+    // Await sebelum dialog bisa gagal; tanpa try/catch tombol "Kelola tim"
+    // diam saja saat jaringan/server bermasalah.
+    final List<Team> all;
+    final List<Team> current;
+    try {
+      all = await Team.all();
+      if (!mounted) return;
+      current = await Team.forTournament(widget.tournament.id);
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal memuat tim: ${errText(e)}');
+      return;
+    }
     if (!mounted) return;
-    final current = await Team.forTournament(widget.tournament.id);
-    if (!mounted) return;
+    // Jumlah grup dibaca dari data terbaru (tim peserta), bukan dari
+    // `widget.tournament` yang tidak pernah dimuat ulang setelah
+    // `updateTeams` mengubah kolom `groups`.
+    final groupsNow = current.isEmpty
+        ? widget.tournament.groups
+        : current.map((t) => t.groupNo).reduce((a, b) => a > b ? a : b);
     final ok = await showTournamentTeamsForm(
       context,
       allTeams: all,
       selected: current.map((t) => t.id).toSet(),
-      groups: widget.tournament.groups,
+      groups: groupsNow,
       startsAt: widget.tournament.startsAt,
       matchMinutes: widget.tournament.matchMinutes,
       breakMinutes: widget.tournament.breakMinutes,
@@ -367,8 +382,15 @@ class _MatchTile extends StatelessWidget {
     if (action == 'reset') {
       await attempt(context, () => match.clearScore(), fail: 'Gagal menyimpan skor');
     } else if (action is (int, int)) {
-      await attempt(context, () => match.saveScore(action.$1, action.$2),
+      // Toast sukses hanya kalau simpan benar-benar berhasil. Sebelumnya
+      // pesan "Hasil tersimpan" tetap muncul saat gagal dan menimpa pesan
+      // error dari attempt(), jadi user mengira skor tersimpan.
+      final saved = await attempt(context, () => match.saveScore(action.$1, action.$2),
           fail: 'Gagal menyimpan skor');
+      if (!saved) {
+        await onChanged();
+        return;
+      }
       if (context.mounted) toast(context, 'Hasil tersimpan · klasemen diperbarui');
     } else {
       return;
@@ -668,7 +690,7 @@ Future<bool> showTournamentForm(BuildContext context) async {
             );
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal buat turnamen: $e');
+            if (ctx.mounted) toast(ctx, 'Gagal buat turnamen: ${errText(e)}');
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }

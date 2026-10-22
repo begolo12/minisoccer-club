@@ -264,28 +264,61 @@ CREATE INDEX IF NOT EXISTS idx_tournament_teams    ON tournament_teams(tournamen
 CREATE INDEX IF NOT EXISTS idx_matches_teams       ON matches(home_team_id, away_team_id);
 
 -- Klasemen abadi antar tim klub: semua laga internal yang sudah selesai.
-CREATE OR REPLACE VIEW v_team_standings AS
+--
+-- Semua kolom angka di-cast ke INT. `COUNT`/`SUM` menghasilkan BIGINT, dan
+-- driver Neon mengirim BIGINT sebagai **String** ke klien (supaya angka besar
+-- tidak kehilangan presisi). Tanpa cast, app menerima `"played": "1"` lalu
+-- melempar "type 'String' is not a subtype of type 'int'" begitu ada satu
+-- laga selesai — klasemen tim mati total. Cast di sini memperbaiki sumbernya
+-- untuk semua klien, bukan hanya yang sudah diberi pengaman.
+--
+-- DROP dulu, bukan CREATE OR REPLACE: Postgres menolak REPLACE yang mengubah
+-- tipe kolom ("cannot change data type of view column ... from bigint to
+-- integer"), jadi view lama harus dibuang. Aman karena view ini tidak
+-- menyimpan data dan tidak dirujuk view lain.
+DROP VIEW IF EXISTS v_team_standings;
+CREATE VIEW v_team_standings AS
 SELECT t.id AS team_id,
        t.name,
-       COUNT(m.id) FILTER (WHERE m.status = 'finished') AS played,
-       COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
+       (COUNT(m.id) FILTER (WHERE m.status = 'finished'))::int AS played,
+       (COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
               (m.home_team_id = t.id AND m.goals_for > m.goals_against) OR
-              (m.away_team_id = t.id AND m.goals_against > m.goals_for))) AS won,
-       COUNT(m.id) FILTER (WHERE m.status = 'finished' AND m.goals_for = m.goals_against) AS drawn,
-       COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
+              (m.away_team_id = t.id AND m.goals_against > m.goals_for))))::int AS won,
+       (COUNT(m.id) FILTER (WHERE m.status = 'finished' AND m.goals_for = m.goals_against))::int AS drawn,
+       (COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
               (m.home_team_id = t.id AND m.goals_for < m.goals_against) OR
-              (m.away_team_id = t.id AND m.goals_against < m.goals_for))) AS lost,
+              (m.away_team_id = t.id AND m.goals_against < m.goals_for))))::int AS lost,
        COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.goals_for
                          WHEN m.away_team_id = t.id THEN m.goals_against END)
-                FILTER (WHERE m.status = 'finished'), 0) AS goals_for,
+                FILTER (WHERE m.status = 'finished'), 0)::int AS goals_for,
        COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.goals_against
                          WHEN m.away_team_id = t.id THEN m.goals_for END)
-                FILTER (WHERE m.status = 'finished'), 0) AS goals_against,
-       3 * COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
+                FILTER (WHERE m.status = 'finished'), 0)::int AS goals_against,
+       (3 * COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
               (m.home_team_id = t.id AND m.goals_for > m.goals_against) OR
               (m.away_team_id = t.id AND m.goals_against > m.goals_for)))
-         + COUNT(m.id) FILTER (WHERE m.status = 'finished' AND m.goals_for = m.goals_against) AS points
+         + COUNT(m.id) FILTER (WHERE m.status = 'finished' AND m.goals_for = m.goals_against))::int AS points
 FROM teams t
 LEFT JOIN matches m
        ON (m.home_team_id = t.id OR m.away_team_id = t.id)
 GROUP BY t.id, t.name;
+
+-- ---------------------------------------------------------------------
+-- Izin ulang untuk `app_web` setelah view dibuat ulang.
+--
+-- `DROP VIEW` + `CREATE VIEW` menghapus semua GRANT pada view itu, sehingga
+-- `/api/sql` tiba-tiba menjawab "Query gagal dijalankan" sampai `db:harden`
+-- dijalankan lagi. Itu jebakan: migrasi schema yang rutin malah mematikan
+-- klasemen. Grant diulang di sini supaya `db:init` tetap mandiri.
+--
+-- Hanya dijalankan kalau role `app_web` sudah ada — di database baru,
+-- `db:harden` yang membuat role dan memberikan izin lengkap.
+-- ---------------------------------------------------------------------
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_web') THEN
+    GRANT USAGE ON SCHEMA public TO app_web;
+    GRANT SELECT ON v_team_standings TO app_web;
+  END IF;
+END
+$$;

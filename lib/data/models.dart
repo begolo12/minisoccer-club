@@ -307,6 +307,46 @@ class Match {
     final r = rows.first;
     return [r['w'] as int, r['d'] as int, r['l'] as int, r['gf'] as int, r['ga'] as int];
   }
+
+  /// Rekap satu tim dari SELURUH laga selesainya.
+  ///
+  /// Return [main, menang, seri, kalah, golMemasukkan, golKebobolan].
+  ///
+  /// Halaman detail tim dulu menghitung ini dari daftar riwayat yang dibatasi
+  /// 20 baris, sehingga "Main" di sana bisa lebih kecil daripada di klasemen
+  /// untuk tim yang sama. Angka tim harus datang dari agregat, bukan dari
+  /// halaman pertama daftar.
+  ///
+  /// Gol dibaca dari sudut pandang tim: `goals_for` adalah gol tim home, jadi
+  /// saat tim ini bermain sebagai away, golnya ada di `goals_against`.
+  static Future<List<int>> statsForTeam(int teamId) async {
+    final rows = await Db.query(
+      '''SELECT count(*)::int AS played,
+                count(*) FILTER (WHERE
+                  (home_team_id=@t AND goals_for > goals_against) OR
+                  (away_team_id=@t AND goals_against > goals_for))::int AS won,
+                count(*) FILTER (WHERE goals_for = goals_against)::int AS drawn,
+                count(*) FILTER (WHERE
+                  (home_team_id=@t AND goals_for < goals_against) OR
+                  (away_team_id=@t AND goals_against < goals_for))::int AS lost,
+                coalesce(sum(CASE WHEN home_team_id=@t THEN goals_for
+                                  ELSE goals_against END), 0)::int AS gf,
+                coalesce(sum(CASE WHEN home_team_id=@t THEN goals_against
+                                  ELSE goals_for END), 0)::int AS ga
+         FROM matches
+         WHERE status='finished' AND (home_team_id=@t OR away_team_id=@t)''',
+      params: {'t': teamId},
+    );
+    final r = rows.first;
+    return [
+      _int(r['played']),
+      _int(r['won']),
+      _int(r['drawn']),
+      _int(r['lost']),
+      _int(r['gf']),
+      _int(r['ga']),
+    ];
+  }
 }
 
 // ---------- Match events ----------
@@ -469,6 +509,15 @@ class Transaction {
   final DateTime occurredAt;
   final String? note;
 
+  /// Booking yang melahirkan pengeluaran ini, kalau ada.
+  ///
+  /// Sewa lapangan dicatat otomatis dari form Booking. Baris kas seperti ini
+  /// TIDAK boleh dikoreksi atau dihapus dari halaman Kas: nominalnya harus
+  /// sama dengan `bookings.cost`, kalau tidak "Total sewa" dan saldo kas
+  /// menghitung angka berbeda untuk uang yang sama. Perubahannya lewat
+  /// booking-nya (atau hapus booking → kas ikut terhapus lewat CASCADE).
+  final int? bookingId;
+
   Transaction({
     required this.id,
     required this.kind,
@@ -476,15 +525,20 @@ class Transaction {
     required this.amount,
     required this.occurredAt,
     this.note,
+    this.bookingId,
   });
 
+  /// True kalau baris ini dikelola oleh booking, bukan dibuat manual.
+  bool get fromBooking => bookingId != null;
+
   factory Transaction.fromMap(Map<String, dynamic> m) => Transaction(
-        id: m['id'] as int,
+        id: _int(m['id']),
         kind: (m['kind'] as String?) ?? 'expense',
         category: (m['category'] as String?) ?? 'lain',
         amount: _num(m['amount']),
         occurredAt: _dt(m['occurred_at']),
         note: m['note'] as String?,
+        bookingId: m['booking_id'] == null ? null : _int(m['booking_id']),
       );
 
   static const incomeCategories = <String, String>{
@@ -732,8 +786,23 @@ class Booking {
     );
   }
 
-  Future<void> setStatus(String s) =>
-      Db.execute('UPDATE bookings SET status=@s WHERE id=@id', params: {'s': s, 'id': id});
+  /// Ubah status booking. Membatalkan booking sekaligus membuang pengeluaran
+  /// kas yang tertaut.
+  ///
+  /// Tanpa ini, "Total sewa" (yang mengabaikan booking batal) dan saldo Kas
+  /// (yang masih memuat pengeluarannya) menampilkan angka berbeda untuk uang
+  /// yang sama — dan baris kas itu tidak bisa dihapus dari halaman Kas karena
+  /// memang milik booking. Booking yang dibatalkan berarti sewa tidak jadi
+  /// dibayar, jadi catatan kasnya juga harus hilang.
+  Future<void> setStatus(String s) async {
+    await Db.execute('UPDATE bookings SET status=@s WHERE id=@id', params: {'s': s, 'id': id});
+    if (s == 'canceled') {
+      await Db.execute(
+        'DELETE FROM transactions WHERE booking_id=@id',
+        params: {'id': id},
+      );
+    }
+  }
 
   /// Hapus booking; catatan kasnya ikut terhapus lewat `ON DELETE CASCADE`
   /// pada `transactions.booking_id`.
@@ -1305,19 +1374,25 @@ class Team {
   }
 
   /// Klasemen abadi semua tim dari laga internal yang selesai.
+  ///
+  /// Semua kolom angka di `v_team_standings` bertipe **bigint** (hasil
+  /// `COUNT`), dan driver Neon mengirim bigint sebagai String supaya angka
+  /// besar tidak kehilangan presisi. Membacanya dengan `as int` melempar
+  /// "type 'String' is not a subtype of type 'int'" — itu mematikan klasemen
+  /// begitu ada satu laga selesai. Pakai `_int()` yang menerima keduanya.
   static Future<List<Standing>> standings() async {
     final rows = await Db.query(
       '''SELECT * FROM v_team_standings
          ORDER BY points DESC, (goals_for - goals_against) DESC, goals_for DESC, name''',
     );
     return rows
-        .map((r) => Standing(r['team_id'] as int, r['name'] as String)
-          ..played = r['played'] as int
-          ..won = r['won'] as int
-          ..drawn = r['drawn'] as int
-          ..lost = r['lost'] as int
-          ..goalsFor = r['goals_for'] as int
-          ..goalsAgainst = r['goals_against'] as int)
+        .map((r) => Standing(_int(r['team_id']), r['name'] as String)
+          ..played = _int(r['played'])
+          ..won = _int(r['won'])
+          ..drawn = _int(r['drawn'])
+          ..lost = _int(r['lost'])
+          ..goalsFor = _int(r['goals_for'])
+          ..goalsAgainst = _int(r['goals_against']))
         .toList();
   }
 }
@@ -1453,6 +1528,21 @@ double _num(dynamic v) => switch (v) {
       null => 0,
       num n => n.toDouble(),
       String s => double.tryParse(s) ?? 0,
+      _ => 0,
+    };
+
+/// Bilangan bulat dari DB.
+///
+/// Tiga bentuk bisa datang untuk kolom yang sama, tergantung tipenya:
+/// `int` untuk `integer`, **String** untuk `bigint` (COUNT/SUM — driver
+/// mengirimnya sebagai string agar presisi tidak hilang) dan untuk NUMERIC,
+/// serta `double` kalau ada yang sudah dikonversi. `as int` hanya aman untuk
+/// bentuk pertama, jadi semua pembacaan angka bulat lewat sini.
+int _int(dynamic v) => switch (v) {
+      null => 0,
+      int n => n,
+      num n => n.toInt(),
+      String s => int.tryParse(s) ?? double.tryParse(s)?.toInt() ?? 0,
       _ => 0,
     };
 

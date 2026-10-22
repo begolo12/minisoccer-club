@@ -41,6 +41,19 @@ class _DashboardData {
   /// Sumber yang gagal dimuat; beranda tetap tampil dengan data lain.
   final List<String> failures;
 
+  /// False kalau daftar iuran bulan ini gagal dimuat. Dipakai supaya
+  /// "belum bayar" tidak disimpulkan dari daftar kosong: saat query gagal,
+  /// semua anggota akan tampak menunggak padahal datanya tidak diketahui.
+  final bool paymentsKnown;
+
+  /// False kalau daftar anggota aktif gagal dimuat. Kebalikannya berbahaya:
+  /// daftar kosong membuat beranda menulis "semua anggota sudah lunas".
+  final bool membersKnown;
+
+  /// False kalau iuran atau kas bulan ini gagal dimuat. "Belum ada pemasukan"
+  /// hanya boleh dikatakan kalau kedua sumber itu benar-benar terbaca.
+  final bool cashKnown;
+
   _DashboardData({
     required this.upcoming,
     required this.tournaments,
@@ -57,6 +70,9 @@ class _DashboardData {
     required this.bookings,
     required this.standings,
     this.failures = const [],
+    this.paymentsKnown = true,
+    this.membersKnown = true,
+    this.cashKnown = true,
   });
 
   /// Laga yang sedang berlangsung — satu-satunya laga yang layak jadi papan
@@ -158,6 +174,14 @@ class _DashboardData {
       bookings: bookings,
       standings: standings,
       failures: failures,
+      // `r[7]` = iuran bulan ini, `r[6]` = anggota aktif. Kalau salah satunya
+      // gagal, daftar kosongnya BUKAN fakta: jangan menuduh semua orang
+      // menunggak, dan jangan menulis "semua sudah lunas".
+      paymentsKnown: r[7].ok,
+      membersKnown: r[6].ok,
+      // Kas = iuran + transaksi; kalau salah satu gagal, angkanya bukan nol
+      // yang sebenarnya melainkan nol yang tidak diketahui.
+      cashKnown: r[7].ok && r[8].ok,
     );
   }
 }
@@ -299,11 +323,17 @@ class _MainColumn extends StatelessWidget {
         _In(
           anim: anim,
           begin: 0,
+          // Hero kosong ("Susun turnamen") hanya untuk klub yang benar-benar
+          // belum punya turnamen. Kalau sudah ada turnamen selesai, kartu
+          // "Turnamen terakhir" di bawah sudah menjawab keadaannya — menampilkan
+          // keduanya membuat beranda terlihat kosong padahal ada riwayat.
           child: live != null
               ? _FixtureStrip(match: live, onChanged: onChanged)
               : next != null
                   ? _NextTournamentHero(tournament: next, onChanged: onChanged)
-                  : _EmptyHero(onChanged: onChanged),
+                  : last == null
+                      ? _EmptyHero(onChanged: onChanged)
+                      : _LastTournamentHero(tournament: last, onChanged: onChanged),
         ),
         if (live != null && next != null) ...[
           const SectionTitle('Turnamen berikutnya', top: 14),
@@ -358,7 +388,11 @@ class _MainColumn extends StatelessWidget {
                 label: 'Iuran',
                 value: fmtMoney(d.income),
                 color: AppThemes.money(context),
-                hint: '${d.members - d.unpaid.length}/${d.members} lunas',
+                // Jumlah lunas = irisan dua sumber. Kalau salah satunya gagal,
+                // angkanya tidak bermakna ("0/0 lunas"), jadi jangan diklaim.
+                hint: (d.paymentsKnown && d.membersKnown)
+                    ? '${d.members - d.unpaid.length}/${d.members} lunas'
+                    : 'data belum lengkap',
               ),
             ],
           ),
@@ -367,7 +401,7 @@ class _MainColumn extends StatelessWidget {
         _In(
           anim: anim,
           begin: 0.14,
-          child: _CashBlock(cash: d.cash, onChanged: onChanged),
+          child: _CashBlock(cash: d.cash, known: d.cashKnown, onChanged: onChanged),
         ),
         if (Auth.canWrite)
           _In(
@@ -502,6 +536,79 @@ class _NextTournamentHero extends StatelessWidget {
             [
               fmtDateTime(tournament.startsAt),
               when,
+              if (tournament.groups > 1) '${tournament.groups} grup',
+            ].join(' • '),
+            style: t.textTheme.small.copyWith(color: t.colorScheme.foreground),
+          ),
+          const SizedBox(height: 14),
+          ShadButton(
+            height: 38,
+            backgroundColor: t.colorScheme.primary,
+            foregroundColor: t.colorScheme.primaryForeground,
+            hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
+            onPressed: () => _open(context),
+            leading: const Icon(Icons.emoji_events_outlined, size: 16),
+            child: const Text('Lihat turnamen'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: tournament)),
+    );
+    await onChanged();
+  }
+}
+
+/// Hero untuk klub yang sudah punya turnamen selesai tapi tidak ada yang
+/// berjalan atau akan datang. Tanpa ini, beranda menampilkan ajakan "Susun
+/// turnamen" padahal riwayat turnamennya ada — terlihat seperti data hilang.
+class _LastTournamentHero extends StatelessWidget {
+  const _LastTournamentHero({required this.tournament, required this.onChanged});
+
+  final Tournament tournament;
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF0C1A12) : const Color(0xFFEAF6EE),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: t.colorScheme.primary.withValues(alpha: dark ? 0.45 : 0.35)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Pill(
+                tournament.status == 'running' ? 'Turnamen berjalan' : 'Turnamen terakhir',
+                color: t.colorScheme.primary,
+              ),
+              const Spacer(),
+              if (tournament.venue?.isNotEmpty ?? false) Pill(tournament.venue!),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            tournament.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: t.textTheme.h1.copyWith(fontSize: 32, height: 1.05),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            [
+              fmtDateTime(tournament.startsAt),
+              Tournament.statusLabels[tournament.status] ?? tournament.status,
               if (tournament.groups > 1) '${tournament.groups} grup',
             ].join(' • '),
             style: t.textTheme.small.copyWith(color: t.colorScheme.foreground),
@@ -908,9 +1015,13 @@ class _ResultLine extends StatelessWidget {
 
 /// Ringkasan kas bulan ini. Ketuk untuk membuka buku kas lengkap.
 class _CashBlock extends StatelessWidget {
-  const _CashBlock({required this.cash, required this.onChanged});
+  const _CashBlock({required this.cash, required this.known, required this.onChanged});
 
   final CashSummary cash;
+
+  /// False kalau iuran atau kas gagal dimuat. Angka nol saat itu berarti
+  /// "tidak diketahui", bukan "belum ada transaksi".
+  final bool known;
   final Future<void> Function() onChanged;
 
   @override
@@ -950,7 +1061,11 @@ class _CashBlock extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'Belum ada pemasukan atau pengeluaran tercatat bulan ini.',
+              // "Belum ada" hanya boleh dikatakan kalau datanya benar-benar
+              // terbaca; saat gagal, yang benar adalah "tidak diketahui".
+              known
+                  ? 'Belum ada pemasukan atau pengeluaran tercatat bulan ini.'
+                  : 'Data kas bulan ini belum bisa dimuat.',
               style: t.textTheme.small,
             ),
           ),
@@ -989,7 +1104,12 @@ class _RailColumn extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SectionTitle('Belum bayar', top: 0),
-              if (d.unpaid.isEmpty)
+              // Tanpa data iuran/anggota yang lengkap, daftar ini tidak bisa
+              // disimpulkan: daftar kosong berarti "semua lunas" hanya kalau
+              // kedua sumbernya benar-benar terbaca.
+              if (!d.paymentsKnown || !d.membersKnown)
+                Text('Data iuran belum bisa dimuat.', style: t.textTheme.muted)
+              else if (d.unpaid.isEmpty)
                 Text('Semua anggota aktif sudah lunas bulan ini.', style: t.textTheme.muted)
               else
                 for (final m in d.unpaid.take(6))
