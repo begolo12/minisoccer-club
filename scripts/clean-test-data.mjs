@@ -20,7 +20,10 @@ const dry = process.argv.includes('--dry');
 const run = await makeRunner(url);
 
 const PATTERNS = ['_bug_%', '_uji_%', '_flow_%', '_money_%', '_e2e_%', '_audit_%'];
-const like = (col) => PATTERNS.map((p) => `${col} LIKE '${p}'`).join(' OR ');
+// `_` adalah wildcard satu karakter di LIKE. Tanpa escape, `_uji_%` juga cocok
+// dengan nama asli seperti "Auji" dan menghapus data klub yang bukan data uji.
+const like = (col) =>
+  PATTERNS.map((p) => `${col} LIKE '${p.replace(/_/g, '\\_')}'`).join(' OR ');
 
 // Urutan penting: anak dulu, induk belakangan (FK).
 const steps = [

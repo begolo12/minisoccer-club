@@ -1326,13 +1326,37 @@ class BookingAttendance {
   }
 
   /// Tambahkan anggota ke daftar hadir. Diam saja kalau sudah ada.
-  static Future<void> add(int bookingId, int memberId, double totalCost) async {
-    await Db.execute(
+  ///
+  /// `RETURNING id` wajib: tanpa id, tulis yang antre saat offline tidak punya
+  /// id sementara, sehingga pembagian biaya berikutnya mengirim `UPDATE ... id
+  /// = -1` yang tidak mengenai baris mana pun di server. Antreannya berakhir
+  /// sebagai kegagalan permanen dan bagian orang itu tetap 0 di cloud.
+  static Future<void> add(
+    int bookingId,
+    int memberId,
+    double totalCost, {
+    String memberName = '',
+  }) async {
+    final id = await Db.insertId(
       '''INSERT INTO booking_attendance (booking_id, member_id, share_amount)
          VALUES (@bid, @m, 0)
-         ON CONFLICT (booking_id, member_id) DO NOTHING''',
+         ON CONFLICT (booking_id, member_id) DO NOTHING
+         RETURNING id''',
+      // `@bid`, bukan `@b`: huruf `b` sudah berarti isi pengumuman di query
+      // lain, dan alat audit memakai satu nilai contoh per nama parameter —
+      // dengan nama yang bertabrakan, query ini akan dikirimi teks sebagai id
+      // booking dan ditolak server.
       params: {'bid': bookingId, 'm': memberId},
     );
+    // Nama datang dari JOIN, jadi baris yang ditambal ke cache tidak punya
+    // nama. Tanpa tambalan ini, anggota yang ditandai hadir saat offline
+    // tampil sebagai baris tanpa nama.
+    if (id != null && memberName.isNotEmpty) {
+      await Db.patchCacheRows(
+        table: 'booking_attendance',
+        valuesById: {id: {'member_name': memberName}},
+      );
+    }
     await rebalance(bookingId, totalCost);
   }
 
@@ -1406,6 +1430,19 @@ class BookingSplit {
     if (rows.isEmpty) return 0;
     return splitEvenly(booking.cost, rows.length).first;
   }
+
+  /// Bagian terendah, saat biaya tidak habis dibagi rata.
+  ///
+  /// 300.000 dibagi 7 memberi enam orang 42.858 dan satu orang 42.857. Layar
+  /// yang menyebut satu angka saja ("dibagi rata 42.858") membuat orang
+  /// terakhir mengira dirinya kurang bayar, jadi rentangnya ikut ditampilkan.
+  double get perPersonMin {
+    if (rows.isEmpty) return 0;
+    final shares = splitEvenly(booking.cost, rows.length);
+    return shares.reduce((a, b) => a < b ? a : b);
+  }
+
+  bool get uneven => rows.isNotEmpty && perPersonMin != perPerson;
 
   /// Uang yang sudah masuk dari setoran patungan.
   double get collected => rows.fold<double>(0, (s, r) => s + (r.paid ? r.share : 0));

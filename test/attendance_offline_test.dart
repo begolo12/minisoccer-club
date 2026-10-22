@@ -5,6 +5,8 @@
 // memakai angka lama: orang yang baru ditambahkan tampil dengan bagian Rp 0,
 // dan tombol "sudah setor" mencatat Rp 0 ke kas. Tes ini menjaga agar angka di
 // layar (cache) sama dengan yang dikirim ke server.
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -142,5 +144,35 @@ void main() {
     final after = (await BookingAttendance.forBooking(1))
         .firstWhere((r) => r.id == row.id);
     expect(after.paid, isTrue, reason: 'status di layar harus langsung berubah');
+  });
+
+  test('antrean kehadiran terkirim memakai id asli, bukan id sementara',
+      () async {
+    seed([]);
+    await BookingAttendance.add(1, 12, 300000, memberName: 'Anggota 12');
+    expect(Outbox.items, hasLength(2),
+        reason: 'satu INSERT kehadiran + satu pembagian biaya');
+
+    final shares = <Map<String, Object?>>[];
+    useClient(MockClient((req) async {
+      final body = req.body;
+      if (body.contains('INSERT INTO booking_attendance')) {
+        return http.Response('{"rows":[{"id":77}],"rowCount":1}', 200,
+            headers: {'content-type': 'application/json'});
+      }
+      if (body.contains('SET share_amount = v.share')) {
+        shares.add((jsonDecode(body)['params'] as Map).cast<String, Object?>());
+      }
+      return http.Response('{"rows":[],"rowCount":1}', 200,
+          headers: {'content-type': 'application/json'});
+    }));
+
+    final r = await Db.sync();
+    expect(r.remaining, 0, reason: 'antrean harus habis, bukan menyisakan gagal');
+    expect(r.failed, 0);
+    expect(shares, hasLength(1));
+    expect(shares.single['id0'], 77,
+        reason: 'pembagian harus menunjuk id asli dari server');
+    expect(shares.single['s0'], 300000);
   });
 }

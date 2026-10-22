@@ -118,17 +118,14 @@ class _MembersPageState extends State<MembersPage> {
                   children: [
                     for (final m in filtered)
                       RowItem(
-                        // Yang tidak punya hak tulis tetap bisa melihat riwayat
-                        // iurannya sendiri — itu justru yang paling sering
-                        // ditanyakan anggota ke bendahara.
+                        // Ketuk baris = lihat, ikon = ubah. Aturan ini sama
+                        // untuk semua role; sebelumnya baris membuka form edit
+                        // untuk admin tetapi riwayat iuran untuk anggota, jadi
+                        // satu ketukan berarti dua hal berbeda.
                         onTap: () async {
-                          if (Auth.canWrite) {
-                            if (await showMemberForm(context, member: m)) _reload();
-                          } else {
-                            await Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => MemberDuesPage(member: m),
-                            ));
-                          }
+                          await Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => MemberDuesPage(member: m),
+                          ));
                         },
                         leading: Container(
                           width: 38,
@@ -156,12 +153,10 @@ class _MembersPageState extends State<MembersPage> {
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            iconAction(context, Icons.receipt_long_outlined, () async {
-                              await Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => MemberDuesPage(member: m),
-                              ));
-                            }, tooltip: 'Riwayat iuran'),
                             if (Auth.canWrite) ...[
+                              iconAction(context, Icons.edit_outlined, () async {
+                                if (await showMemberForm(context, member: m)) _reload();
+                              }, tooltip: 'Ubah anggota'),
                               const SizedBox(width: 6),
                               iconAction(context, Icons.delete_outline, () async {
                                 // Pesan harus jujur: iuran ikut terhapus (kas

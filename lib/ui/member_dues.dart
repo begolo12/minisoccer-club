@@ -105,9 +105,7 @@ class _MemberDuesPageState extends State<MemberDuesPage> {
                     leading: Icon(Icons.error_outline,
                         size: 18, color: AppThemes.bad(context)),
                     title: tour.name,
-                    subtitle: tour.entryFee > 0
-                        ? 'Iuran ${fmtMoney(tour.entryFee)}'
-                        : 'Tanpa nominal',
+                    subtitle: 'Iuran ${fmtMoney(tour.entryFee)}',
                     trailing: Auth.canWrite
                         ? iconAction(context, Icons.payments_outlined, () async {
                             if (await showPaymentForm(

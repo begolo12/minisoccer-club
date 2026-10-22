@@ -106,6 +106,17 @@ async function main() {
     `INSERT INTO bookings (title, starts_at, duration_min, cost)
      VALUES (@t, now(), 90, 300000) RETURNING id`, { t: `${tag}_futsal` }, token);
   const bookingId = booking.rows?.[0]?.id;
+  // Sisa uji dari jalannya skrip yang berhenti di tengah (mis. gagal login)
+  // akan menumpuk di database produksi dan terlihat pengguna sebagai booking
+  // palsu. Buang yang berumur lebih dari satu jam; run yang sedang berjalan
+  // tidak tersentuh.
+  await api(
+    `DELETE FROM transactions WHERE booking_id IN (
+       SELECT id FROM bookings WHERE title LIKE '\\_at\\_%' AND starts_at < now() - interval '1 hour')`,
+    {}, token);
+  await api(
+    "DELETE FROM bookings WHERE title LIKE '\\_at\\_%' AND starts_at < now() - interval '1 hour'",
+    {}, token);
   // Pengeluaran sewa, seperti yang dibuat form Booking.
   await api(
     `INSERT INTO transactions (kind, category, amount, occurred_at, note, booking_id)
@@ -134,7 +145,17 @@ async function main() {
   await sleep(1500);
 
   await clickText('Masuk'); await sleep(2500);
-  const li = await evaluate(`[...document.querySelectorAll('input')].map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})`);
+  // Layar masuk butuh waktu lebih lama di mesin lambat: canvas Flutter harus
+  // selesai memuat sebelum input ada di DOM. Membaca `input` sekali lalu
+  // memakai `li[0]` langsung membuat skrip gagal dengan "undefined (reading
+  // 'x')" padahal aplikasinya baik-baik saja.
+  let li = [];
+  for (let i = 0; i < 20; i++) {
+    li = await evaluate(`[...document.querySelectorAll('input')].map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})`);
+    if (li && li.length >= 2) break;
+    await sleep(1000);
+  }
+  if (!li || li.length < 2) throw new Error('form masuk tidak muncul');
   await clickAt(li[0].x, li[0].y); await send('Input.insertText', { text: adminUser });
   await clickAt(li[1].x, li[1].y); await send('Input.insertText', { text: adminPass });
   await clickText('Masuk', { role: 'button' }); await sleep(4500);
@@ -148,7 +169,15 @@ async function main() {
   check('halaman Booking terbuka', opened);
   await sleep(3500);
 
-  text = await pageText();
+  // Halaman Booking memuat daftar setelah statistik tampil. Membaca sekali
+  // pada detik itu bisa menangkap layar yang belum punya barisnya, sehingga
+  // seluruh pemeriksaan berikutnya gagal berantai. Tunggu sampai judulnya ada.
+  text = '';
+  for (let i = 0; i < 15; i++) {
+    text = await pageText();
+    if (text.includes(`${tag}_futsal`)) break;
+    await sleep(1000);
+  }
   check('booking uji tampil', text.includes(`${tag}_futsal`), text.slice(0, 80).replace(/\n/g, ' '));
 
   // Ketuk baris booking → halaman detail kehadiran.
@@ -168,40 +197,68 @@ async function main() {
   check('belum ada yang hadir', /Belum ada yang dicatat hadir|belum ada yang hadir/i.test(text));
 
   // --- tandai 3 orang hadir ---
+  //
+  // Dialog daftar anggota hanya setinggi ~280px dan bisa digulir. Mengetuk nama
+  // yang sedang di luar area gulir berarti mengetuk ruang kosong: orangnya
+  // tidak terpilih, tombol konfirmasi tetap "Tambah", dan pembagiannya jadi
+  // untuk dua orang. Karena itu tiap nama dicari dulu, digulir kalau perlu,
+  // lalu jumlah yang terpilih diperiksa dari label tombol.
+  async function scrollDialog(deltaY) {
+    const box = (await nodes()).find((n) => n.role === 'group' && /Siapa yang hadir/i.test(n.text || ''));
+    const cx = 720;
+    const cy = box ? box.y : 500;
+    await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: cx, y: cy, deltaX: 0, deltaY });
+    await sleep(600);
+  }
+  async function findName(name) {
+    for (let i = 0; i < 10; i++) {
+      const hit = (await nodes()).find((n) => `${n.label || ''}${n.text || ''}`.trim() === name);
+      if (hit) return hit;
+      await scrollDialog(180);
+    }
+    return null;
+  }
+
   let added = false;
+  let selectedCount = 0;
   if (await clickText('Tambah yang hadir', { role: 'button' })) {
     await sleep(2000);
-    // Centang ketiga anggota uji.
     for (const suffix of ['a', 'b', 'c']) {
-      const hit = (await nodes()).find(
-        (n) => `${n.label || ''}${n.text || ''}`.includes(`${tag}_${suffix}`),
-      );
-      if (hit) { await clickAt(hit.x, hit.y); await sleep(500); }
+      const hit = await findName(`${tag}_${suffix}`);
+      if (!hit) continue;
+      await clickAt(hit.x, hit.y);
+      await sleep(400);
+      selectedCount++;
     }
     added = await clickText('Tambah 3', { role: 'button' }) ||
       await clickText('Tambah', { role: 'button' });
     await sleep(2500);
   }
-  check('tiga anggota ditandai hadir', added);
+  check('tiga anggota ditandai hadir', added && selectedCount === 3,
+    `terpilih ${selectedCount}`);
 
   // Tunggu sampai pembagian selesai. Aplikasi mengirim pembagian dalam satu
   // pernyataan, tetapi perjalanan ke server tetap butuh waktu; membaca terlalu
   // cepat menangkap keadaan setengah jadi dan menyimpulkan "bug" yang tidak ada.
+  //
+  // Syarat berhenti harus "SETIAP baris = 100.000", bukan "jumlahnya 300.000":
+  // keadaan setengah jadi (150.000 + 150.000 + 0) juga berjumlah 300.000, jadi
+  // penjumlahan saja akan meloloskan pembagian yang belum selesai.
   let rows = { rows: [] };
   for (let i = 0; i < 15; i++) {
     rows = await api(
       'SELECT member_id, share_amount, paid_at FROM booking_attendance WHERE booking_id=@b ORDER BY id',
       { b: bookingId }, token);
     const list = rows.rows ?? [];
-    const sum = list.reduce((a, r) => a + Number(r.share_amount), 0);
-    if (list.length === 3 && sum === 300000) break;
+    if (list.length === 3 && list.every((r) => Number(r.share_amount) === 100000)) break;
     await sleep(1000);
   }
   check('tiga baris kehadiran tersimpan', (rows.rows ?? []).length === 3,
     JSON.stringify(rows.rows));
   const shares = (rows.rows ?? []).map((r) => Number(r.share_amount));
   const total = shares.reduce((a, b) => a + b, 0);
-  check('bagian terbagi rata dan jumlahnya tepat 300.000', total === 300000,
+  check('bagian terbagi rata dan jumlahnya tepat 300.000',
+    total === 300000 && shares.every((s) => s === 100000),
     `bagian: ${shares.join(' + ')} = ${total}`);
 
   // --- setor satu orang ---
@@ -249,6 +306,35 @@ async function main() {
       cash.rows[0].category === 'patungan',
     JSON.stringify(cash.rows));
 
+  // Uangnya harus TERLIHAT di buku kas, bukan hanya benar di database: baris
+  // kas adalah satu-satunya cara bendahara melihat uang masuk.
+  //
+  // Detail booking dan daftar booking sama-sama menutupi shell, jadi nav
+  // "Lainnya" baru muncul setelah dua kali Kembali. Tanpa ini ketukan mendarat
+  // di halaman yang salah dan pemeriksaan berikutnya membaca layar Booking.
+  for (let i = 0; i < 2; i++) {
+    if (!(await clickText('Kembali', { role: 'button' }))) break;
+    await sleep(1800);
+  }
+  await clickNav('Lainnya'); await sleep(2200);
+  await clickText('Kas klub', { role: null }); await sleep(3500);
+  let kasText = '';
+  for (let i = 0; i < 10; i++) {
+    kasText = await pageText();
+    if (/Patungan lapangan/.test(kasText)) break;
+    await sleep(1000);
+  }
+  check('setoran tampil di buku kas sebagai "Patungan lapangan"',
+    /Patungan lapangan/.test(kasText),
+    kasText.slice(0, 90).replace(/\n/g, ' '));
+
+  // Kembali ke detail kehadiran untuk uji offline.
+  await clickText('Kembali', { role: 'button' }); await sleep(1800);
+  await clickText('Booking lapangan', { role: null }); await sleep(3000);
+  const backRow = (await nodes()).find((n) => `${n.label || ''}${n.text || ''}`.includes(`${tag}_futsal`));
+  if (backRow) { await clickAt(backRow.x, backRow.y); await sleep(3000); }
+  check('kembali ke detail kehadiran', Boolean(backRow));
+
   // --- offline: tandai hadir tanpa jaringan ---
   await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
   await sleep(800);
@@ -256,22 +342,33 @@ async function main() {
     `fetch('/api/sql',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sql:'SELECT 1'})}).then(r=>'HTTP '+r.status).catch(()=> 'GAGAL')`);
   check('jaringan benar-benar diputus', probe === 'GAGAL', String(probe));
 
-  // Tambah satu anggota lagi saat offline (anggota 'c' sudah hadir; pakai ulang
-  // alur tambah untuk memastikan tulis offline masuk antrean).
+  // Tambah satu anggota lagi saat offline.
+  //
+  // Yang dipilih harus anggota yang belum hadir DAN benar-benar terlihat di
+  // dialog. Daftar anggota di klub ini panjang dan dialognya bisa digulir, jadi
+  // menebak satu nama bisa berarti mengklik ruang kosong: dialog ditutup tanpa
+  // memilih siapa pun, tidak ada tulis, dan pemeriksaan berikutnya gagal
+  // seolah fitur offline-nya rusak.
+  const free = await api(
+    `SELECT m.name FROM members m
+      WHERE m.active AND NOT EXISTS (
+        SELECT 1 FROM booking_attendance a
+        WHERE a.booking_id=@b AND a.member_id=m.id)
+      ORDER BY m.id LIMIT 15`, { b: bookingId }, token);
+  const freeNames = new Set((free.rows ?? []).map((r) => String(r.name).trim()));
   let offlineWrote = false;
   const before = await outboxCount();
   if (await clickText('Tambah yang hadir', { role: 'button' })) {
     await sleep(1800);
-    // Pilih anggota mana pun yang tersedia.
-    const any = (await nodes()).find(
-      (n) => n.role !== 'tab' && /_\w+_[abc]$/.test(`${n.label || ''}${n.text || ''}`.trim()),
-    );
-    if (any) { await clickAt(any.x, any.y); await sleep(400); }
-    if (await clickText('Tambah', { role: 'button' })) { offlineWrote = true; await sleep(2500); }
+    const visible = (await nodes()).find((n) => freeNames.has(`${n.label || ''}${n.text || ''}`.trim()));
+    if (visible) { await clickAt(visible.x, visible.y); await sleep(500); }
+    offlineWrote = await clickText('Tambah', { role: 'button' });
+    await sleep(2500);
   }
   const after = await outboxCount();
+  check('anggota tersedia untuk diuji offline', freeNames.size > 0, `${freeNames.size} nama`);
   check('tulis kehadiran saat offline masuk antrean', (after ?? 0) > (before ?? 0),
-    `items ${before} -> ${after}`);
+    `items ${before} -> ${after}, dialog dikonfirmasi=${offlineWrote}`);
 
   // --- online lagi, sinkron ---
   await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });

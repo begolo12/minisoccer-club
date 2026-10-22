@@ -45,11 +45,11 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Beranda** | Sapaan akun, papan skor laga berjalan (kalau ada) atau hero turnamen berikutnya, turnamen terakhir dengan progres laga — hasil per pertandingan dibuka dengan diketuk, ringkasan anggota/main/iuran, kas bulan ini, aksi cepat, pengumuman; di layar lebar ditambah klasemen, top skor, dan sewa lapangan |
 | **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol/assist/kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
 | **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
-| **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif. Ikon **Riwayat iuran** membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan |
+| **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif. Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
 | **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal round-robin otomatis per grup, klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga. **Iuran per anggota** diisi per turnamen dan bisa diubah kapan saja |
 | **Iuran** | Iuran **per turnamen** (bukan per bulan): pilih turnamen, lihat siapa yang belum bayar (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat. Peserta = anggota dari tim yang ikut turnamen itu, jadi orang yang tidak bermain di turnamen tersebut tidak ikut ditagih |
 | **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan) |
-| **Booking lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu booking = satu catatan kas). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis, dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan" |
+| **Booking lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu booking = satu catatan kas). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan booking ikut membuang setoran patungannya |
 | **Pengumuman** | Info klub untuk anggota |
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + assist (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Pengguna** | Akun + role admin / bendahara / anggota |
@@ -127,13 +127,13 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 218 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
+| `flutter test` | 222 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
-| `npm run check:attendance` | Di **Chrome sungguhan**: booking 300.000 → tandai 3 orang hadir → bagian terbagi tepat 300.000 → tandai setor → masuk Kas sebagai pemasukan `patungan` → **putus jaringan** → tulis lagi (antrean) → online → terkirim |
+| `npm run check:attendance` | Di **Chrome sungguhan**: booking 300.000 → tandai 3 orang hadir → bagian terbagi tepat 300.000 → tandai setor → muncul di buku kas sebagai pemasukan `patungan` → **putus jaringan** → tulis lagi (antrean) → online → terkirim |
 | `npm run check:member-dues` | Di **Chrome sungguhan**: anggota dengan 2 turnamen (1 lunas) → halaman riwayat menampilkan total, tunggakan, dan nominal keduanya |
 | `npm run check:dues` | Di **Chrome sungguhan**: tagihan hanya memuat anggota yang ikut turnamen → catat iuran online → **putus jaringan** → catat lagi (masuk antrean, langsung tampak lunas) → online → terkirim ke database |
 | `npm run check:match-offline` | Di **Chrome sungguhan**: laga berjalan → **putus jaringan** → tombol Selesai membuka dialog → simpan → antrean → online → laga berstatus `finished` di database |
@@ -278,6 +278,7 @@ scripts/harden-db.mjs       Buat role app_web + izin tabel (npm run db:harden)
 scripts/rotate-db-password.mjs  Ganti password role DB (npm run db:rotate)
 scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
 scripts/clean-test-data.mjs Hapus sisa data uji `_uji_/_flow_/...` (npm run db:clean)
+scripts/_purge-test-data.mjs  Sapu semua awalan uji (`_at_`, `_md_`, `_ft_`, …) termasuk booking + patungan; butuh `.env`
 scripts/dev-api.mjs         API lokal tanpa `vercel dev` (npm run dev:api)
 scripts/check-schema.mjs    Deteksi schema produksi ketinggalan (npm run check:schema)
 scripts/e2e-check.mjs       Semua query app untuk tiap role (npm run check:e2e)

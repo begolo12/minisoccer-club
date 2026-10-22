@@ -275,8 +275,14 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Future<void> _addAttendees(List<Member> candidates) async {
     final picked = await _pickMembers(context, candidates);
     if (picked.isEmpty) return;
+    final names = {for (final m in candidates) m.id: m.name};
     for (final id in picked) {
-      await BookingAttendance.add(widget.booking.id, id, widget.booking.cost);
+      await BookingAttendance.add(
+        widget.booking.id,
+        id,
+        widget.booking.cost,
+        memberName: names[id] ?? '',
+      );
     }
     await _reload();
   }
@@ -288,7 +294,10 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
         attendanceId: row.id,
         memberId: row.memberId,
         amount: row.share,
-        occurredAt: widget.booking.startsAt,
+        // Tanggal setoran = hari uangnya diterima, bukan tanggal main. Orang
+        // bisa menyetor beberapa hari sebelumnya, dan kas harus masuk ke bulan
+        // saat uangnya benar-benar ada.
+        occurredAt: DateTime.now(),
         note: 'Patungan ${widget.booking.title} ${fmtShortDate(widget.booking.startsAt)}',
       ),
       fail: 'Gagal menyimpan setoran',
@@ -351,13 +360,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     return PageScaffold(
       title: b.title,
       subtitle: '${fmtDate(b.startsAt)} • ${fmtTime(b.startsAt)} • ${b.durationMin} menit',
-      actions: [
-        if (Auth.canWrite)
-          iconAction(context, Icons.person_add_alt, () async {
-            final d = await _future;
-            await _addAttendees(d.members);
-          }, tooltip: 'Tambah yang hadir'),
-      ],
       child: AsyncView<_SplitData>(
         future: _future,
         onRefresh: _reload,
@@ -394,8 +396,9 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
                   child: Text(
-                    'Dibagi rata: ${fmtMoney(s.perPerson)} per orang '
-                    '(${s.rows.length} yang hadir)',
+                    'Dibagi rata: '
+                    '${s.uneven ? '${fmtMoney(s.perPersonMin)}–${fmtMoney(s.perPerson)}' : fmtMoney(s.perPerson)}'
+                    ' per orang (${s.rows.length} yang hadir)',
                     style: t.textTheme.small,
                   ),
                 ),
@@ -416,7 +419,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     d.members.isEmpty
                         ? 'Daftar anggota belum tersimpan di perangkat. Buka halaman '
                             'Anggota sekali saat online.'
-                        : 'Belum ada yang dicatat hadir. Ketuk ikon di kanan atas.',
+                        : 'Belum ada yang dicatat hadir.',
                     style: t.textTheme.muted,
                   ),
                 )

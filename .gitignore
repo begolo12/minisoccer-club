@@ -100,3 +100,10 @@ desktop.ini
 # ---------- Pengecualian ----------
 # Template env harus tetap terlacak meskipun pola `.env*` di atas.
 !.env.example
+
+# Log build yang tertangkap ke berkas saat menjalankan perintah manual.
+build.log
+
+# Tangkapan keluaran perintah manual di akar repo (bukan bagian aplikasi).
+# Semua .txt proyek ini ada di dalam subfolder, jadi akar aman diabaikan.
+/*.txt

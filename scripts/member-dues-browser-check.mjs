@@ -122,7 +122,15 @@ async function main() {
   await sleep(1500);
 
   await clickText('Masuk'); await sleep(2500);
-  const li = await evaluate(`[...document.querySelectorAll('input')].map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})`);
+  // Tunggu input muncul: di mesin lambat daftar input masih kosong dan `li[0]`
+  // akan melempar "undefined (reading 'x')".
+  let li = [];
+  for (let i = 0; i < 20; i++) {
+    li = await evaluate(`[...document.querySelectorAll('input')].map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})`);
+    if (li && li.length >= 2) break;
+    await sleep(1000);
+  }
+  if (!li || li.length < 2) throw new Error('form masuk tidak muncul');
   await clickAt(li[0].x, li[0].y); await send('Input.insertText', { text: adminUser });
   await clickAt(li[1].x, li[1].y); await send('Input.insertText', { text: adminPass });
   await clickText('Masuk', { role: 'button' }); await sleep(4500);
@@ -135,15 +143,17 @@ async function main() {
   let text = await pageText();
   check('halaman Anggota terbuka', text.includes(`${tag}_budi`), text.slice(0, 80).replace(/\n/g, ' '));
 
-  // Ketuk ikon "Riwayat iuran" pada baris anggota uji.
+  // Ketuk baris anggota uji: baris membuka riwayat iuran untuk semua role.
+  //
+  // Jangan mencari ikon: baris lain di daftar memakai ikon yang sama, dan
+  // mengambil tombol pertama akan membuka anggota lain sehingga halaman tampak
+  // kosong padahal datanya ada.
   const row = (await nodes()).find((n) => `${n.label || ''}${n.text || ''}`.includes(`${tag}_budi`));
   let opened = false;
   if (row) {
-    // Ikon riwayat ada di ujung kanan baris.
-    const icons = (await nodes()).filter((n) => n.role === 'button' &&
-      Math.abs(n.y - row.y) < 30 && n.x > 1100);
-    if (icons.length) { await clickAt(icons[0].x, icons[0].y); opened = true; }
-    else { await clickAt(row.x, row.y); opened = true; }
+    // Ketuk di tengah teks baris, bukan di ujung kanan yang berisi ikon aksi.
+    await clickAt(row.x - 200, row.y);
+    opened = true;
     await sleep(3500);
   }
   check('riwayat iuran anggota terbuka', opened);

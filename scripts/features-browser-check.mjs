@@ -228,11 +228,24 @@ async function main() {
   // ---------- login ----------
   await clickText('Masuk');
   await sleep(2500);
+  // Tunggu sampai layar masuk benar-benar siap. Di mesin lambat canvas Flutter
+  // belum punya input saat 2,5 detik habis, `fillInput` mengembalikan false,
+  // dan pemeriksaan "login admin" gagal padahal aplikasinya normal.
+  for (let i = 0; i < 20; i++) {
+    if ((await textInputs()).length >= 2) break;
+    await sleep(1000);
+  }
   await fillInput(0, adminUser);
   await fillInput(1, adminPass);
   await clickText('Masuk', { role: 'button' });
   await sleep(4000);
-  check('login admin', (await pageText()).includes('Buat turnamen'));
+  // Sapaan berisi username sesi: satu-satunya teks di layar yang membuktikan
+  // login benar-benar diterima, dan tetap ada di layout HP maupun desktop.
+  // Jangan memakai tombol yang hanya muncul saat data kosong ("Buat turnamen")
+  // atau bagian yang bisa tergulir keluar layar ("Aksi cepat"): di database
+  // berisi keduanya memang tidak terlihat dan pemeriksaan gagal palsu.
+  check('login admin', (await pageText()).includes(`Halo, ${adminUser}`),
+    (await pageText()).slice(0, 60).replace(/\n/g, ' '));
 
   // ---------- setiap tab utama ----------
   const tabs = [
