@@ -59,7 +59,7 @@ class PendingWrite {
   Map<String, dynamic> toJson() => {
         'seq': seq,
         'sql': sql,
-        'params': params,
+        'params': jsonSafeParams(params),
         'created_at': createdAt.toIso8601String(),
         if (tempId != null) 'temp_id': tempId,
         if (failed) 'failed': true,
@@ -79,6 +79,33 @@ class PendingWrite {
       lastError: m['last_error'] as String?,
     );
   }
+}
+
+/// Ubah parameter tulis jadi bentuk yang aman disimpan sebagai JSON.
+///
+/// `jsonEncode` gagal untuk `DateTime`, dan kegagalan itu membuat SELURUH
+/// antrean tidak tersimpan ke disk — tulisan tetap ada di memori, jadi terlihat
+/// berhasil, lalu hilang begitu aplikasi ditutup. Contoh nyata: "Ubah jadwal
+/// laga" mengirim `played_at` sebagai `DateTime`.
+///
+/// Nilai yang dikonversi sama dengan yang dikirim driver ke server (ISO-8601
+/// UTC), jadi hasilnya tetap sah saat antrean dikirim ulang.
+Map<String, dynamic> jsonSafeParams(Map<String, Object?> params) => {
+      for (final e in params.entries) e.key: _jsonSafeValue(e.value),
+    };
+
+Object? _jsonSafeValue(Object? v) {
+  if (v == null || v is String || v is num || v is bool) return v;
+  if (v is DateTime) return v.toUtc().toIso8601String();
+  if (v is List) return v.map(_jsonSafeValue).toList();
+  if (v is Map) {
+    return {
+      for (final e in v.entries) '${e.key}': _jsonSafeValue(e.value),
+    };
+  }
+  // Tipe lain (enum, objek khusus) diubah ke teks supaya tidak menggagalkan
+  // penyimpanan antrean.
+  return v.toString();
 }
 
 /// Hasil satu kali sinkronisasi.
@@ -408,8 +435,12 @@ class Outbox {
     // Rantai tidak boleh putus karena satu kegagalan: kegagalan tulis sudah
     // ditangani `writeOutbox` (tidak melempar), dan rantai yang putus akan
     // membuat semua penulisan berikutnya tidak pernah jalan.
+    //
+    // Pemanggil juga tidak boleh dibuat gagal: tulisan sudah masuk memori dan
+    // akan dikirim, jadi masalah penyimpanan ke disk tidak boleh berubah jadi
+    // "gagal menyimpan" di layar pengguna.
     _writeChain = next.catchError((_) {});
-    return next;
+    return _writeChain;
   }
 
   /// Untuk tes: kosongkan antrean di memori tanpa menyentuh disk.

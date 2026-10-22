@@ -127,13 +127,14 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 177 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, **iuran per turnamen** |
+| `flutter test` | 189 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
-| `npm run check:dues` | Di **Chrome sungguhan**: buat turnamen + tim + 2 anggota (satu di tim, satu tidak) → tagihan hanya memuat yang ikut → catat iuran → tersimpan dengan `tournament_id` |
+| `npm run check:dues` | Di **Chrome sungguhan**: tagihan hanya memuat anggota yang ikut turnamen → catat iuran online → **putus jaringan** → catat lagi (masuk antrean, langsung tampak lunas) → online → terkirim ke database |
+| `npm run check:match-offline` | Di **Chrome sungguhan**: laga berjalan → **putus jaringan** → tombol Selesai membuka dialog → simpan → antrean → online → laga berstatus `finished` di database |
 
 `test/android_offline_io_test.dart` menjalankan kode Android yang sesungguhnya
 (berkas JSON, bukan localStorage) dengan `getApplicationSupportDirectory`

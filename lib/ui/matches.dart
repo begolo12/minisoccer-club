@@ -545,14 +545,14 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
       };
 
   Future<bool> _sessionForm(BuildContext context, {MatchSession? session}) async {
-    // Await sebelum dialog bisa gagal; tanpa try/catch tombol "Sesi" diam
-    // saja saat jaringan/server bermasalah.
-    final List<MatchSession> existing;
+    // Daftar sesi dipakai untuk menentukan nomor sesi berikutnya. Saat offline
+    // bacaan ini bisa gagal; dulu dialognya tidak terbuka sama sekali sehingga
+    // mencatat babak tidak mungkin dilakukan tanpa sinyal.
+    var existing = const <MatchSession>[];
     try {
       existing = await MatchSession.forMatch(widget.match.id);
-    } catch (e) {
-      if (context.mounted) toast(context, 'Gagal memuat sesi: ${errText(e)}');
-      return false;
+    } catch (_) {
+      existing = const <MatchSession>[];
     }
     if (!context.mounted) return false;
     final nextNo = session?.sessionNo ??

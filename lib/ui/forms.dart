@@ -280,13 +280,16 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
 /// adalah hasil yang sah, dan dua sumber skor yang berbeda akan saling
 /// menimpa begitu sesi berikutnya disimpan.
 Future<bool> showFinishMatch(BuildContext context, Match match) async {
-  // Await sebelum dialog bisa gagal; tanpa ini tombol "Selesai" diam saja.
-  final List<MatchSession> sessions;
+  // Rincian sesi dipakai untuk mengisi angka awal dialog. Saat OFFLINE bacaan
+  // ini bisa gagal (sesi belum pernah dibuka di perangkat), dan dulu dialognya
+  // tidak terbuka sama sekali — padahal menyelesaikan laga justru dilakukan di
+  // lapangan tanpa sinyal. Kalau gagal, angka awal diambil dari laga itu
+  // sendiri dan dialognya tetap terbuka.
+  var sessions = const <MatchSession>[];
   try {
     sessions = await MatchSession.forMatch(match.id);
-  } catch (e) {
-    if (context.mounted) toast(context, 'Gagal memuat sesi: ${errText(e)}');
-    return false;
+  } catch (_) {
+    sessions = const <MatchSession>[];
   }
   if (!context.mounted) return false;
   final fromSessions = sessions.isNotEmpty;
@@ -457,11 +460,13 @@ Future<bool> showPaymentForm(
   // Peserta turnamen = anggota dari tim yang terdaftar. Kalau daftar peserta
   // kosong (tim belum diisi pemain), jatuh ke semua anggota aktif supaya
   // pencatatan tetap mungkin dilakukan.
+  var failed = false;
   List<DuesRow> bill;
   try {
     bill = await Payment.bill(tournamentId);
   } catch (_) {
     bill = const [];
+    failed = true;
   }
   if (!context.mounted) return false;
 
@@ -469,13 +474,23 @@ Future<bool> showPaymentForm(
   if (candidates.isEmpty) {
     try {
       candidates = await Member.all(activeOnly: true);
+      failed = false;
     } catch (_) {
       candidates = const [];
+      failed = true;
     }
   }
   if (!context.mounted) return false;
   if (candidates.isEmpty) {
-    toast(context, 'Tambahkan anggota dulu');
+    // Bedakan "memang belum ada anggota" dari "tidak bisa dimuat": menuduh
+    // pengguna belum menambah anggota padahal daftarnya cuma tidak terbaca
+    // saat offline membuatnya menambah data yang sudah ada.
+    toast(
+      context,
+      failed
+          ? 'Daftar anggota belum tersimpan di perangkat. Buka halaman Anggota sekali saat online.'
+          : 'Tambahkan anggota dulu',
+    );
     return false;
   }
 
@@ -513,7 +528,21 @@ Future<bool> showPaymentForm(
             return;
           }
           try {
-            if (await Payment.existsFor(selected, tournamentId)) {
+            // Cek duplikat hanya kalau server terjangkau.
+            //
+            // Dulu panggilan ini tanpa penjagaan: saat OFFLINE ia melempar
+            // "Tidak bisa menghubungi server", ditangkap catch di bawah, dan
+            // dialog menampilkan "Gagal simpan" — pencatatan iuran gagal total
+            // padahal seharusnya masuk antrean. Kalau tidak bisa memeriksa,
+            // penyimpanan diteruskan; index unik (member_id, tournament_id) di
+            // database tetap menjadi penjaga terakhir saat sinkron.
+            var duplicate = false;
+            try {
+              duplicate = await Payment.existsFor(selected, tournamentId);
+            } catch (_) {
+              duplicate = false;
+            }
+            if (duplicate) {
               if (ctx.mounted) {
                 final name = candidates.firstWhere((m) => m.id == selected).name;
                 toast(ctx, 'Iuran $name untuk turnamen ini sudah tercatat');

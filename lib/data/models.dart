@@ -2,6 +2,8 @@
 library;
 
 import '../core/db.dart';
+import '../core/offline.dart';
+import '../core/row_patch.dart';
 import 'auth.dart';
 
 // ---------- Members ----------
@@ -246,12 +248,23 @@ class Match {
     if (homeTeamId == awayTeamId) {
       throw Exception('Tim tidak boleh bertemu dirinya sendiri');
     }
-    final rows = await Db.query(
-      'SELECT status FROM matches WHERE id=@id',
-      params: {'id': id},
-    );
-    if (rows.isEmpty) throw Exception('Laga tidak ditemukan');
-    final status = rows.first['status'] as String?;
+    // Pemeriksaan status butuh membaca server. Saat offline, bacaan itu
+    // melempar dan akan menggagalkan pengubahan jadwal yang seharusnya masuk
+    // antrean. Kalau tidak bisa diperiksa, perubahan diteruskan; penguncian
+    // hasil tetap berlaku saat data sampai ke server.
+    var status = 'scheduled';
+    try {
+      final rows = await Db.query(
+        'SELECT status FROM matches WHERE id=@id',
+        params: {'id': id},
+      );
+      if (rows.isEmpty) throw Exception('Laga tidak ditemukan');
+      status = (rows.first['status'] as String?) ?? 'scheduled';
+    } catch (e) {
+      if (e is Exception && e.toString().contains('Laga tidak ditemukan')) rethrow;
+      // Tidak terjangkau server: lanjutkan, jadwal masuk antrean.
+      status = this.status;
+    }
     final teamsChanged = homeTeamId != this.homeTeamId || awayTeamId != this.awayTeamId;
     if (status == 'finished' && teamsChanged) {
       throw Exception('Hasil sudah dikunci. Buka lagi laga sebelum mengganti tim.');
@@ -275,9 +288,21 @@ class Match {
   /// adalah rincian babaknya, jadi angka dari dialog tidak boleh berbeda
   /// dengan rincian yang tersimpan. Tanpa sesi, angka dialog yang dipakai.
   Future<void> finish({required int gf, required int ga}) async {
-    final sessions = await MatchSession.forMatch(id);
-    final home = sessions.isEmpty ? gf : sessions.fold<int>(0, (s, e) => s + e.scoreHome);
-    final away = sessions.isEmpty ? ga : sessions.fold<int>(0, (s, e) => s + e.scoreAway);
+    var home = gf;
+    var away = ga;
+    // Angka akhir diambil dari rincian sesi supaya dialog dan rincian tidak
+    // berbeda. Saat offline, bacaan ini bisa melempar (belum ada cache) dan
+    // akan menggagalkan penyelesaian laga — padahal itu justru dilakukan di
+    // lapangan tanpa sinyal. Kalau tidak terbaca, pakai angka dari dialog.
+    try {
+      final sessions = await MatchSession.forMatch(id);
+      if (sessions.isNotEmpty) {
+        home = sessions.fold<int>(0, (s, e) => s + e.scoreHome);
+        away = sessions.fold<int>(0, (s, e) => s + e.scoreAway);
+      }
+    } catch (_) {
+      // Tetap pakai angka dialog.
+    }
     await Db.execute(
       "UPDATE matches SET status='finished', goals_for=@gf, goals_against=@ga WHERE id=@id",
       params: {'id': id, 'gf': home, 'ga': away},
@@ -470,7 +495,7 @@ class Payment {
          ORDER BY p.paid_at DESC''',
       params: tournamentId != null ? {'t': tournamentId} : const {},
     );
-    return rows.map(Payment.fromMap).toList();
+    return _withNames(rows.map(Payment.fromMap).toList());
   }
 
   /// Pembayaran yang uangnya masuk pada bulan tertentu.
@@ -490,7 +515,7 @@ class Payment {
          ORDER BY p.paid_at DESC''',
       params: {'from': start.toUtc(), 'to': end.toUtc()},
     );
-    return rows.map(Payment.fromMap).toList();
+    return _withNames(rows.map(Payment.fromMap).toList());
   }
 
   /// Sudah ada iuran untuk anggota + turnamen ini?
@@ -512,7 +537,21 @@ class Payment {
     required int tournamentId,
     String? note,
   }) async {
-    if (await existsFor(memberId, tournamentId)) {
+    // Cek duplikat hanya kalau server terjangkau.
+    //
+    // Dulu pemeriksaan ini tanpa penjagaan, sehingga saat OFFLINE query
+    // `SELECT 1 ...` melempar "Tidak bisa menghubungi server" dan pencatatan
+    // iuran gagal total — padahal justru saat offline data harusnya masuk
+    // antrean. Kalau tidak bisa memeriksa, pencatatan diteruskan dan index
+    // unik `(member_id, tournament_id)` di database yang menjadi penjaga
+    // terakhir saat sinkron.
+    var duplicate = false;
+    try {
+      duplicate = await existsFor(memberId, tournamentId);
+    } catch (_) {
+      duplicate = false;
+    }
+    if (duplicate) {
       throw Exception('Iuran turnamen ini sudah dicatat untuk anggota itu. '
           'Hapus catatan lama dulu kalau nominalnya salah.');
     }
@@ -525,6 +564,82 @@ class Payment {
 
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM payments WHERE id=@id', params: {'id': id});
+
+  /// Lengkapi nama anggota/turnamen untuk baris hasil tambalan cache offline.
+  ///
+  /// Baris yang ditambal dibuat dari kolom INSERT saja, sedangkan
+  /// `member_name`/`tournament_name` berasal dari JOIN — jadi kosong. Tanpa
+  /// pelengkapan ini, riwayat iuran offline menampilkan baris tanpa nama dan
+  /// terlihat seperti data rusak.
+  static Future<List<Payment>> _withNames(List<Payment> items) async {
+    final needMember = items.any((p) => p.memberName.isEmpty);
+    final needTour = items.any((p) => p.tournamentName.isEmpty && p.tournamentId != null);
+    if (!needMember && !needTour) return items;
+
+    var members = const <int, String>{};
+    var tours = const <int, String>{};
+    if (needMember) {
+      try {
+        members = {for (final m in await Member.all()) m.id: m.name};
+      } catch (_) {
+        // Nama tidak diketahui: tetap tampilkan barisnya dengan id.
+      }
+    }
+    if (needTour) {
+      try {
+        tours = {for (final t in await Tournament.all()) t.id: t.name};
+      } catch (_) {
+        // Nama turnamen hanya pelengkap.
+      }
+    }
+    return [
+      for (final p in items)
+        Payment(
+          id: p.id,
+          memberId: p.memberId,
+          memberName: p.memberName.isEmpty
+              ? (members[p.memberId] ?? 'Anggota #${p.memberId}')
+              : p.memberName,
+          amount: p.amount,
+          tournamentId: p.tournamentId,
+          tournamentName: p.tournamentName.isEmpty
+              ? (tours[p.tournamentId] ??
+                  (p.tournamentId == null ? '' : 'Turnamen #${p.tournamentId}'))
+              : p.tournamentName,
+          paidAt: p.paidAt,
+          note: p.note,
+        ),
+    ];
+  }
+
+  /// Iuran yang sudah dicatat tapi belum terkirim, untuk satu turnamen.
+  ///
+  /// Dipakai [bill] karena hasil tagihan adalah query ringkasan (GROUP BY) yang
+  /// sengaja tidak ditambal: tanpa ini, anggota yang baru dibayar saat offline
+  /// tetap tampil "belum bayar" dan pengguna mencatatnya dua kali.
+  static Future<Map<int, Payment>> _pendingFor(int tournamentId) async {
+    await Outbox.load();
+    final out = <int, Payment>{};
+    for (final w in Outbox.items) {
+      if (w.failed) continue;
+      final op = parseWrite(w.sql, w.params);
+      if (op == null || !op.isInsert || op.table != 'payments') continue;
+      if (_int(op.values['tournament_id']) != tournamentId) continue;
+      final memberId = _int(op.values['member_id']);
+      if (memberId <= 0) continue;
+      out[memberId] = Payment(
+        id: w.tempId ?? -1,
+        memberId: memberId,
+        memberName: '',
+        amount: _num(op.values['amount']),
+        tournamentId: tournamentId,
+        tournamentName: '',
+        paidAt: w.createdAt,
+        note: op.values['note'] as String?,
+      );
+    }
+    return out;
+  }
 
   /// Satu baris tagihan: anggota yang ikut turnamen, dan status bayarnya.
   static Future<List<DuesRow>> bill(int tournamentId) async {
@@ -541,7 +656,20 @@ class Payment {
          ORDER BY m.name''',
       params: {'t': tournamentId},
     );
-    return rows.map(DuesRow.fromMap).toList();
+    final items = rows.map(DuesRow.fromMap).toList();
+
+    // Iuran yang masih menunggu sinkron belum ada di server, jadi LEFT JOIN di
+    // atas belum melihatnya. Tanpa penggabungan ini, anggota yang baru dibayar
+    // saat offline tetap tampil "belum bayar" dan pengguna mencatatnya lagi.
+    final pending = await _pendingFor(tournamentId);
+    if (pending.isEmpty) return items;
+    return [
+      for (final r in items)
+        if (!r.paid && pending.containsKey(r.member.id))
+          DuesRow(member: r.member, payment: pending[r.member.id])
+        else
+          r,
+    ];
   }
 
   /// Total iuran yang sudah masuk untuk satu turnamen.
@@ -1232,7 +1360,8 @@ class Tournament {
     return Tournament.fromMap(rows.first);
   }
 
-  static Future<List<Tournament>> all() async {    final rows = await Db.query('SELECT * FROM tournaments ORDER BY starts_at DESC');
+  static Future<List<Tournament>> all() async {
+    final rows = await Db.query('SELECT * FROM tournaments ORDER BY starts_at DESC');
     final items = rows.map(Tournament.fromMap).toList();
     // Urut tanggal menaruh draft paling depan karena jadwalnya paling akhir.
     // Yang dicari saat membuka halaman: yang sedang berjalan dulu, lalu yang

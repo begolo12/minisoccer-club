@@ -165,6 +165,11 @@ Object? _eval(String expr, Map<String, Object?> params) {
 }
 
 /// Urai WHERE menjadi konjungsi kesamaan. Null kalau tidak bisa dievaluasi.
+///
+/// Kolom boleh berkualifikasi (`p.tournament_id`): query baca memakai alias
+/// tabel, dan tanpa menerima bentuk itu syarat WHERE-nya tidak terbaca —
+/// akibatnya baris hasil INSERT disisipkan ke SEMUA cache query, sehingga satu
+/// pembayaran muncul di daftar semua turnamen.
 Map<String, Object?>? _parseWhereEq(String where, Map<String, Object?> params) {
   final text = where.trim();
   if (text.isEmpty) return const {};
@@ -174,8 +179,12 @@ Map<String, Object?>? _parseWhereEq(String where, Map<String, Object?> params) {
     if (t.isEmpty) continue;
     final parts = _splitTopLevel(t, '=');
     if (parts.length != 2) return null; // OR, IN, IS NULL, perbandingan lain
-    final col = parts[0].trim();
-    if (!RegExp(r'^[a-zA-Z_][a-zA-Z0-9_]*$').hasMatch(col)) return null;
+    final raw = parts[0].trim();
+    // Terima `kolom` maupun `alias.kolom`; yang dipakai nama kolomnya.
+    final m = RegExp(r'^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)?([a-zA-Z_][a-zA-Z0-9_]*)$')
+        .firstMatch(raw);
+    if (m == null) return null;
+    final col = m.group(1)!.toLowerCase();
     final v = _eval(parts[1], params);
     if (v is _Unresolved) return null;
     out[col] = v;
@@ -343,6 +352,43 @@ bool _queryTouches(String sql, String table) {
   return re.hasMatch(sql);
 }
 
+/// Syarat WHERE sebuah query BACA, kalau bentuknya konjungsi kesamaan.
+///
+/// Dipakai sebelum menyisipkan baris hasil INSERT ke hasil cache: query
+/// `... WHERE p.tournament_id = @t` dengan `@t = 9` tidak boleh ketambahan
+/// baris milik turnamen 7. Tanpa pemeriksaan ini, satu pembayaran muncul di
+/// semua turnamen.
+///
+/// Return null kalau syaratnya tidak bisa diurai (mis. `WHERE active`), supaya
+/// pemanggil bisa memilih melonggarkan alih-alih membuang baris yang sah.
+Map<String, Object?>? _queryWhereEq(String sql, Map<String, Object?> params) {
+  final upper = sql.toUpperCase();
+  final idx = _indexOfKeyword(upper, 'WHERE');
+  if (idx < 0) return const {};
+  var tail = sql.substring(idx + 5);
+  // Potong klausa berikutnya.
+  for (final kw in ['ORDER BY', 'GROUP BY', 'LIMIT', 'OFFSET', 'HAVING']) {
+    final at = _indexOfKeyword(tail.toUpperCase(), kw);
+    if (at >= 0) tail = tail.substring(0, at);
+  }
+  return _parseWhereEq(tail, params);
+}
+
+/// Apakah [row] memenuhi syarat WHERE sebuah query baca?
+///
+/// Kalau syaratnya tidak bisa diurai, baris dianggap cocok: lebih baik
+/// menampilkan baris yang mungkin berlebih daripada menyembunyikan data yang
+/// baru saja diisi pengguna.
+bool _rowFitsQuery(Map<String, dynamic> row, String sql, Map<String, Object?> params) {
+  final where = _queryWhereEq(sql, params);
+  if (where == null || where.isEmpty) return true;
+  for (final e in where.entries) {
+    if (!row.containsKey(e.key)) return true; // tidak bisa dinilai
+    if (!_looseEquals(row[e.key], e.value)) return false;
+  }
+  return true;
+}
+
 /// Query yang hasilnya BUKAN daftar baris tabel, melainkan ringkasan
 /// (count/sum/avg, atau satu baris per grup).
 ///
@@ -431,6 +477,7 @@ List<Map<String, dynamic>> applyOp(
   List<Map<String, dynamic>> rows,
   WriteOp op, {
   String querySql = '',
+  Map<String, Object?> queryParams = const {},
   int? tempId,
 }) {
   if (!op.patchable) return rows;
@@ -463,6 +510,10 @@ List<Map<String, dynamic>> applyOp(
     for (final col in _autoTimestamps[op.table] ?? const <String>[]) {
       row.putIfAbsent(col, () => now);
     }
+    // Hormati WHERE query baca: query yang difilter ke turnamen 9 tidak boleh
+    // ketambahan baris milik turnamen 7. Tanpa ini satu pembayaran muncul di
+    // daftar semua turnamen.
+    if (querySql.isNotEmpty && !_rowFitsQuery(row, querySql, queryParams)) return rows;
     return [...rows, row];
   }
 

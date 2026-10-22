@@ -20,6 +20,7 @@
     "check:features": "node scripts/features-browser-check.mjs",
     "check:sw": "node scripts/sw-offline-test.mjs",
     "check:dues": "node scripts/dues-browser-check.mjs",
+    "check:match-offline": "node scripts/match-offline-browser-check.mjs",
     "sw:manifest": "node scripts/gen-sw-manifest.mjs",
     "preview": "node design/mock/server.mjs",
     "preview:build": "flutter build web --release -t lib/preview_main.dart -o build/preview"

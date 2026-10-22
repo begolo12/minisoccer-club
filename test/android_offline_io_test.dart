@@ -291,5 +291,32 @@ void main() {
       expect(Outbox.pending.value, 0,
           reason: 'berkas antrean harus benar-benar kosong, bukan hanya memorinya');
     });
+
+    test('tulis dengan parameter DateTime tetap tersimpan di berkas', () async {
+      // Regresi: `jsonEncode` gagal untuk DateTime, sehingga SELURUH antrean
+      // tidak tersimpan ke disk. Tulisan terlihat berhasil (ada di memori) lalu
+      // hilang begitu app ditutup. Contoh nyata: "Ubah jadwal laga" mengirim
+      // `played_at` sebagai DateTime.
+      final server = _FakeServer()..offline = true;
+      useClient(server.client);
+
+      await Db.execute(
+        'UPDATE matches SET home_team_id=@h, played_at=@t WHERE id=@id',
+        params: {'h': 1, 't': DateTime(2026, 10, 2, 19, 30), 'id': 5},
+      );
+      expect(Outbox.pending.value, 1);
+
+      // Simulasikan app ditutup: lupakan memori, baca ulang dari berkas.
+      Outbox.reloadFromDiskForTest();
+      await Outbox.load();
+
+      expect(Outbox.pending.value, 1,
+          reason: 'antrean dengan DateTime harus terbaca lagi dari berkas');
+      final params = Outbox.items.single.params;
+      expect(params['id'], 5);
+      // DateTime disimpan sebagai ISO-8601, sama seperti yang dikirim driver.
+      expect(params['t'], isA<String>());
+      expect(DateTime.tryParse(params['t']! as String), isNotNull);
+    });
   });
 }

@@ -97,6 +97,19 @@ async function fillInput(index, text) {
   const target = inputs.filter((i) => i.y > 120).sort((a, b) => a.y - b.y)[index];
   if (!target) return false;
   await clickAt(target.x, target.y);
+  // Kosongkan dulu: kolom nominal sudah terisi nominal turnamen, dan
+  // menambahkan teks ke nilai yang ada menghasilkan angka 100× lipat.
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyDown', key: 'a', code: 'KeyA',
+    modifiers: 2, // Ctrl
+    windowsVirtualKeyCode: 65,
+  });
+  await send('Input.dispatchKeyEvent', {
+    type: 'keyUp', key: 'a', code: 'KeyA',
+    modifiers: 2,
+    windowsVirtualKeyCode: 65,
+  });
+  await sleep(200);
   await send('Input.insertText', { text });
   await sleep(350);
   return true;
@@ -104,6 +117,41 @@ async function fillInput(index, text) {
 
 async function pageText() {
   return (await nodes()).map((n) => `${n.label}\n${n.text}`).join('\n');
+}
+
+/**
+ * Pilih anggota di dropdown dialog iuran.
+ *
+ * Dialog memilih anggota pertama secara default. Untuk menguji anggota
+ * tertentu, dropdown harus dibuka lalu opsinya diketuk — kalau tidak, tes
+ * membayar orang yang salah dan menyimpulkan hal yang keliru.
+ */
+async function chooseMember(name) {
+  const list = await nodes();
+  // Dropdown anggota: tombol yang teksnya berisi nama anggota.
+  const select = list.find(
+    (n) => n.role === 'button' && /_(ikut|offline)$/.test((n.text || '').trim()),
+  );
+  if (!select) return false;
+  await clickAt(select.x, select.y);
+  await sleep(1400);
+  const opt = (await nodes()).find(
+    (n) => (n.text || '').trim() === name || (n.label || '').trim() === name,
+  );
+  if (!opt) return false;
+  await clickAt(opt.x, opt.y);
+  await sleep(1200);
+  return true;
+}
+
+/** Nama-nama di bagian "BELUM BAYAR" (dipotong sebelum "RIWAYAT"). */
+async function unpaidNames() {
+  const text = await pageText();
+  const a = text.search(/BELUM BAYAR/i);
+  const b = text.search(/RIWAYAT PEMBAYARAN/i);
+  if (a < 0) return [];
+  const section = b > a ? text.slice(a, b) : text.slice(a);
+  return (section.match(/_\w+_(ikut|offline)/g) ?? []).map((s) => s.trim());
 }
 
 async function save() {
@@ -141,13 +189,18 @@ async function main() {
       { n, p: 'Bebas' }, token);
   const inTeam = await mkMember(`${tag}_ikut`);
   const outTeam = await mkMember(`${tag}_tidak_ikut`);
+  const offlineM = await mkMember(`${tag}_offline`);
   const mIn = inTeam.rows?.[0]?.id;
   const mOut = outTeam.rows?.[0]?.id;
+  const mOff = offlineM.rows?.[0]?.id;
 
   const team = await api('INSERT INTO teams (name) VALUES (@n) RETURNING id', { n: `${tag}_tim` }, token);
   const teamId = team.rows?.[0]?.id;
   await api('INSERT INTO team_players (team_id, member_id) VALUES (@t, @m)',
     { t: teamId, m: mIn }, token);
+  // Anggota kedua ikut tim yang sama — dipakai untuk uji catat iuran OFFLINE.
+  await api('INSERT INTO team_players (team_id, member_id) VALUES (@t, @m)',
+    { t: teamId, m: mOff }, token);
 
   const tour = await api(
     `INSERT INTO tournaments (name, starts_at, entry_fee, status)
@@ -182,6 +235,10 @@ async function main() {
 
   await send('Page.enable');
   await send('Runtime.enable');
+  // WAJIB: tanpa `Network.enable`, `emulateNetworkConditions` di bawah tidak
+  // berefek sama sekali — permintaan tetap jalan dan "uji offline" diam-diam
+  // menguji mode online.
+  await send('Network.enable');
   await send('Emulation.setDeviceMetricsOverride', {
     width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false,
   });
@@ -260,6 +317,117 @@ async function main() {
     }
   }
   check('catat iuran lewat UI', paid);
+
+  // ---------- catat iuran saat OFFLINE ----------
+  // Ini skenario lapangan: bendahara menagih tanpa sinyal. Dulu pencatatan
+  // gagal total karena pemeriksaan duplikat membaca server lebih dulu.
+  // Semua anggota uji sudah dibuat SEBELUM app dibuka, jadi daftarnya ada di
+  // cache — sama seperti pemakaian nyata.
+  await send('Network.emulateNetworkConditions', {
+    offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
+  });
+  await sleep(800);
+  // Buktikan jaringannya benar-benar mati. Tanpa pemeriksaan ini, uji
+  // "offline" bisa lulus padahal sebenarnya online.
+  const probe = await evaluate(
+    `fetch('/api/sql',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({sql:'SELECT 1'})}).then(r=>'HTTP '+r.status).catch(()=> 'GAGAL')`,
+  );
+  check('jaringan benar-benar diputus', probe === 'GAGAL', String(probe));
+
+  await clickNav('Iuran');
+  await sleep(2500);
+  // Pilih turnamen uji lagi setelah jaringan mati.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const chip = (await nodes()).find(
+      (n) => (n.text || '').trim() === `${tag}_turnamen` || (n.label || '').trim() === `${tag}_turnamen`,
+    );
+    if (chip) {
+      await clickAt(chip.x, chip.y);
+      break;
+    }
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseWheel', x: 700, y: 120, deltaX: 300, deltaY: 0,
+    });
+    await sleep(700);
+  }
+  await sleep(2000);
+
+  let paidOffline = false;
+  const addBtn2 = (await nodes()).find((n) => n.role === 'button' && n.y < 130 && n.x > 1200);
+  if (addBtn2) {
+    await clickAt(addBtn2.x, addBtn2.y);
+    await sleep(2200);
+    // Bayar anggota yang BELUM lunas. Dialog memilih anggota pertama secara
+    // default, dan anggota pertama bisa saja sudah dibayar di langkah
+    // sebelumnya — membayarnya lagi membuat uji ini menyimpulkan hal keliru.
+    const picked = await chooseMember(`${tag}_offline`);
+    check('pilih anggota yang belum bayar di dialog', picked);
+    if (await fillInput(1, '60.000')) {
+      if (await save()) {
+        await sleep(2500);
+        paidOffline = true;
+      }
+    }
+  }
+  check('catat iuran saat offline tidak gagal', paidOffline);
+
+  const outboxItems = await evaluate(`(() => {
+    const raw = localStorage.getItem('outbox:v1');
+    if (!raw) return 0;
+    try { return (JSON.parse(raw).items || []).length; } catch { return 0; }
+  })()`);
+  check('iuran offline masuk antrean', (outboxItems ?? 0) > 0, `items=${outboxItems}`);
+
+  // Anggota itu harus langsung tampil LUNAS, bukan "belum bayar" — kalau
+  // tidak, pengguna akan mencatat iuran yang sama dua kali.
+  await sleep(2000);
+  const stillUnpaid = await unpaidNames();
+  check(
+    'anggota yang dibayar offline tidak tampil "belum bayar"',
+    !stillUnpaid.includes(`${tag}_offline`),
+    stillUnpaid.join(', ').slice(0, 120),
+  );
+
+  // ---------- online lagi: kirim lewat tombol Sinkron ----------
+  await send('Network.emulateNetworkConditions', {
+    offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+  });
+  await sleep(1500);
+  // Jalur yang dipakai pengguna: banner "N perubahan menunggu" → Sinkron.
+  await clickNav('Beranda');
+  await sleep(1500);
+  let clicked = await clickText('Sinkron', { role: 'button' });
+  if (!clicked) {
+    // Banner hanya ada di shell; kalau tidak terlihat, pakai halaman Lainnya →
+    // Pengaturan → Sinkron sekarang.
+    await clickNav('Lainnya');
+    await sleep(1500);
+    await clickText('Pengaturan');
+    await sleep(2000);
+    clicked = await clickText('Sinkron sekarang', { role: 'button' });
+  }
+  check('tombol Sinkron tersedia', clicked);
+
+  let synced = false;
+  for (let i = 0; i < 15; i++) {
+    const left = await evaluate(`(() => {
+      const raw = localStorage.getItem('outbox:v1');
+      if (!raw) return 0;
+      try { return (JSON.parse(raw).items || []).length; } catch { return 0; }
+    })()`);
+    if ((left ?? 0) === 0) {
+      synced = true;
+      break;
+    }
+    await sleep(2000);
+  }
+  check('iuran offline terkirim saat online', synced);
+
+  const offlineSaved = await api(
+    'SELECT member_id, amount FROM payments WHERE tournament_id=@t AND member_id=@m',
+    { t: tourId, m: mOff }, token);
+  check('iuran offline tersimpan di database',
+    (offlineSaved.rows ?? []).length === 1, JSON.stringify(offlineSaved.rows));
 
   // ---------- verifikasi di database ----------
   const saved = await api(

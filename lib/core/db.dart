@@ -161,7 +161,16 @@ class Db {
     try {
       final entries = await activeCacheStore.listEntries();
       for (final entry in entries) {
-        final patched = applyOp(entry.rows, op, querySql: entry.sql, tempId: id);
+        final patched = applyOp(
+          entry.rows,
+          op,
+          querySql: entry.sql,
+          // Parameter query ASAL entri ini, bukan parameter tulis: syarat
+          // WHERE milik query itulah yang menentukan baris mana yang boleh
+          // ditambahkan.
+          queryParams: entry.params,
+          tempId: id,
+        );
         if (identical(patched, entry.rows)) continue;
         final ordered = sortLikeQuery(patched, entry.sql);
         final trimmed = trimLikeQuery(ordered, entry.sql, entry.params);

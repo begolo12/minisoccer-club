@@ -17,6 +17,9 @@ import 'package:minisoccer_club/core/cache_store.dart';
 import 'package:minisoccer_club/core/db.dart';
 import 'package:minisoccer_club/core/db_web.dart';
 import 'package:minisoccer_club/core/offline.dart';
+// Prefiks `model` untuk `Match`: `dart:core` juga punya kelas `Match` (hasil
+// regex), dan tanpa prefiks nama itu menunjuk ke kelas abstrak yang salah.
+import 'package:minisoccer_club/data/models.dart' as model;
 
 /// Cache di memori: cukup untuk menguji penambalan tanpa filesystem.
 class MemoryCacheStore implements CacheStore {
@@ -275,6 +278,29 @@ void main() {
       Db.query('SELECT * FROM something_never_read'),
       throwsA(isA<ApiException>()),
     );
+  });
+
+  test('menyelesaikan laga saat offline tetap bisa dicatat', () async {
+    // Skenario lapangan: laga selesai, tidak ada sinyal. `Match.finish`
+    // membaca rincian sesi dulu untuk memastikan angka akhir cocok dengan
+    // rincian; bacaan itu gagal saat offline dan dulu menggagalkan seluruh
+    // penyelesaian laga. Sekarang angkanya jatuh ke nilai dari dialog.
+    server.offline = true;
+    final match = model.Match(
+      id: 42,
+      playedAt: DateTime(2026, 10, 1),
+      status: 'ongoing',
+      goalsFor: 0,
+      goalsAgainst: 0,
+    );
+
+    await match.finish(gf: 3, ga: 1);
+
+    expect(Outbox.pending.value, 1, reason: 'harus masuk antrean, bukan gagal');
+    final pending = Outbox.items.single;
+    expect(pending.sql, contains('UPDATE matches'));
+    expect(pending.params['gf'], 3);
+    expect(pending.params['ga'], 1);
   });
 
   test('tulis biasa (bukan RETURNING) offline tidak mengembalikan id', () async {
