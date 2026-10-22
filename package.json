@@ -7,6 +7,7 @@
     "db:harden": "node scripts/harden-db.mjs",
     "db:rotate": "node scripts/rotate-db-password.mjs",
     "db:fix": "node scripts/fix-data.mjs",
+    "db:clean": "node scripts/clean-test-data.mjs",
     "dev:api": "node scripts/dev-api.mjs",
     "test": "node --test \"api/*.test.mjs\"",
     "check:schema": "node scripts/check-schema.mjs",

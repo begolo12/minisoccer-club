@@ -180,6 +180,7 @@ scripts/init-db.mjs         Jalankan schema (npm run db:init)
 scripts/harden-db.mjs       Buat role app_web + izin tabel (npm run db:harden)
 scripts/rotate-db-password.mjs  Ganti password role DB (npm run db:rotate)
 scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
+scripts/clean-test-data.mjs Hapus sisa data uji `_uji_/_flow_/...` (npm run db:clean)
 scripts/dev-api.mjs         API lokal tanpa `vercel dev` (npm run dev:api)
 scripts/check-schema.mjs    Deteksi schema produksi ketinggalan (npm run check:schema)
 scripts/e2e-check.mjs       Semua query app untuk tiap role (npm run check:e2e)
@@ -227,6 +228,11 @@ tulis apa pun.
 `check:e2e`, `check:flow`, `check:money`, dan `check:live` membuat data
 sementara, menguji perilaku, lalu menghapusnya lagi. Jalankan setelah deploy,
 bukan di CI biasa (menyentuh data produksi).
+
+Kalau salah satu pemeriksaan terhenti di tengah (jaringan putus), sisa baris
+ujinya bisa dibersihkan dengan `npm run db:clean` — semua data uji memakai
+awalan `_uji_`, `_flow_`, `_money_`, atau `_e2e_`, jadi aman dijalankan
+kapan saja dan tidak menyentuh data klub asli.
 
 ## CI/CD
 
