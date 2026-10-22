@@ -132,26 +132,17 @@ CREATE INDEX IF NOT EXISTS idx_tx_occurred        ON transactions(occurred_at DE
 CREATE INDEX IF NOT EXISTS idx_tx_period          ON transactions(period);
 CREATE INDEX IF NOT EXISTS idx_payments_member    ON payments(member_id);
 
--- Satu anggota hanya boleh punya satu catatan iuran per periode. Klien
--- mengeceknya lebih dulu (`Payment.existsFor`), tapi dua perangkat bisa
--- menulis bersamaan. Index dibuat hanya kalau data lama sudah bersih;
--- kalau masih ada duplikat, `npm run db:fix` merapikannya lalu jalankan
--- `db:init` lagi.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_indexes WHERE indexname = 'idx_payments_member_period'
-  ) THEN
-    IF EXISTS (
-      SELECT 1 FROM payments GROUP BY member_id, period HAVING count(*) > 1
-    ) THEN
-      RAISE NOTICE 'index unik iuran dilewati: ada catatan ganda. Jalankan npm run db:fix.';
-    ELSE
-      CREATE UNIQUE INDEX idx_payments_member_period ON payments (member_id, period);
-    END IF;
-  END IF;
-END
-$$;
+-- Index unik iuran: SATU catatan per anggota per TURNAMEN.
+--
+-- Dulu blok di sini membuat `idx_payments_member_period ON payments(member_id,
+-- period)`. Kolom `period` sudah dihapus (iuran kini per turnamen), tetapi blok
+-- itu tertinggal dan menyebut kolom yang tidak ada lagi — akibatnya
+-- `npm run db:init` GAGAL dengan "column period does not exist", sehingga
+-- database baru tidak bisa disiapkan sama sekali. Index penggantinya dibuat di
+-- bawah, setelah kolom `tournament_id` dipastikan ada.
+--
+-- Index lama dibuang kalau masih tersisa di database yang belum dimigrasi.
+DROP INDEX IF EXISTS idx_payments_member_period;
 
 -- Tiga view lama dihapus: app menghitung rekap kas, pencetak gol, dan
 -- klasemen turnamen di Dart (`mergeCashLedger`, `ScorerRow.top`,

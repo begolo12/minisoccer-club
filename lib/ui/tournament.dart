@@ -311,7 +311,22 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
   }
 
   Future<void> _delete() async {
-    if (!await confirm(context, 'Hapus turnamen?', 'Jadwal dan skor turnamen ini ikut terhapus. Tim klub tetap ada.')) return;    if (!mounted) return;
+    // Peringatan harus jujur soal uang: `payments.tournament_id` memakai
+    // ON DELETE CASCADE, jadi catatan iuran turnamen ini ikut terhapus dan
+    // pemasukan iuran di Kas bulan-bulan lalu berkurang. Tanpa kalimat itu,
+    // bendahara bisa menghapus turnamen lama dan mendapati saldo kas berubah
+    // tanpa tahu sebabnya. (Pola yang sama sudah dipakai saat menghapus
+    // anggota.)
+    if (!await confirm(
+      context,
+      'Hapus turnamen?',
+      'Jadwal, skor, dan CATATAN IURAN turnamen ini ikut terhapus, sehingga '
+          'pemasukan iuran di Kas bulan lalu berkurang. Tim klub tetap ada. '
+          'Kalau hanya ingin menutup turnamen, ubah statusnya jadi Selesai.',
+    )) {
+      return;
+    }
+    if (!mounted) return;
     if (!await attempt(context, () => Tournament.delete(widget.tournament.id), fail: 'Gagal menghapus')) {
       return;
     }
