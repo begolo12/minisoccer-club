@@ -23,8 +23,8 @@ Downloading packages...
 Got dependencies!
 20 packages have newer versions incompatible with dependency constraints.
 Try `flutter pub outdated` for more information.
-00:00 +0: loading C:/Users/User/Documents/porto/minisoccer/test/attendance_offline_test.dart
-00:00 +0: menambah peserta saat offline membagi ulang bagian di cache
-00:00 +1: mengeluarkan peserta saat offline membagi ulang sisanya
-00:00 +2: setoran saat offline memakai bagian yang benar, bukan nol
-00:00 +3: All tests passed!
+Analyzing 2 items...                                            
+
+  error - The element type 'Future<Set<int>>' can't be assigned to the list type 'Future<List<Object?>>' - lib\ui\member_dues.dart:45:7 - list_element_type_not_assignable
+
+1 issue found. (ran in 9.5s)
