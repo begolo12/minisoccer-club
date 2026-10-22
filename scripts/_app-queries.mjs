@@ -169,8 +169,8 @@ export const writes = {
          VALUES ('expense', 'sewa', @amount, @date, @note, @booking)`,
   insertAttendance: `INSERT INTO booking_attendance (booking_id, member_id, share_amount)
          VALUES (@bid, @m, 0)
-         ON CONFLICT (booking_id, member_id) DO NOTHING`,
-  updateAttendanceShare: 'UPDATE booking_attendance SET share_amount=@share WHERE id=@id',
+         ON CONFLICT (booking_id, member_id) DO NOTHING
+         RETURNING id`,
   rebalanceAttendance: `UPDATE booking_attendance SET share_amount = v.share
          FROM (VALUES (@id0, @s0), (@id1, @s1)) AS v(id, share)
          WHERE booking_attendance.id = v.id`,
