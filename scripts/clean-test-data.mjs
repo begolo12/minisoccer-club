@@ -27,7 +27,7 @@ const run = await makeRunner(url);
 const PATTERNS = [
   '_bug_%', '_uji_%', '_flow_%', '_money_%', '_e2e_%', '_audit_%',
   '_at_%', '_md_%', '_dt_%', '_ft_%', '_ob_%', '_mo_%', '_pz_%', '_dv_%',
-  '_rl_%', '_rb_%', '_dg_%', '_dg2_%', '_dg3_%',
+  '_rl_%', '_rb_%', '_dg_%', '_dg2_%', '_dg3_%', '_dbg_%', '_dbg2_%', '_dbg3_%',
 ];
 // `_` adalah wildcard satu karakter di LIKE. Tanpa escape, `_uji_%` juga cocok
 // dengan nama asli seperti "Auji" dan menghapus data klub yang bukan data uji.

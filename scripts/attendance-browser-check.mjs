@@ -60,9 +60,15 @@ async function nodes() {
 async function clickText(needle, { role = 'button' } = {}) {
   const list = (await nodes()).filter((n) => role == null || n.role === role);
   const textOf = (n) => (n.label || n.text || '').trim();
-  const hit = list.find((n) => textOf(n) === needle)
-    ?? list.find((n) => textOf(n).startsWith(needle))
-    ?? list.find((n) => (n.label || '').includes(needle) || (n.text || '').includes(needle));
+  // Perbandingan TIDAK peka huruf besar/kecil. Label tombol di aplikasi ini
+  // kadang tampil kapital ("MASUK" di bilah mode publik) sementara yang dicari
+  // "Masuk"; pencocokan peka huruf membuat ketukan tidak pernah terjadi dan
+  // skrip gagal dengan pesan yang menyesatkan ("form masuk tidak muncul").
+  const low = (s) => s.toLowerCase();
+  const hit = list.find((n) => low(textOf(n)) === low(needle))
+    ?? list.find((n) => low(textOf(n)).startsWith(low(needle)))
+    ?? list.find((n) => low(n.label || '').includes(low(needle)) ||
+      low(n.text || '').includes(low(needle)));
   if (!hit) return false;
   await clickAt(hit.x, hit.y);
   return true;
@@ -142,20 +148,26 @@ async function main() {
   await send('Page.navigate', { url: base });
   await sleep(9000);
   await evaluate(`document.querySelector('flt-semantics-placeholder')?.click()`);
-  await sleep(1500);
+  await sleep(2500);
 
-  await clickText('Masuk'); await sleep(2500);
-  // Layar masuk butuh waktu lebih lama di mesin lambat: canvas Flutter harus
-  // selesai memuat sebelum input ada di DOM. Membaca `input` sekali lalu
-  // memakai `li[0]` langsung membuat skrip gagal dengan "undefined (reading
-  // 'x')" padahal aplikasinya baik-baik saja.
+  // Buka layar masuk, lalu TUNGGU form-nya benar-benar ada.
+  //
+  // Pohon aksesibilitas Flutter tidak langsung terisi setelah placeholder
+  // diklik: pada pemuatan pertama `nodes()` masih kosong, `clickText('Masuk')`
+  // mengembalikan false tanpa error, dan skrip menunggu input yang tidak akan
+  // pernah muncul — gagal dengan pesan "form masuk tidak muncul" padahal
+  // aplikasinya normal. Jadi ketukan diulang sampai form-nya nyata.
+  const inputsNow = () => evaluate(
+    `[...document.querySelectorAll('input')].map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})`,
+  );
   let li = [];
-  for (let i = 0; i < 20; i++) {
-    li = await evaluate(`[...document.querySelectorAll('input')].map(el=>{const r=el.getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})`);
-    if (li && li.length >= 2) break;
-    await sleep(1000);
+  for (let i = 0; i < 25; i++) {
+    li = (await inputsNow()) ?? [];
+    if (li.length >= 2) break;
+    await clickText('Masuk');
+    await sleep(1200);
   }
-  if (!li || li.length < 2) throw new Error('form masuk tidak muncul');
+  if (li.length < 2) throw new Error('form masuk tidak muncul');
   await clickAt(li[0].x, li[0].y); await send('Input.insertText', { text: adminUser });
   await clickAt(li[1].x, li[1].y); await send('Input.insertText', { text: adminPass });
   await clickText('Masuk', { role: 'button' }); await sleep(4500);
@@ -211,31 +223,45 @@ async function main() {
     await sleep(600);
   }
   async function findName(name) {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 12; i++) {
       const hit = (await nodes()).find((n) => `${n.label || ''}${n.text || ''}`.trim() === name);
       if (hit) return hit;
       await scrollDialog(180);
     }
     return null;
   }
+  /** Jumlah yang tercentang, dibaca dari label tombol "Tambah N". */
+  async function selectedCount() {
+    const btn = (await nodes()).find((n) => n.role === 'button' && /^Tambah \d+$/.test((n.text || '').trim()));
+    const m = btn ? /(\d+)/.exec(btn.text) : null;
+    return m ? Number(m[1]) : 0;
+  }
 
   let added = false;
-  let selectedCount = 0;
+  let picked = 0;
   if (await clickText('Tambah yang hadir', { role: 'button' })) {
     await sleep(2000);
     for (const suffix of ['a', 'b', 'c']) {
-      const hit = await findName(`${tag}_${suffix}`);
-      if (!hit) continue;
-      await clickAt(hit.x, hit.y);
-      await sleep(400);
-      selectedCount++;
+      const name = `${tag}_${suffix}`;
+      // Ketuk, lalu PASTIKAN jumlahnya bertambah. Ketukan bisa mendarat di
+      // ruang kosong kalau barisnya sedang di luar area gulir, dan tanpa
+      // pemeriksaan ini skrip mengira sudah memilih 3 orang padahal dialog
+      // hanya mencatat 2 — lalu seluruh pemeriksaan pembagian ikut gagal.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const before = await selectedCount();
+        const hit = await findName(name);
+        if (!hit) continue;
+        await clickAt(hit.x, hit.y);
+        await sleep(700);
+        if ((await selectedCount()) > before) break;
+      }
     }
-    added = await clickText('Tambah 3', { role: 'button' }) ||
+    picked = await selectedCount();
+    added = await clickText(`Tambah ${picked}`, { role: 'button' }) ||
       await clickText('Tambah', { role: 'button' });
     await sleep(2500);
   }
-  check('tiga anggota ditandai hadir', added && selectedCount === 3,
-    `terpilih ${selectedCount}`);
+  check('tiga anggota ditandai hadir', added && picked === 3, `terpilih ${picked}`);
 
   // Tunggu sampai pembagian selesai. Aplikasi mengirim pembagian dalam satu
   // pernyataan, tetapi perjalanan ke server tetap butuh waktu; membaca terlalu
@@ -279,21 +305,23 @@ async function main() {
   // Harus difilter `role === 'button'`: node GRUP baris juga memuat teks
   // "Tandai sudah setor" di dalamnya, sehingga filter yang hanya mencari teks
   // akan memilih node grup dan ketukan mendarat di tengah baris (tidak
-  // melakukan apa pun).
-  let payIcons = [];
-  for (let i = 0; i < 12; i++) {
-    payIcons = (await nodes()).filter((n) => n.role === 'button' &&
-      `${n.label || ''}${n.text || ''}`.toLowerCase().includes('setor'));
-    if (payIcons.length) break;
-    await sleep(1000);
-  }
+  // melakukan apa pun). Ketukan diulang dan hasilnya DIPERIKSA di database:
+  // posisi ikon bergeser setelah daftar hadir selesai dimuat ulang, jadi satu
+  // ketukan bisa mendarat di tempat yang sudah kosong.
   let paid = false;
-  if (payIcons.length) { await clickAt(payIcons[0].x, payIcons[0].y); paid = true; await sleep(3500); }
-  check('setoran bisa dicatat', paid, `${payIcons.length} tombol setor terlihat`);
-
-  const afterPay = await api(
-    'SELECT member_id, paid_at FROM booking_attendance WHERE booking_id=@b AND paid_at IS NOT NULL',
-    { b: bookingId }, token);
+  let afterPay = { rows: [] };
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const payIcon = (await nodes()).find((n) => n.role === 'button' &&
+      (n.text || '').trim() === 'Tandai sudah setor');
+    if (!payIcon) { await sleep(1500); continue; }
+    await clickAt(payIcon.x, payIcon.y);
+    await sleep(3000);
+    afterPay = await api(
+      'SELECT member_id, paid_at FROM booking_attendance WHERE booking_id=@b AND paid_at IS NOT NULL',
+      { b: bookingId }, token);
+    if ((afterPay.rows ?? []).length === 1) { paid = true; break; }
+  }
+  check('setoran bisa dicatat', paid, `${(afterPay.rows ?? []).length} baris lunas`);
   check('satu orang berstatus sudah setor', (afterPay.rows ?? []).length === 1,
     JSON.stringify(afterPay.rows));
 
@@ -348,20 +376,25 @@ async function main() {
 
   // --- online lagi, sinkron ---
   await send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
-  await sleep(1500);
-  await clickNav('Beranda'); await sleep(1500);
-  let clicked = await clickText('Sinkron', { role: 'button' });
-  if (!clicked) {
-    await clickNav('Lainnya'); await sleep(1500);
-    await clickText('Pengaturan'); await sleep(2000);
-    clicked = await clickText('Sinkron sekarang', { role: 'button' });
-  }
+  // Sinkron: tombolnya ada di bilah offline, dan bilah itu juga muncul di
+  // halaman turunan (detail kehadiran). Jadi cari tombolnya di layar mana pun
+  // yang sedang terbuka, ulangi selama antrean masih berisi, lalu periksa
+  // hasilnya lewat isi antrean — bukan dari pesan yang muncul.
   let synced = false;
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 20; i++) {
     if ((await outboxCount() ?? 0) === 0) { synced = true; break; }
+    if (!(await clickText('Sinkron', { role: 'button' }))) {
+      // Bilah tidak terlihat: buka Pengaturan yang selalu punya tombolnya.
+      if (await clickNav('Lainnya')) {
+        await sleep(1500);
+        await clickText('Pengaturan');
+        await sleep(2000);
+        await clickText('Sinkron sekarang', { role: 'button' });
+      }
+    }
     await sleep(2000);
   }
-  check('antrean offline terkirim', synced);
+  check('antrean offline terkirim', synced, `sisa ${await outboxCount()}`);
 
   // --- buku kas: uangnya harus TERLIHAT, bukan hanya benar di database ---
   // Baris kas adalah satu-satunya cara bendahara melihat uang masuk. Diperiksa
