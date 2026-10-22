@@ -6,7 +6,12 @@
 //      berbeda untuk uang yang sama.
 //   2. Iuran ganda untuk anggota + periode yang sama → disisakan yang
 //      terbaru (paid_at terbesar, lalu id terbesar).
-//   3. Index unik iuran dipasang setelah datanya bersih.
+//   3. Laga warisan schema v1 (tanpa `home_team_id`/`away_team_id`) →
+//      dihapus. Laga lama itu memakai kolom `opponent` (nama lawan luar) dan
+//      tidak bisa dimainkan, diskor, atau masuk klasemen di app sekarang;
+//      dibiarkan berarti ia muncul sebagai "Tim dihapus" di halaman Tanding.
+//      Sesi dan catatan golnya ikut terhapus lewat ON DELETE CASCADE.
+//   4. Index unik iuran dipasang setelah datanya bersih.
 //
 // Idempoten: aman dijalankan berkali-kali. Pakai `--dry` untuk melihat
 // rencananya saja.
@@ -73,7 +78,30 @@ console.log(
     (dupes.length ? ` (id ${dupes.map((p) => p.id).join(', ')})` : ''),
 );
 
-// ---------- 3. Index unik ----------
+// ---------- 3. Laga warisan schema v1 ----------
+// Kolom `home_team_id`/`away_team_id` baru ada sejak tanding internal. Baris
+// yang masih NULL berasal dari versi lama (lawan luar, hanya `opponent`).
+const legacy = (
+  await run(
+    `SELECT id, opponent, played_at FROM matches
+      WHERE home_team_id IS NULL OR away_team_id IS NULL
+      ORDER BY played_at`,
+  )
+).rows;
+
+if (!dry) {
+  for (const m of legacy) {
+    await run('DELETE FROM matches WHERE id = $1', [m.id]);
+  }
+}
+console.log(
+  `${dry ? '[dry] ' : ''}laga lama tanpa tim dihapus: ${legacy.length}` +
+    (legacy.length
+      ? ` (${legacy.map((m) => `#${m.id} ${m.opponent ?? '—'}`).join(', ')})`
+      : ''),
+);
+
+// ---------- 4. Index unik ----------
 if (dry) {
   console.log('[dry] index unik iuran tidak dibuat.');
 } else {
@@ -102,6 +130,15 @@ if (!dry) {
        ) d`,
     )
   ).rows[0].n;
-  console.log(`sisa booking tanpa kas: ${stillOrphan} • sisa grup iuran ganda: ${stillDupe}`);
-  if (stillOrphan || stillDupe) process.exit(1);
+  const stillLegacy = (
+    await run(
+      `SELECT count(*)::int AS n FROM matches
+        WHERE home_team_id IS NULL OR away_team_id IS NULL`,
+    )
+  ).rows[0].n;
+  console.log(
+    `sisa booking tanpa kas: ${stillOrphan} • sisa grup iuran ganda: ${stillDupe}` +
+      ` • sisa laga tanpa tim: ${stillLegacy}`,
+  );
+  if (stillOrphan || stillDupe || stillLegacy) process.exit(1);
 }

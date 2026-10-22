@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../core/update.dart';
 import '../core/version.dart';
 import '../data/auth.dart';
@@ -34,6 +35,7 @@ class _Counts {
     required this.played,
     required this.news,
     required this.lastNews,
+    required this.failures,
   });
 
   final int active;
@@ -47,28 +49,33 @@ class _Counts {
   final int news;
   final Announcement? lastNews;
 
+  /// Sumber yang gagal dimuat. Subjudul baris sudah jatuh ke teks statis saat
+  /// angka tidak tersedia; daftar ini hanya memberi tahu *apa* yang gagal.
+  final List<String> failures;
+
   static Future<_Counts> load() async {
     final period = periodNow();
-    final r = await Future.wait([
-      Member.all(),
-      Booking.upcoming(),
-      Payment.all(period: period),
-      Transaction.all(period: period),
-      Tournament.all(),
-      Match.stats(),
-      Announcement.all(),
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Anggota', Member.all, fallback: const <Member>[]),
+      soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]),
+      soft('Iuran bulan ini', () => Payment.all(period: period), fallback: const <Payment>[]),
+      soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
+      soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
+      soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
+      soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]),
     ]);
-    final members = r[0] as List<Member>;
+    final failures = settle(r);
+    final members = r[0].value! as List<Member>;
     final active = members.where((m) => m.active).toList();
-    final paid = {for (final p in r[2] as List<Payment>) p.memberId};
+    final paid = {for (final p in r[2].value! as List<Payment>) p.memberId};
     final cash = CashSummary.fromEntries(mergeCashLedger(
-      payments: r[2] as List<Payment>,
-      transactions: r[3] as List<Transaction>,
+      payments: r[2].value! as List<Payment>,
+      transactions: r[3].value! as List<Transaction>,
     ));
-    final tours = r[4] as List<Tournament>;
-    final stats = r[5] as List<int>;
-    final news = r[6] as List<Announcement>;
-    final bookings = r[1] as List<Booking>;
+    final tours = r[4].value! as List<Tournament>;
+    final stats = r[5].value! as List<int>;
+    final news = r[6].value! as List<Announcement>;
+    final bookings = r[1].value! as List<Booking>;
     return _Counts(
       active: active.length,
       inactive: members.length - active.length,
@@ -80,6 +87,7 @@ class _Counts {
       played: stats[0] + stats[1] + stats[2],
       news: news.length,
       lastNews: news.isEmpty ? null : news.first,
+      failures: failures,
     );
   }
 }
@@ -131,6 +139,8 @@ class _MorePageState extends State<MorePage> {
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
             children: [
               _AccountStrip(),
+              if (c != null && c.failures.isNotEmpty)
+                DegradedNotice(failures: c.failures, onRetry: _reload),
               if (Auth.isGuest)
                 _Tile(
                   icon: Icons.login,

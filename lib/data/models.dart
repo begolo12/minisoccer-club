@@ -146,11 +146,22 @@ class Match {
 
   int goalsAgainstTeam(int teamId) => homeTeamId == teamId ? goalsAgainst : goalsFor;
 
+  /// Laga internal selalu punya dua tim klub. Baris warisan schema v1 (dibuat
+  /// sebelum tanding internal ada) hanya punya `opponent` teks dan KEDUA kolom
+  /// timnya NULL; baris seperti itu tidak bisa dimainkan, diskor, atau masuk
+  /// klasemen, jadi tidak ditampilkan sebagai "Tim dihapus" — itu terlihat
+  /// seperti data rusak padahal hanya sisa versi lama.
+  ///
+  /// Laga yang salah satu timnya dihapus (hanya satu kolom NULL) tetap
+  /// ditampilkan: hasilnya nyata dan masih dihitung di rekap, jadi
+  /// menyembunyikannya justru membuat angka tidak bisa ditelusuri.
+  /// `scripts/fix-data.mjs` menghapus baris v1 dari DB.
   static const _select = '''
     SELECT m.*, h.name AS home_name, a.name AS away_name
       FROM matches m
       LEFT JOIN teams h ON h.id = m.home_team_id
-      LEFT JOIN teams a ON a.id = m.away_team_id''';
+      LEFT JOIN teams a ON a.id = m.away_team_id
+     WHERE NOT (m.home_team_id IS NULL AND m.away_team_id IS NULL)''';
 
   static Future<List<Match>> all({int limit = 100}) async {
     final rows = await Db.query(
@@ -163,7 +174,7 @@ class Match {
   /// Satu laga terbaru dari DB. Dipakai detail laga supaya skor di header
   /// ikut berubah setelah sesi ditambah atau hasil dikoreksi.
   static Future<Match?> byId(int id) async {
-    final rows = await Db.query('$_select WHERE m.id=@id', params: {'id': id});
+    final rows = await Db.query('$_select AND m.id=@id', params: {'id': id});
     return rows.isEmpty ? null : Match.fromMap(rows.first);
   }
 
@@ -173,8 +184,8 @@ class Match {
   /// tidak menumpuk.
   static Future<List<Match>> upcoming() async {
     final rows = await Db.query(
-      "$_select WHERE m.status='ongoing' OR (m.status='scheduled' "
-      "AND m.played_at >= now() - interval '3 hours') "
+      "$_select AND (m.status='ongoing' OR (m.status='scheduled' "
+      "AND m.played_at >= now() - interval '3 hours')) "
       'ORDER BY m.played_at ASC LIMIT 5',
     );
     return rows.map(Match.fromMap).toList();
@@ -183,7 +194,7 @@ class Match {
   /// Hasil terakhir untuk ringkasan beranda.
   static Future<List<Match>> recentFinished({int limit = 4}) async {
     final rows = await Db.query(
-      "$_select WHERE m.status='finished' ORDER BY m.played_at DESC LIMIT @limit",
+      "$_select AND m.status='finished' ORDER BY m.played_at DESC LIMIT @limit",
       params: {'limit': limit},
     );
     return rows.map(Match.fromMap).toList();
@@ -192,7 +203,7 @@ class Match {
   /// Semua laga tim tertentu (untuk riwayat di halaman tim).
   static Future<List<Match>> forTeam(int teamId, {int limit = 20}) async {
     final rows = await Db.query(
-      '$_select WHERE m.home_team_id=@t OR m.away_team_id=@t '
+      '$_select AND (m.home_team_id=@t OR m.away_team_id=@t) '
       'ORDER BY m.played_at DESC LIMIT @limit',
       params: {'t': teamId, 'limit': limit},
     );

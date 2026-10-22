@@ -13,6 +13,8 @@ import 'errors.dart';
 class Soft<T> {
   const Soft._({this.value, this.error, required this.label});
 
+  /// Nilai hasil, atau [fallback] kalau gagal. Tidak pernah null untuk T
+  /// non-nullable.
   final T? value;
   final String? error;
   final String label;
@@ -31,7 +33,11 @@ Future<Soft<T>> soft<T>(
   try {
     return Soft._(value: await load(), label: label);
   } catch (e) {
-    return Soft._(error: errText(e), label: label);
+    // `fallback` WAJIB dipakai: pemanggil menulis `value!` untuk sumber yang
+    // berhasil, dan nilai null di sini membuat seluruh halaman meledak
+    // dengan "Null check operator used on a null value" — persis yang
+    // terjadi di produksi saat `v_team_standings` belum ada.
+    return Soft._(value: fallback, error: errText(e), label: label);
   }
 }
 
@@ -40,4 +46,26 @@ String describeFailures(Iterable<Soft<Object?>> items) {
   final failed = items.where((s) => !s.ok).toList();
   if (failed.isEmpty) return '';
   return failed.map((s) => '${s.label} (${s.error})').join(' • ');
+}
+
+/// Satu baris per sumber yang gagal: "Label: pesan". Bentuk ini dipakai
+/// `DegradedNotice`, yang menampilkan tiap sumber sebagai baris sendiri.
+List<String> failuresOf(Iterable<Soft<Object?>> items) => [
+      for (final s in items)
+        if (!s.ok) '${s.label}: ${s.error}',
+    ];
+
+/// Tutup kumpulan [Soft] yang sudah dijalankan paralel.
+///
+/// Semua gagal = server atau jaringan mati, bukan satu tabel yang izinnya
+/// belum ada. Untuk kasus itu halaman menampilkan layar error penuh dengan
+/// tombol coba lagi — lebih jujur daripada halaman kosong yang terlihat
+/// seperti "belum ada data". Sebagian gagal = data yang berhasil tetap
+/// tampil, dan daftar kegagalannya dikembalikan untuk [DegradedNotice].
+List<String> settle(Iterable<Soft<Object?>> items) {
+  final list = items.toList();
+  if (list.isNotEmpty && list.every((s) => !s.ok)) {
+    throw Exception(list.first.error);
+  }
+  return failuresOf(list);
 }

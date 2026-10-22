@@ -1,0 +1,13 @@
+# Skrip shell wajib LF: bash menolak `set -euo pipefail` yang berakhiran CR
+# ("set: pipefail: invalid option name") dan build Vercel gagal sebelum mulai.
+# Git di Windows kadang meng-checkout dengan CRLF, jadi aturan ini dipatok di
+# sini, bukan mengandalkan `core.autocrlf` tiap mesin.
+*.sh text eol=lf
+scripts/*.mjs text eol=lf
+api/*.js text eol=lf
+api/*.mjs text eol=lf
+db/*.sql text eol=lf
+*.dart text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf

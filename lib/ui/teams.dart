@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'matches.dart';
 import 'widgets.dart';
+
+/// Data halaman Tim. `standings` dimuat terpisah dari tim & pemain karena
+/// view klasemen bisa belum punya izin di server; kegagalannya dicatat di
+/// [failures] supaya daftar tim tetap tampil.
+typedef _TeamsData = (List<Team>, Map<int, List<Member>>, List<Standing>, List<String>);
 
 /// Tim klub: 7-8 pemain per tim. Semua tanding dan turnamen memakai tim ini.
 class TeamsPage extends StatefulWidget {
@@ -16,11 +22,21 @@ class TeamsPage extends StatefulWidget {
 }
 
 class _TeamsPageState extends State<TeamsPage> {
-  late Future<(List<Team>, Map<int, List<Member>>, List<Standing>)> _future;
+  late Future<_TeamsData> _future;
 
-  Future<(List<Team>, Map<int, List<Member>>, List<Standing>)> _load() async {
-    final r = await Future.wait([Team.all(), Team.players(), Team.standings()]);
-    return (r[0] as List<Team>, r[1] as Map<int, List<Member>>, r[2] as List<Standing>);
+  Future<_TeamsData> _load() async {
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Daftar tim', Team.all, fallback: const <Team>[]),
+      soft('Pemain per tim', Team.players, fallback: const <int, List<Member>>{}),
+      soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
+    ]);
+    final failures = settle(r);
+    return (
+      r[0].value! as List<Team>,
+      r[1].value! as Map<int, List<Member>>,
+      r[2].value! as List<Standing>,
+      failures,
+    );
   }
 
   @override
@@ -88,25 +104,32 @@ class _TeamsPageState extends State<TeamsPage> {
         if (Auth.canWrite)
           iconAction(context, Icons.add, _addTeam, tooltip: 'Tim baru'),
       ],
-      child: AsyncView<(List<Team>, Map<int, List<Member>>, List<Standing>)>(
+      child: AsyncView<_TeamsData>(
         future: _future,
         onRefresh: _reload,
         builder: (data) {
           final teams = data.$1;
           final players = data.$2;
           final standings = data.$3;
+          final failures = data.$4;
           if (teams.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 const SizedBox(height: 60),
-                EmptyState(
-                  icon: Icons.shield_outlined,
-                  title: 'Belum ada tim',
-                  message: 'Buat 2 tim (masing-masing 7–8 pemain) supaya bisa tanding internal.',
-                  actionLabel: Auth.canWrite ? 'Buat tim pertama' : null,
-                  onAction: Auth.canWrite ? _addTeam : null,
-                ),
+                // Gagal memuat ≠ belum ada tim. Tanpa pembeda ini, tim yang
+                // sebenarnya ada terlihat seperti hilang dan admin tergoda
+                // membuat ulang.
+                if (failures.isNotEmpty)
+                  DegradedNotice(failures: failures, onRetry: _reload)
+                else
+                  EmptyState(
+                    icon: Icons.shield_outlined,
+                    title: 'Belum ada tim',
+                    message: 'Buat 2 tim (masing-masing 7–8 pemain) supaya bisa tanding internal.',
+                    actionLabel: Auth.canWrite ? 'Buat tim pertama' : null,
+                    onAction: Auth.canWrite ? _addTeam : null,
+                  ),
               ],
             );
           }
@@ -117,6 +140,7 @@ class _TeamsPageState extends State<TeamsPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              if (failures.isNotEmpty) DegradedNotice(failures: failures, onRetry: _reload),
               StatStrip(
                 children: [
                   StatTile(label: 'Tim', value: '${teams.length}', hint: 'terdaftar'),
@@ -219,11 +243,14 @@ class TeamDetailPage extends StatefulWidget {
 }
 
 class _TeamDetailPageState extends State<TeamDetailPage> {
-  late Future<(List<Member>, List<Match>)> _future;
+  late Future<(List<Member>, List<Match>, List<String>)> _future;
 
-  Future<(List<Member>, List<Match>)> _load() async {
-    final r = await Future.wait([_players(), Match.forTeam(widget.team.id)]);
-    return (r[0] as List<Member>, r[1] as List<Match>);
+  Future<(List<Member>, List<Match>, List<String>)> _load() async {
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Pemain tim', _players, fallback: const <Member>[]),
+      soft('Riwayat laga', () => Match.forTeam(widget.team.id), fallback: const <Match>[]),
+    ]);
+    return (r[0].value! as List<Member>, r[1].value! as List<Match>, settle(r));
   }
 
   Future<List<Member>> _players() async {
@@ -340,12 +367,13 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           }, tooltip: 'Hapus tim'),
         ],
       ],
-      child: AsyncView<(List<Member>, List<Match>)>(
+      child: AsyncView<(List<Member>, List<Match>, List<String>)>(
         future: _future,
         onRefresh: _reload,
         builder: (data) {
           final players = data.$1;
           final matches = data.$2;
+          final failures = data.$3;
           final done = matches.where((m) => m.finished).toList();
           final upcoming = matches.where((m) => !m.finished).toList()
             ..sort((a, b) => a.playedAt.compareTo(b.playedAt));
@@ -362,6 +390,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              if (failures.isNotEmpty) DegradedNotice(failures: failures, onRetry: _reload),
               StatStrip(
                 children: [
                   StatTile(

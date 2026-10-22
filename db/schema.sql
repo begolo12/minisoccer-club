@@ -184,6 +184,41 @@ CREATE TABLE IF NOT EXISTS team_players (
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_team_id INT REFERENCES teams(id) ON DELETE SET NULL;
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_team_id INT REFERENCES teams(id) ON DELETE SET NULL;
 
+-- ---------------------------------------------------------------------
+-- Migrasi dari schema v1 (DB yang dibuat sebelum tanding internal ada).
+--
+-- `CREATE TABLE IF NOT EXISTS` di atas TIDAK menyentuh tabel yang sudah ada,
+-- jadi kolom NOT NULL warisan v1 tetap memblokir tulis dari app baru:
+--   * `matches.opponent NOT NULL` — app baru menulis home/away_team_id, bukan
+--     nama lawan luar. Tanpa DROP NOT NULL, setiap "Buat jadwal" gagal
+--     `null value in column "opponent"` dan halaman Tanding tampak rusak.
+--   * `teams.tournament_id NOT NULL` — dulu satu tim milik satu turnamen.
+--     Sekarang tim berdiri sendiri dan dihubungkan lewat `tournament_teams`.
+--   * `teams.created_at` belum ada di v1, padahal dipakai `SELECT *`.
+--
+-- Semua di bawah idempoten: aman dijalankan berkali-kali, dan tidak
+-- menghapus data lama (kolom v1 hanya dilonggarkan, bukan dibuang).
+-- ---------------------------------------------------------------------
+ALTER TABLE matches ALTER COLUMN opponent DROP NOT NULL;
+ALTER TABLE teams ALTER COLUMN tournament_id DROP NOT NULL;
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- Nama tim harus unik: satu klub tidak boleh punya dua "Tim A". v1 mengizinkan
+-- duplikat karena tiap turnamen punya timnya sendiri, jadi index unik baru
+-- dipasang kalau datanya sudah bersih (kalau tidak, `db:init` berhenti dengan
+-- pesan jelas alih-alih gagal di tengah jalan).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'teams_name_key') THEN
+    IF EXISTS (SELECT 1 FROM teams GROUP BY name HAVING count(*) > 1) THEN
+      RAISE NOTICE 'index unik nama tim dilewati: ada nama tim ganda. Rapikan dulu.';
+    ELSE
+      CREATE UNIQUE INDEX teams_name_key ON teams (name);
+    END IF;
+  END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS tournaments (
   id            SERIAL PRIMARY KEY,
   name          TEXT NOT NULL,

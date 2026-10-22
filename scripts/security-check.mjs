@@ -1,6 +1,10 @@
 // Uji keamanan endpoint live. Jalankan: node scripts/security-check.mjs
 // Butuh akun admin yang sudah ada (env ADMIN_USER/ADMIN_PASS, default admin/admin123).
-const base = process.env.BASE || 'https://minisoccer-club.vercel.app';
+//
+// Sejak mode publik (tamu boleh membaca), "tanpa token" TIDAK lagi 401:
+// tamu boleh SELECT data klub, tetapi tetap tidak boleh menulis. Uji di bawah
+// mengikuti aturan itu; batas baca/tulis per role ada di scripts/e2e-check.mjs.
+const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
 const adminUser = process.env.ADMIN_USER || 'admin';
 const adminPass = process.env.ADMIN_PASS || 'admin123';
 
@@ -25,9 +29,11 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`);
 };
 
-// 1. Tanpa token
+// 1. Tanpa token: boleh baca data klub, tidak boleh tulis.
 let r = await post('/api/sql', { sql: 'SELECT 1' });
-check('sql tanpa token ditolak 401', r.code === 401, `code ${r.code}`);
+check('tamu boleh SELECT', r.code === 200, `code ${r.code}`);
+r = await post('/api/sql', { sql: "INSERT INTO settings (key, value) VALUES ('_uji','1')" });
+check('tamu tidak boleh menulis', r.code === 403, `code ${r.code}`);
 
 // 2. Login admin
 r = await post('/api/auth', { action: 'login', username: adminUser, password: adminPass });

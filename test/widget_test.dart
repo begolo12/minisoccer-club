@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:minisoccer_club/core/db_web.dart' show ApiException;
 import 'package:minisoccer_club/core/cache.dart';
+import 'package:minisoccer_club/core/soft.dart';
 import 'package:minisoccer_club/core/version.dart';
 import 'package:minisoccer_club/ui/fmt.dart';
 import 'package:minisoccer_club/ui/tournament.dart';
@@ -191,6 +192,56 @@ void main() {
     expect(total, 4, reason: '3 tim = 3 laga, 2 tim = 1 laga');
     expect(roundRobin([4, 5]).length, 1);
     expect(roundRobin([1]).length, 0, reason: 'grup 1 tim tidak punya laga');
+  });
+
+  test('soft() memakai fallback saat gagal, tidak meninggalkan null', () async {
+    // Regresi produksi: `v_team_standings` gagal di server, `soft` dulu
+    // mengembalikan value null, lalu `standings.value!` melempar
+    // "Null check operator used on a null value" dan mematikan beranda.
+    final failed = await soft<int>(
+      'Klasemen',
+      () async => throw Exception('permission denied'),
+      fallback: 0,
+    );
+    expect(failed.ok, isFalse);
+    expect(failed.value, 0, reason: 'fallback harus dipakai');
+    expect(failed.value, isNotNull);
+
+    final ok = await soft<int>('X', () async => 7, fallback: 0);
+    expect(ok.ok, isTrue);
+    expect(ok.value, 7);
+    expect(ok.error, isNull);
+  });
+
+  test('settle(): sebagian gagal tetap tampil, semua gagal jadi layar error', () async {
+    // Halaman memakai `settle` untuk memutuskan: sebagian sumber gagal →
+    // tampilkan sisanya + DegradedNotice; semua gagal → layar error penuh
+    // dengan tombol coba lagi (bukan halaman kosong yang terlihat "belum ada
+    // data"). Dua perilaku itu yang diuji di sini.
+    final partial = await Future.wait<Soft<Object?>>([
+      soft('Laga', () async => const <int>[1], fallback: const <int>[]),
+      soft('Klasemen', () async => throw Exception('Query gagal dijalankan'), fallback: const <int>[]),
+    ]);
+    final failures = settle(partial);
+    expect(failures, hasLength(1));
+    expect(failures.first, contains('Klasemen'));
+    expect(failures.first, contains('Query gagal dijalankan'));
+    expect(partial[0].value, const <int>[1], reason: 'sumber yang berhasil tetap dipakai');
+
+    final allFailed = await Future.wait<Soft<Object?>>([
+      soft('Laga', () async => throw Exception('offline'), fallback: const <int>[]),
+      soft('Klasemen', () async => throw Exception('offline'), fallback: const <int>[]),
+    ]);
+    expect(() => settle(allFailed), throwsException);
+  });
+
+  test('failuresOf(): satu baris per sumber, format "Label: pesan"', () async {
+    final items = await Future.wait<Soft<Object?>>([
+      soft('A', () async => 1, fallback: 0),
+      soft('B', () async => throw Exception('rusak'), fallback: 0),
+      soft('C', () async => throw Exception('putus'), fallback: 0),
+    ]);
+    expect(failuresOf(items), ['B: rusak', 'C: putus']);
   });
 
   test('cache offline: kunci berbeda per parameter', () {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
@@ -138,13 +139,22 @@ class _TournamentTile extends StatelessWidget {
 // ---------- Detail ----------
 
 class _Data {
-  _Data({required this.groups, required this.matches, required this.teams, required this.players});
+  _Data({
+    required this.groups,
+    required this.matches,
+    required this.teams,
+    required this.players,
+    this.failures = const [],
+  });
 
   /// Klasemen per grup: {groupNo: [Standing...]}.
   final Map<int, List<Standing>> groups;
   final List<TournamentMatch> matches;
   final List<Team> teams;
   final Map<int, List<Member>> players;
+
+  /// Sumber yang gagal dimuat; jadwal tetap tampil walau klasemen bermasalah.
+  final List<String> failures;
 
   Team? team(int id) {
     for (final t in teams) {
@@ -176,17 +186,22 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
 
   Future<_Data> _load() async {
     final id = widget.tournament.id;
-    final results = await Future.wait([
-      TournamentMatch.forTournament(id),
-      Team.forTournament(id),
-      Team.players(tournamentId: id),
-      Tournament.standingsByGroup(id),
+    final results = await Future.wait<Soft<Object?>>([
+      soft('Jadwal turnamen', () => TournamentMatch.forTournament(id),
+          fallback: const <TournamentMatch>[]),
+      soft('Tim peserta', () => Team.forTournament(id), fallback: const <Team>[]),
+      soft('Pemain tim', () => Team.players(tournamentId: id),
+          fallback: const <int, List<Member>>{}),
+      soft('Klasemen grup', () => Tournament.standingsByGroup(id),
+          fallback: const <int, List<Standing>>{}),
     ]);
+    final failures = settle(results);
     return _Data(
-      groups: results[3] as Map<int, List<Standing>>,
-      matches: results[0] as List<TournamentMatch>,
-      teams: results[1] as List<Team>,
-      players: results[2] as Map<int, List<Member>>,
+      groups: results[3].value! as Map<int, List<Standing>>,
+      matches: results[0].value! as List<TournamentMatch>,
+      teams: results[1].value! as List<Team>,
+      players: results[2].value! as Map<int, List<Member>>,
+      failures: failures,
     );
   }
 
@@ -257,6 +272,7 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              if (d.failures.isNotEmpty) DegradedNotice(failures: d.failures, onRetry: _reload),
               StatStrip(
                 children: [
                   StatTile(label: 'Tim', value: '${d.teams.length}'),

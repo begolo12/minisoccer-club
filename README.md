@@ -64,6 +64,27 @@ hanya ada di env server, tidak lagi disimpan di HP.
 4. Buka app → layar masuk → akun pertama dibuat lewat form **Admin pertama**,
    lalu tambah akun lain dari menu **Pengguna**.
 
+`db:init` aman diulang dan **wajib dijalankan setiap kali `db/schema.sql`
+berubah**. `CREATE TABLE IF NOT EXISTS` tidak menyentuh tabel yang sudah ada,
+jadi tanpa menjalankannya DB lama tetap memakai kolom warisan (mis.
+`matches.opponent NOT NULL`) dan tulis dari app baru gagal — gejalanya
+"Gagal memuat data / Query gagal dijalankan" di seluruh halaman.
+
+### Kalau app menampilkan "Gagal memuat data"
+
+Gejala ini berarti query app ditolak server. Urutan diagnosis:
+
+```bash
+npm run check:schema     # kolom/tabel/view mana yang hilang di produksi
+npm run check:e2e        # jalankan semua query app untuk tiap role (butuh admin)
+```
+
+`check:schema` tidak butuh kredensial (lewat endpoint publik) dan menyebut
+nama kolom yang kurang. Perbaikannya selalu `npm run db:init` +
+`npm run db:harden` dengan `DATABASE_URL` owner, lalu deploy ulang web.
+`check:e2e` membuktikan batas hak akses: tamu & anggota hanya baca, admin &
+bendahara boleh tulis.
+
 Connection string hanya ada di env server, tidak pernah di HP maupun browser.
 
 ## Development
@@ -72,11 +93,16 @@ Connection string hanya ada di env server, tidak pernah di HP maupun browser.
 flutter pub get
 npm install
 cp .env.example .env              # isi DATABASE_URL, DATABASE_URL_WEB, AUTH_SECRET
-flutter run -d chrome --dart-define=API_BASE=http://localhost:3000   # perlu `vercel dev`
+npm run dev:api                   # API lokal di :3000 (tanpa `vercel dev`)
+flutter run -d chrome --dart-define=API_BASE=http://localhost:3000
 flutter run                       # Android, lewat API yang sama
 flutter build apk --release --dart-define=API_BASE=https://minisoccer-club.vercel.app
 flutter build web --release
 ```
+
+`npm run dev:api` menjalankan `api/sql.js` dan `api/auth.js` apa adanya dengan
+kontrak Vercel (`req.body` sudah di-parse, `res.status().json()`), jadi perilaku
+lokal sama dengan produksi — termasuk batas role dan filter query.
 
 ## Deploy versi web (opsional)
 
@@ -86,19 +112,23 @@ Web tidak bisa buka TCP ke Postgres, jadi lewat Vercel Function `api/sql.js` (Ne
 npm install
 cp .env.example .env                 # isi DATABASE_URL + AUTH_SECRET
 set -a && . ./.env && set +a
-npm run db:init                      # buat tabel di Neon (sekali saja)
-npm run db:harden                    # role app_web + izin tabel (sekali saja)
+npm run db:init                      # schema; ulangi setiap db/schema.sql berubah
+npm run db:harden                    # role app_web + izin tabel
 DATABASE_URL=... npm run db:fix -- --dry   # lihat data lama yang perlu dirapikan
-npm run db:fix                       # booking lama → kas, iuran ganda → satu
+npm run db:fix                       # booking lama → kas, iuran ganda → satu,
+                                     # laga v1 tanpa tim → dihapus
 
 npx vercel link                      # sekali saja
 npx vercel env add DATABASE_URL production
 npx vercel env add DATABASE_URL_WEB production   # dicetak oleh db:harden
 npx vercel env add AUTH_SECRET production        # string acak panjang
 
-flutter build web --release
+flutter build web --release --no-web-resources-cdn
 npx vercel --prod
 ```
+
+`--no-web-resources-cdn` wajib: CSP produksi tidak mengizinkan CanvasKit dari
+CDN publik, jadi asetnya harus ikut dibundel.
 
 Setelah itu, deploy berikutnya cukup lewat GitHub Actions **Deploy Web** (Run workflow).
 Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
@@ -122,12 +152,16 @@ api/_guard.test.mjs         Uji filter & parameter (node --test)
 api/_app-queries.test.mjs   Semua query app harus lolos filter untuk role yang berhak
 api/auth.js                 Login, register admin pertama, kelola user
 api/_auth.js                Terbit/verifikasi token HMAC
-db/schema.sql               Schema Neon
+db/schema.sql               Schema Neon (idempoten + migrasi dari v1)
 design/                     catatan desain + mock server & preview (dev saja)
 lib/preview_main.dart       entrypoint preview tanpa DB (dev saja)
 scripts/init-db.mjs         Jalankan schema (npm run db:init)
 scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:harden)
 scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
+scripts/dev-api.mjs         API lokal tanpa `vercel dev` (npm run dev:api)
+scripts/check-schema.mjs    Deteksi schema produksi ketinggalan (npm run check:schema)
+scripts/e2e-check.mjs       Semua query app untuk tiap role (npm run check:e2e)
+scripts/_app-queries.mjs    Daftar query app — satu sumber untuk tes & e2e
 scripts/_grants.mjs         Daftar tabel/view yang boleh diakses app_web
 scripts/_neon.mjs           Runner Neon (IPv4 dipaksa) + pemecah statement SQL
 scripts/security-check.mjs  Uji endpoint live (npm run check:live)
@@ -139,13 +173,15 @@ scripts/security-check.mjs  Uji endpoint live (npm run check:live)
 ```bash
 npm test                 # filter SQL, pengikat parameter, semua query app
 flutter analyze          # wajib bersih
-flutter test             # unit: format, round-robin, klasemen, buku kas
-npm run check:live       # endpoint produksi; butuh ADMIN_USER/ADMIN_PASS
+flutter test             # unit: format, round-robin, klasemen, buku kas, soft()
+npm run check:schema     # schema produksi vs db/schema.sql (tanpa kredensial)
+npm run check:e2e        # semua query app untuk tamu/anggota/bendahara/admin
+npm run check:live       # keamanan endpoint produksi
 ```
 
-`check:live` membuat akun member sementara, menguji batas baca/tulis, lalu
-menghapusnya lagi. Jalankan setelah deploy, bukan di CI biasa (menyentuh data
-produksi).
+`check:e2e` dan `check:live` membuat akun sementara, menguji batas baca/tulis,
+lalu menghapusnya lagi. Jalankan setelah deploy, bukan di CI biasa (menyentuh
+data produksi).
 
 ## CI/CD
 

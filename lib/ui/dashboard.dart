@@ -98,68 +98,66 @@ class _DashboardData {
   /// Muat semua sumber. Satu sumber yang gagal (izin DB, tabel belum ada,
   /// jaringan putus sesaat) tidak mematikan seluruh beranda: yang berhasil
   /// tetap tampil, dan [failures] menyebut sumber mana yang bermasalah.
+  ///
+  /// Semua permintaan dijalankan paralel: beranda punya 13 sumber, dan
+  /// menjalankannya berurutan berarti 13 kali bolak-balik ke server sebelum
+  /// layar terisi.
   static Future<_DashboardData> load() async {
     final period = periodNow();
-    final upcoming = await soft('Jadwal laga', Match.upcoming, fallback: const <Match>[]);
-    final tournaments = await soft('Turnamen', Tournament.all, fallback: const <Tournament>[]);
-    final stats = await soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]);
-    final memberCount = await soft('Jumlah anggota', Member.countActive, fallback: 0);
-    final scorers = await soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]);
-    final news = await soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]);
-    final active = await soft(
-      'Anggota',
-      () => Member.all(activeOnly: true),
-      fallback: const <Member>[],
-    );
-    final payments = await soft(
-      'Iuran bulan ini',
-      () => Payment.all(period: period),
-      fallback: const <Payment>[],
-    );
-    final transactions = await soft(
-      'Kas bulan ini',
-      () => Transaction.all(period: period),
-      fallback: const <Transaction>[],
-    );
-    final dues = await soft('Nominal iuran', Payment.standardAmount, fallback: null);
-    final teams = await soft('Daftar tim', Team.all, fallback: const <Team>[]);
-    final bookings = await soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]);
-    final standings = await soft('Klasemen tim', Team.standings, fallback: const <Standing>[]);
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Jadwal laga', Match.upcoming, fallback: const <Match>[]),
+      soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
+      soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
+      soft('Jumlah anggota', Member.countActive, fallback: 0),
+      soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]),
+      soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]),
+      soft('Anggota', () => Member.all(activeOnly: true), fallback: const <Member>[]),
+      soft('Iuran bulan ini', () => Payment.all(period: period), fallback: const <Payment>[]),
+      soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
+      soft('Nominal iuran', Payment.standardAmount, fallback: null),
+      soft('Daftar tim', Team.all, fallback: const <Team>[]),
+      soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]),
+      soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
+    ]);
+    // Semua sumber gagal = server/jaringan mati, bukan satu tabel: layar error
+    // penuh dengan tombol coba lagi lebih jelas daripada beranda kosong.
+    final failures = settle(r);
 
-    final all = <Soft<Object?>>[
-      upcoming, tournaments, stats, memberCount, scorers, news, active,
-      payments, transactions, dues, teams, bookings, standings,
-    ];
-    // Semua sumber gagal = server/jaringan mati, bukan satu tabel. Biarkan
-    // layar error penuh yang menangani (dengan tombol coba lagi).
-    if (all.every((s) => !s.ok)) {
-      throw Exception(all.first.error);
-    }
+    final upcoming = r[0].value! as List<Match>;
+    final tournaments = r[1].value! as List<Tournament>;
+    final stats = r[2].value! as List<int>;
+    final memberCount = r[3].value! as int;
+    final scorers = r[4].value! as List<ScorerRow>;
+    final news = r[5].value! as List<Announcement>;
+    final active = r[6].value! as List<Member>;
+    final payments = r[7].value! as List<Payment>;
+    final transactions = r[8].value! as List<Transaction>;
+    final dues = r[9].value as double?;
+    final teams = r[10].value! as List<Team>;
+    final bookings = r[11].value! as List<Booking>;
+    final standings = r[12].value! as List<Standing>;
 
-    final paid = {for (final p in payments.value!) p.memberId};
+    final paid = {for (final p in payments) p.memberId};
     final cash = CashSummary.fromEntries(mergeCashLedger(
-      payments: payments.value!,
-      transactions: transactions.value!,
+      payments: payments,
+      transactions: transactions,
     ));
     return _DashboardData(
-      upcoming: upcoming.value!,
-      tournaments: tournaments.value!,
-      stats: stats.value!,
-      members: memberCount.value!,
+      upcoming: upcoming,
+      tournaments: tournaments,
+      stats: stats,
+      members: memberCount,
       income: cash.dues,
       cash: cash,
-      scorers: scorers.value!,
-      news: news.value!,
-      unpaid: active.value!.where((m) => !paid.contains(m.id)).toList(),
-      dues: dues.value,
-      teams: teams.value!,
-      teamNames: {for (final t in teams.value!) t.id: t.name},
-      bookings: bookings.value!,
-      standings: standings.value!,
-      failures: [
-        for (final s in all)
-          if (!s.ok) '${s.label}: ${s.error}',
-      ],
+      scorers: scorers,
+      news: news,
+      unpaid: active.where((m) => !paid.contains(m.id)).toList(),
+      dues: dues,
+      teams: teams,
+      teamNames: {for (final t in teams) t.id: t.name},
+      bookings: bookings,
+      standings: standings,
+      failures: failures,
     );
   }
 }

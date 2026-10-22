@@ -1,11 +1,13 @@
 // Mock backend buat preview UI tanpa DB (design work only, tidak ikut deploy).
 // Jalankan: node design/mock/server.mjs  → http://localhost:8099
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../build/preview/', import.meta.url));
+const BROKEN_FLAG = fileURLToPath(new URL('./.broken', import.meta.url));
 const PORT = 8099;
 const now = Date.now();
 const iso = (msAgo) => new Date(now - msAgo).toISOString();
@@ -232,9 +234,11 @@ function rowsFor(sql, params = {}) {
   }
   if (/from v_team_standings/.test(q)) return teamStandings();
   if (/from matches/.test(q)) {
-    let rows = matches;
+    // Laga warisan schema v1 (kedua kolom tim NULL) tidak ditampilkan app;
+    // menirunya di sini supaya preview sama dengan produksi.
+    let rows = matches.filter((m) => !(m.home_team_id == null && m.away_team_id == null));
     if (/m\.id=@id/.test(q)) {
-      return matches.filter((m) => m.id === params.id).map(withNames);
+      return rows.filter((m) => m.id === params.id).map(withNames);
     }
     if (/m\.status='ongoing' or \(m\.status='scheduled'|status in \('scheduled', 'ongoing'\)/.test(q)) {
       // Laga berjalan selalu ikut; laga terjadwal hanya yang belum lewat 3 jam.
@@ -751,6 +755,17 @@ createServer(async (req, res) => {
   }
   if (req.method === 'POST' && req.url.startsWith('/api/sql')) {
     const { sql = '', params = {} } = await readBody(req);
+    // Berkas `design/mock/.broken` meniru produksi saat view/tabel belum
+    // punya izin: query tertentu dibalas 400 seperti Postgres, supaya UI
+    // "sebagian data gagal dimuat" bisa diuji tanpa menyentuh Neon.
+    //   touch design/mock/.broken   → aktif
+    //   rm design/mock/.broken      → normal
+    const broken = existsSync(BROKEN_FLAG)
+      ? ['v_team_standings', 'tournament_teams']
+      : [];
+    if (broken.some((name) => sql.toLowerCase().includes(name))) {
+      return json(res, 400, { error: 'Query gagal dijalankan' });
+    }
     // applyWrite mengembalikan array untuk INSERT ... RETURNING (id baris
     // baru), angka untuk tulis biasa. Tanpa ini form "Tim"/"Turnamen" gagal
     // membaca id dan tidak bisa melanjutkan ke langkah berikutnya.

@@ -16,21 +16,27 @@ class MatchesPage extends StatefulWidget {
   State<MatchesPage> createState() => _MatchesPageState();
 }
 
-/// (laga, rekap, klasemen, peringatan). Klasemen dimuat terpisah supaya
-/// tabel yang izinnya belum ada tidak mematikan seluruh halaman Tanding.
-typedef _MatchesData = (List<Match>, List<int>, List<Standing>, String?);
+/// (laga, rekap, klasemen, peringatan). Setiap sumber dimuat terpisah supaya
+/// satu tabel/view yang belum punya izin tidak mematikan seluruh halaman
+/// Tanding — dulu `Future.wait` biasa membuat layar hanya menampilkan
+/// "Gagal memuat data" padahal daftar laga sendiri berhasil dibaca.
+typedef _MatchesData = (List<Match>, List<int>, List<Standing>, List<String>);
 
 class _MatchesPageState extends State<MatchesPage> {
   late Future<_MatchesData> _future;
 
   Future<_MatchesData> _load() async {
-    final r = await Future.wait([Match.all(), Match.stats()]);
-    final standings = await soft('Klasemen tim', Team.standings, fallback: const <Standing>[]);
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Daftar laga', Match.all, fallback: const <Match>[]),
+      soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
+      soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
+    ]);
+    final failures = settle(r);
     return (
-      r[0] as List<Match>,
-      r[1] as List<int>,
-      standings.value!,
-      standings.ok ? null : '${standings.label}: ${standings.error}',
+      r[0].value! as List<Match>,
+      r[1].value! as List<int>,
+      r[2].value! as List<Standing>,
+      failures,
     );
   }
 
@@ -69,23 +75,26 @@ class _MatchesPageState extends State<MatchesPage> {
           final matches = data.$1;
           final stats = data.$2;
           final standings = data.$3;
-          final warn = data.$4;
+          final failures = data.$4;
           if (matches.isEmpty && standings.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 const SizedBox(height: 80),
-                EmptyState(
-                  icon: Icons.sports_soccer_outlined,
-                  title: 'Belum ada tanding',
-                  message: 'Buat tim dulu, lalu jadwalkan laga antar tim klub.',
-                  actionLabel: Auth.canWrite ? 'Buat jadwal' : null,
-                  onAction: Auth.canWrite
-                      ? () async {
-                          if (await showMatchForm(context)) _reload();
-                        }
-                      : null,
-                ),
+                if (failures.isNotEmpty)
+                  DegradedNotice(failures: failures, onRetry: _reload)
+                else
+                  EmptyState(
+                    icon: Icons.sports_soccer_outlined,
+                    title: 'Belum ada tanding',
+                    message: 'Buat tim dulu, lalu jadwalkan laga antar tim klub.',
+                    actionLabel: Auth.canWrite ? 'Buat jadwal' : null,
+                    onAction: Auth.canWrite
+                        ? () async {
+                            if (await showMatchForm(context)) _reload();
+                          }
+                        : null,
+                  ),
               ],
             );
           }
@@ -97,7 +106,7 @@ class _MatchesPageState extends State<MatchesPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
-              if (warn != null) DegradedNotice(failures: [warn], onRetry: _reload),
+              if (failures.isNotEmpty) DegradedNotice(failures: failures, onRetry: _reload),
               _StatsStrip(stats: stats),
               if (ongoing.isNotEmpty) ...[
                 const SectionTitle('Sedang berlangsung'),

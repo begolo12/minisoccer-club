@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
@@ -20,22 +21,28 @@ class _FinanceData {
   /// kas. `CashEntry` hanya menyimpan id-nya.
   final Map<int, Transaction> byId;
 
-  _FinanceData(this.entries, this.summary, this.byId);
+  /// Sumber yang gagal dimuat; buku kas tetap tampil dari sumber yang berhasil
+  /// (mis. hanya iuran, saat tabel `transactions` bermasalah).
+  final List<String> failures;
+
+  _FinanceData(this.entries, this.summary, this.byId, this.failures);
 
   static Future<_FinanceData> load(String? period) async {
-    final results = await Future.wait([
-      Payment.all(period: period),
-      Transaction.all(period: period),
+    final results = await Future.wait<Soft<Object?>>([
+      soft('Iuran', () => Payment.all(period: period), fallback: const <Payment>[]),
+      soft('Kas', () => Transaction.all(period: period), fallback: const <Transaction>[]),
     ]);
-    final transactions = results[1] as List<Transaction>;
+    final failures = settle(results);
+    final transactions = results[1].value! as List<Transaction>;
     final entries = mergeCashLedger(
-      payments: results[0] as List<Payment>,
+      payments: results[0].value! as List<Payment>,
       transactions: transactions,
     );
     return _FinanceData(
       entries,
       CashSummary.fromEntries(entries),
       {for (final t in transactions) t.id: t},
+      failures,
     );
   }
 }
@@ -101,6 +108,8 @@ class _FinancePageState extends State<FinancePage> {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
                   children: [
+                    if (d.failures.isNotEmpty)
+                      DegradedNotice(failures: d.failures, onRetry: _reload),
                     StatStrip(
                       children: [
                         StatTile(

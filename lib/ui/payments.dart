@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
@@ -13,18 +14,23 @@ class _PayData {
   final List<Member> members;
   final double? standard;
 
-  _PayData(this.payments, this.members, this.standard);
+  /// Sumber yang gagal dimuat; halaman tetap menampilkan sisanya.
+  final List<String> failures;
+
+  _PayData(this.payments, this.members, this.standard, this.failures);
 
   static Future<_PayData> load(String period) async {
-    final r = await Future.wait([
-      Payment.all(period: period),
-      Member.all(activeOnly: true),
-      Payment.standardAmount(),
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Iuran bulan ini', () => Payment.all(period: period), fallback: const <Payment>[]),
+      soft('Daftar anggota', () => Member.all(activeOnly: true), fallback: const <Member>[]),
+      soft('Nominal iuran', Payment.standardAmount, fallback: null),
     ]);
+    final failures = settle(r);
     return _PayData(
-      r[0] as List<Payment>,
-      r[1] as List<Member>,
-      r[2] as double?,
+      r[0].value! as List<Payment>,
+      r[1].value! as List<Member>,
+      r[2].value as double?,
+      failures,
     );
   }
 }
@@ -92,6 +98,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
                   children: [
+                    if (d.failures.isNotEmpty)
+                      DegradedNotice(failures: d.failures, onRetry: _reload),
                     StatStrip(
                       children: [
                         StatTile(

@@ -34,3 +34,9 @@ design/ref/
 
 # Log crash flutter_tools (dibuat lokal saat perintah flutter gagal).
 flutter_*.log
+
+.env*
+design/mock/.broken
+
+# File kerja sementara (mis. connection string saat debug) — jangan pernah commit.
+*.tmp

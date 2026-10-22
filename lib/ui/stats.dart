@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/models.dart';
 import 'widgets.dart';
 
@@ -9,11 +10,26 @@ class _Stats {
   final List<ScorerRow> scorers;
   final List<Standing> standings;
 
-  _Stats(this.overall, this.scorers, this.standings);
+  /// Sumber yang gagal dimuat. Halaman tetap tampil dengan bagian yang
+  /// berhasil; tanpa ini satu view yang izinnya belum ada mematikan seluruh
+  /// halaman Statistik.
+  final List<String> failures;
+
+  _Stats(this.overall, this.scorers, this.standings, this.failures);
 
   static Future<_Stats> load() async {
-    final r = await Future.wait([Match.stats(), ScorerRow.top(), Team.standings()]);
-    return _Stats(r[0] as List<int>, r[1] as List<ScorerRow>, r[2] as List<Standing>);
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
+      soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]),
+      soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
+    ]);
+    final failures = settle(r);
+    return _Stats(
+      r[0].value! as List<int>,
+      r[1].value! as List<ScorerRow>,
+      r[2].value! as List<Standing>,
+      failures,
+    );
   }
 }
 
@@ -64,6 +80,7 @@ class _StatsPageState extends State<StatsPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              if (s.failures.isNotEmpty) DegradedNotice(failures: s.failures, onRetry: _reload),
               StatStrip(
                 children: [
                   StatTile(
