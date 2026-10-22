@@ -240,6 +240,31 @@ function rowsFor(sql, params = {}) {
     if (/m\.id=@id/.test(q)) {
       return rows.filter((m) => m.id === params.id).map(withNames);
     }
+    // Rekap satu tim (Match.statsForTeam): agregat, bukan daftar laga.
+    // Dicek sebelum cabang lain karena query ini juga memakai `from matches`.
+    // `q` sudah dinormalisasi (spasi ditekan, huruf kecil), jadi pola di sini
+    // harus memakai bentuk itu — bukan teks Dart aslinya.
+    if (/count\(\*\)::int as played/.test(q)) {
+      const done = rows.filter(
+        (m) => m.status === 'finished' && (m.home_team_id === params.t || m.away_team_id === params.t),
+      );
+      let won = 0;
+      let drawn = 0;
+      let lost = 0;
+      let gf = 0;
+      let ga = 0;
+      for (const m of done) {
+        const home = m.home_team_id === params.t;
+        const own = home ? m.goals_for : m.goals_against;
+        const opp = home ? m.goals_against : m.goals_for;
+        gf += own;
+        ga += opp;
+        if (own > opp) won++;
+        else if (own === opp) drawn++;
+        else lost++;
+      }
+      return [{ played: done.length, won, drawn, lost, gf, ga }];
+    }
     if (/m\.status='ongoing' or \(m\.status='scheduled'|status in \('scheduled', 'ongoing'\)/.test(q)) {
       // Laga berjalan selalu ikut; laga terjadwal hanya yang belum lewat 3 jam.
       const cutoff = new Date(now - 3 * 60 * 60 * 1000).toISOString();
@@ -785,6 +810,18 @@ createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end(data);
     } catch {
+      // Penyebab tersering: `build/preview/` belum ada (folder ini tidak
+      // masuk git dan hilang setelah `flutter clean`). Balas dengan pesan
+      // yang menyebut perintahnya, bukan 404 tanpa petunjuk.
+      if (!existsSync(join(ROOT, 'index.html'))) {
+        res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' });
+        res.end(
+          'build/preview/ belum ada.\n\n' +
+            '  npm run preview:build     (flutter build web -t lib/preview_main.dart)\n' +
+            '  npm run preview           (server ini)\n',
+        );
+        return;
+      }
       json(res, 404, { error: 'not found' });
     }
   }

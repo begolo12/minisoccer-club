@@ -40,3 +40,4 @@ design/mock/.broken
 
 # File kerja sementara (mis. connection string saat debug) — jangan pernah commit.
 *.tmp
+mock.log

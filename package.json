@@ -11,7 +11,9 @@
     "check:e2e": "node scripts/e2e-check.mjs",
     "check:flow": "node scripts/flow-check.mjs",
     "check:live": "node scripts/security-check.mjs",
-    "db:fix": "node scripts/fix-data.mjs"
+    "db:fix": "node scripts/fix-data.mjs",
+    "preview": "node design/mock/server.mjs",
+    "preview:build": "flutter build web --release -t lib/preview_main.dart -o build/preview"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"
