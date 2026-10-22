@@ -108,6 +108,9 @@ void main() {
       expect(s.paidCount, 2);
       expect(s.unpaidCount, 1);
       expect(s.uncovered, 0);
+      // Bagian ketiga orang ini hanya 50.000 each = 150.000, padahal sewa
+      // 300.000. Jadi 150.000 TIDAK akan tertutup walau ketiganya membayar —
+      // berbeda dari `outstanding` (50.000) yang masih bisa ditagih.
       expect(s.shortfall, 150000);
     });
 
@@ -127,9 +130,29 @@ void main() {
         ),
         row(id: 2, share: 75000),
       ]);
-      expect(s.collected, 50000);
+      expect(s.collected, 50000, reason: 'uang di kas, bukan bagian ideal');
       expect(s.outstanding, 75000);
-      expect(s.shortfall, 175000);
+      // Dua bagian 75.000 = 150.000, sewa 300.000.
+      expect(s.shortfall, 150000);
+    });
+
+    test('shortfall = lubang setelah semua orang membayar bagiannya', () {
+      // Sewa 350.000, tetapi total bagian hanya 300.000 (biaya naik setelah
+      // bagian dihitung). Dua orang sudah setor 50.000; sisanya masih bisa
+      // ditagih, jadi shortfall TIDAK boleh ikut menghitung uang yang belum
+      // masuk — kalau ikut, angkanya cuma mengulang `outstanding` dan membuat
+      // bendahara mengira uangnya hilang.
+      final s = BookingSplit(booking: booking(cost: 350000), rows: [
+        row(id: 1, share: 50000, paid: true),
+        row(id: 2, share: 50000, paid: true),
+        row(id: 3, share: 50000),
+        row(id: 4, share: 50000),
+        row(id: 5, share: 50000),
+        row(id: 6, share: 50000),
+      ]);
+      expect(s.collected, 100000);
+      expect(s.outstanding, 200000, reason: 'empat orang x 50.000 masih bisa ditagih');
+      expect(s.shortfall, 50000, reason: '350.000 - 300.000 bagian yang dijanjikan');
     });
 
     test('semua setor dengan nominal pas berarti tidak ada kekurangan', () {

@@ -88,6 +88,7 @@ export const reads = {
          GROUP BY t.id
          ORDER BY t.starts_at DESC`,
   attendanceForBooking: `SELECT a.*, m.name AS member_name, t.id AS transaction_id,
+                t.amount AS transaction_amount,
                 b.title AS booking_title, b.starts_at AS booking_starts_at
          FROM booking_attendance a
          JOIN members m ON m.id = a.member_id
@@ -95,6 +96,7 @@ export const reads = {
          LEFT JOIN transactions t ON t.attendance_id = a.id
          WHERE a.booking_id=@bid ORDER BY m.name`,
   attendanceForMember: `SELECT a.*, m.name AS member_name, t.id AS transaction_id,
+                t.amount AS transaction_amount,
                 b.title AS booking_title, b.starts_at AS booking_starts_at
          FROM booking_attendance a
          JOIN members m ON m.id = a.member_id

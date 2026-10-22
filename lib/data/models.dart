@@ -1476,13 +1476,24 @@ class BookingSplit {
   int get paidCount => rows.where((r) => r.paid).length;
   int get unpaidCount => rows.length - paidCount;
 
-  /// Selisih yang belum tertutup setoran, walau semua orang sudah setor.
+  /// Selisih yang TETAP kurang walau semua orang membayar bagiannya.
   ///
-  /// Terjadi kalau biaya sewa naik setelah ada yang menyetor: setoran lama
-  /// tidak boleh diubah sendiri, jadi selisihnya ditanggung kas sampai
-  /// bendahara menagih kekurangannya.
+  /// Dihitung dari jumlah seluruh `share`, bukan dari uang yang sudah masuk.
+  /// Bedanya penting:
+  ///
+  ///   * `outstanding` = yang masih harus ditagih ke orang-orang ini.
+  ///   * `shortfall`   = lubang yang tidak akan tertutup oleh tagihan itu.
+  ///
+  /// Contoh nyata: sewa 300.000 dibagi 6 orang (50.000 each), lalu biaya naik
+  /// jadi 350.000 SETELAH dua orang menyetor. Bagian mereka tidak diubah
+  /// (uang yang sudah masuk tidak boleh bergerak sendiri), jadi total bagian
+  /// hanya 300.000 — 50.000 tetap ditanggung kas. Memakai `cost - collected`
+  /// akan melaporkan 250.000 di sini, padahal 200.000-nya masih akan masuk
+  /// dari empat orang yang belum bayar; angka itu hanya mengulang `outstanding`
+  /// dengan nama lain dan membuat bendahara mengira uangnya hilang.
   double get shortfall {
-    final gap = booking.cost - collected;
+    final promised = rows.fold<double>(0, (s, r) => s + r.share);
+    final gap = booking.cost - promised;
     return gap > 0.005 ? gap : 0;
   }
 
