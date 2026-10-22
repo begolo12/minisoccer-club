@@ -244,7 +244,8 @@ async function main() {
   // Jangan memakai tombol yang hanya muncul saat data kosong ("Buat turnamen")
   // atau bagian yang bisa tergulir keluar layar ("Aksi cepat"): di database
   // berisi keduanya memang tidak terlihat dan pemeriksaan gagal palsu.
-  check('login admin', (await pageText()).includes(`Halo, ${adminUser}`),
+  const greet = new RegExp(`halo,\\s*${adminUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  check('login admin', greet.test(await pageText()),
     (await pageText()).slice(0, 60).replace(/\n/g, ' '));
 
   // ---------- setiap tab utama ----------
