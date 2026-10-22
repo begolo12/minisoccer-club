@@ -120,6 +120,32 @@ class Db {
     }
   }
 
+  /// INSERT satu baris yang mengembalikan id-nya.
+  ///
+  /// Id ini penting untuk mode offline: kalau baris baru langsung dipakai
+  /// (mis. buat anggota lalu edit), tulis berikutnya harus memakai id asli,
+  /// bukan id tampilan. Saat offline, `Db.query` mengembalikan id sementara
+  /// (negatif) yang dipetakan ke id asli saat sinkron.
+  ///
+  /// Return null kalau server tidak mengembalikan id (mis. baris sudah ada
+  /// karena `ON CONFLICT DO NOTHING`).
+  static Future<int?> insertId(
+    String sql, {
+    Map<String, Object?> params = const {},
+  }) async {
+    final rows = await query(sql, params: params);
+    if (rows.isEmpty) return null;
+    final v = rows.first['id'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v');
+  }
+
+  /// Id tampilan untuk baris yang ditambal tanpa id asli (mis. INSERT tanpa
+  /// `RETURNING id`). Negatif dan jauh dari rentang id asli, supaya tidak
+  /// pernah bertabrakan dengan id dari server maupun id sementara antrean.
+  static int _displayId = -1000000;
+
   /// Terapkan efek tulis ke semua entri cache yang menyentuh tabelnya.
   static Future<void> _patchCache(
     String sql,
@@ -128,10 +154,14 @@ class Db {
   ) async {
     final op = parseWrite(sql, params);
     if (op == null || !op.patchable) return;
+    // Baris hasil INSERT wajib punya id: tanpa itu `Member.fromMap` (yang
+    // membaca `m['id'] as int`) gagal dan seluruh daftar tidak bisa dibaca —
+    // data offline terlihat "tidak tersimpan" padahal antreannya benar.
+    final id = tempId ?? (op.isInsert ? _displayId-- : null);
     try {
       final entries = await activeCacheStore.listEntries();
       for (final entry in entries) {
-        final patched = applyOp(entry.rows, op, querySql: entry.sql, tempId: tempId);
+        final patched = applyOp(entry.rows, op, querySql: entry.sql, tempId: id);
         if (identical(patched, entry.rows)) continue;
         final ordered = sortLikeQuery(patched, entry.sql);
         final trimmed = trimLikeQuery(ordered, entry.sql, entry.params);

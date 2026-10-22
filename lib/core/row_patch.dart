@@ -343,11 +343,74 @@ bool _queryTouches(String sql, String table) {
   return re.hasMatch(sql);
 }
 
+/// Nilai default kolom yang diisi database saat INSERT tidak menyebutkannya.
+///
+/// Baris hasil tambalan harus berbentuk sama dengan baris dari server: kalau
+/// `active` atau `status` kosong, pembacaan model gagal atau menampilkan nilai
+/// yang salah. Peta ini **menyalin** `db/schema.sql`, dan
+/// `test/row_patch_schema_test.dart` membacanya langsung dari berkas skema —
+/// jadi kalau skema berubah, tes gagal, bukan diam-diam melenceng.
+const _columnDefaults = <String, Map<String, Object?>>{
+  'members': {'position': 'Bebas', 'active': true},
+  'users': {'role': 'member', 'active': true},
+  'matches': {
+    'is_home': true,
+    'status': 'scheduled',
+    'goals_for': 0,
+    'goals_against': 0,
+  },
+  'match_sessions': {
+    'session_no': 1,
+    'score_home': 0,
+    'score_away': 0,
+    'winner': 'draw',
+  },
+  'transactions': {'category': 'lain', 'occurred_at': _SqlToday()},
+  'bookings': {'duration_min': 90, 'cost': 0, 'status': 'booked'},
+  'tournaments': {
+    'match_minutes': 20,
+    'break_minutes': 0,
+    'groups': 1,
+    'status': 'draft',
+  },
+  'tournament_teams': {'group_no': 1},
+  'tournament_matches': {'group_no': 1, 'round': 1, 'status': 'scheduled'},
+};
+
+/// Kolom `DEFAULT now()` di `db/schema.sql`.
+const _autoTimestamps = <String, List<String>>{
+  'members': ['joined_at'],
+  'users': ['created_at'],
+  'transactions': ['created_at'],
+  'payments': ['paid_at'],
+  'bookings': ['created_at'],
+  'announcements': ['created_at'],
+  'teams': ['created_at'],
+  'tournaments': ['created_at'],
+};
+
+/// Penanda `CURRENT_DATE` — dihitung saat baris ditambal, bukan saat compile.
+class _SqlToday {
+  const _SqlToday();
+}
+
+/// Untuk tes: default kolom yang dipakai penambal.
+Map<String, Map<String, Object?>> debugColumnDefaults() => _columnDefaults;
+List<String> debugAutoTimestampCols(String table) =>
+    _autoTimestamps[table] ?? const [];
+
+String _todayIso() {
+  final n = DateTime.now();
+  return '${n.year.toString().padLeft(4, '0')}-'
+      '${n.month.toString().padLeft(2, '0')}-'
+      '${n.day.toString().padLeft(2, '0')}';
+}
+
 /// Terapkan satu operasi tulis ke baris hasil sebuah query cache.
 ///
-/// [tempId] dipakai untuk INSERT yang mengembalikan id: baris baru diberi id
-/// sementara (negatif) supaya UI punya pegangan, lalu dipetakan ke id asli
-/// saat sinkron.
+/// [tempId] dipakai untuk INSERT: baris baru diberi id sementara (negatif)
+/// supaya UI punya pegangan dan baris itu bisa dikenali. Saat sinkron, id
+/// sementara dipetakan ke id asli lewat `Outbox`.
 List<Map<String, dynamic>> applyOp(
   List<Map<String, dynamic>> rows,
   WriteOp op, {
@@ -370,7 +433,18 @@ List<Map<String, dynamic>> applyOp(
       }
     }
     final row = <String, dynamic>{...op.values};
-    if (op.returnsId && tempId != null) row['id'] = tempId;
+    if (tempId != null && !row.containsKey('id')) row['id'] = tempId;
+
+    // Tiru DEFAULT skema: kolom yang tidak disebut INSERT tetap punya nilai.
+    for (final e in (_columnDefaults[op.table] ?? const {}).entries) {
+      if (row.containsKey(e.key)) continue;
+      final v = e.value;
+      row[e.key] = v is _SqlToday ? _todayIso() : v;
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    for (final col in _autoTimestamps[op.table] ?? const <String>[]) {
+      row.putIfAbsent(col, () => now);
+    }
     return [...rows, row];
   }
 

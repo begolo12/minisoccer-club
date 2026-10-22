@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/db.dart';
+import '../core/offline.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'theme.dart';
@@ -1077,6 +1079,11 @@ class PageScaffold extends StatelessWidget {
                   ),
                 ),
                 Container(height: 1, color: t.colorScheme.border),
+                // Halaman turunan (Anggota, Kas, Booking, …) menutupi shell,
+                // jadi bilah status shell tidak terlihat di sini. Tanpa ini
+                // pengguna bisa mengisi data offline tanpa tahu ada perubahan
+                // yang belum terkirim.
+                const OfflineStrip(),
                 Expanded(child: child),
               ],
             ),
@@ -1084,6 +1091,113 @@ class PageScaffold extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Bilah status offline: data dari cache dan/atau perubahan yang belum
+/// terkirim, plus tombol Sinkron.
+///
+/// Dipakai di shell **dan** di `PageScaffold`, karena halaman turunan menutupi
+/// shell. Tanpa ini pengguna bisa mengisi data offline tanpa tahu bahwa
+/// datanya belum ada di cloud.
+///
+/// Tidak mengambil tempat saat online dan tidak ada antrean.
+class OfflineStrip extends StatefulWidget {
+  const OfflineStrip({super.key, this.padding = const EdgeInsets.fromLTRB(20, 6, 8, 6)});
+
+  final EdgeInsets padding;
+
+  @override
+  State<OfflineStrip> createState() => _OfflineStripState();
+}
+
+class _OfflineStripState extends State<OfflineStrip> {
+  bool _busy = false;
+
+  Future<void> _sync() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final r = await Db.sync();
+      if (!mounted) return;
+      if (r.sent > 0) {
+        toast(context, '${r.sent} perubahan terkirim');
+      } else if (r.offline) {
+        toast(context, 'Masih offline — coba lagi nanti');
+      } else if (r.failed > 0) {
+        toast(context, '${r.failed} perubahan ditolak server');
+      } else {
+        toast(context, 'Tidak ada yang perlu dikirim');
+      }
+    } catch (e) {
+      if (mounted) toast(context, 'Gagal sinkron: ${errText(e)}');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return ValueListenableBuilder<int>(
+      valueListenable: Outbox.pending,
+      builder: (context, pending, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: Db.offline,
+          builder: (context, offline, _) {
+            if (!offline && pending == 0) return const SizedBox.shrink();
+            final syncing = _busy || Outbox.syncing.value;
+            return Container(
+              color: t.colorScheme.muted,
+              padding: widget.padding,
+              child: Row(
+                children: [
+                  Icon(
+                    syncing
+                        ? Icons.sync
+                        : (pending > 0 ? Icons.cloud_upload_outlined : Icons.cloud_off),
+                    size: 14,
+                    color: pending > 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _text(offline, pending, syncing),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.small,
+                    ),
+                  ),
+                  if (pending > 0 && !syncing)
+                    TextButton(
+                      onPressed: _sync,
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('Sinkron'),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Jumlah perubahan lebih dulu: itu data yang belum ada di cloud, jadi
+  /// paling berisiko kalau app ditutup atau dipasang ulang.
+  String _text(bool offline, int pending, bool syncing) {
+    if (syncing) return 'Menyinkronkan $pending perubahan…';
+    if (pending > 0 && offline) {
+      return 'Offline — $pending perubahan menunggu, terkirim saat online';
+    }
+    if (pending > 0) return '$pending perubahan menunggu dikirim';
+    if (Db.offlineSince == null) return 'Offline — menampilkan data tersimpan';
+    return 'Offline — data tersimpan ${fmtDate(Db.offlineSince!)} '
+        '${fmtTime(Db.offlineSince!)}';
   }
 }
 

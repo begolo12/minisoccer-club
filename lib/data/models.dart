@@ -42,14 +42,18 @@ class Member {
     return rows.map(Member.fromMap).toList();
   }
 
-  static Future<void> insert({
+  /// Tambah anggota. Id dikembalikan supaya pemanggil bisa langsung memakai
+  /// baris baru (mis. menambahkannya ke tim) — dan supaya mode offline bisa
+  /// memetakan id sementara ke id asli saat sinkron.
+  static Future<int?> insert({
     required String name,
     String? phone,
     required String position,
     int? jersey,
   }) =>
-      Db.execute(
-        'INSERT INTO members (name, phone, position, jersey) VALUES (@name, @phone, @position, @jersey)',
+      Db.insertId(
+        'INSERT INTO members (name, phone, position, jersey) '
+        'VALUES (@name, @phone, @position, @jersey) RETURNING id',
         params: {'name': name, 'phone': phone, 'position': position, 'jersey': jersey},
       );
 
