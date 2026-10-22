@@ -206,6 +206,8 @@ void main() {
         ));
     await capture('Payment.delete', () => Payment.delete(1));
     await capture('Payment.bill', () => Payment.bill(1));
+    await capture('Payment.forMember', () => Payment.forMember(1));
+    await capture('Payment.unpaidForMember', () => Payment.unpaidForMember(1));
     await capture('Payment.collectedFor', () => Payment.collectedFor(1));
     await capture('Payment.usualAmountFor', () => Payment.usualAmountFor(1));
 
@@ -247,6 +249,21 @@ void main() {
         ));
     await capture('Booking.setStatus', () => _booking.setStatus('done'));
     await capture('Booking.delete', () => Booking.delete(1));
+
+    // ---- Kehadiran & patungan lapangan ----
+    await capture('BookingAttendance.forBooking', () => BookingAttendance.forBooking(1));
+    await capture('BookingAttendance.forMember', () => BookingAttendance.forMember(1));
+    await capture('BookingAttendance.add', () => BookingAttendance.add(1, 1, 350000));
+    await capture('BookingAttendance.remove',
+        () => BookingAttendance.remove(1, 1, 350000));
+    await capture('BookingAttendance.pay', () => BookingAttendance.pay(
+          attendanceId: 1,
+          memberId: 1,
+          amount: 50000,
+          occurredAt: DateTime.utc(2026, 1, 1),
+          note: '_audit',
+        ));
+    await capture('BookingAttendance.unpay', () => BookingAttendance.unpay(1));
 
     // ---- Announcement ----
     await capture('Announcement.all', () => Announcement.all());

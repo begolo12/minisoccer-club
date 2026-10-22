@@ -13,6 +13,7 @@ export const APP_WEB_TABLES = [
   'transactions',
   'payments',
   'bookings',
+  'booking_attendance',
   'announcements',
   'settings',
   'tournaments',

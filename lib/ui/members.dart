@@ -5,6 +5,7 @@ import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
+import 'member_dues.dart';
 import 'widgets.dart';
 
 class MembersPage extends StatefulWidget {
@@ -117,11 +118,18 @@ class _MembersPageState extends State<MembersPage> {
                   children: [
                     for (final m in filtered)
                       RowItem(
-                        onTap: Auth.canWrite
-                            ? () async {
-                                if (await showMemberForm(context, member: m)) _reload();
-                              }
-                            : null,
+                        // Yang tidak punya hak tulis tetap bisa melihat riwayat
+                        // iurannya sendiri — itu justru yang paling sering
+                        // ditanyakan anggota ke bendahara.
+                        onTap: () async {
+                          if (Auth.canWrite) {
+                            if (await showMemberForm(context, member: m)) _reload();
+                          } else {
+                            await Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => MemberDuesPage(member: m),
+                            ));
+                          }
+                        },
                         leading: Container(
                           width: 38,
                           height: 38,
@@ -145,8 +153,17 @@ class _MembersPageState extends State<MembersPage> {
                         title: m.name,
                         subtitle: '${m.position}${m.phone != null ? " • ${m.phone}" : ""}'
                             '${m.active ? '' : ' • nonaktif'}',
-                        trailing: Auth.canWrite
-                            ? iconAction(context, Icons.delete_outline, () async {
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            iconAction(context, Icons.receipt_long_outlined, () async {
+                              await Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => MemberDuesPage(member: m),
+                              ));
+                            }, tooltip: 'Riwayat iuran'),
+                            if (Auth.canWrite) ...[
+                              const SizedBox(width: 6),
+                              iconAction(context, Icons.delete_outline, () async {
                                 // Pesan harus jujur: iuran ikut terhapus (kas
                                 // bulan lalu berubah), catatan gol tetap ada
                                 // tanpa nama. Menonaktifkan lebih aman.
@@ -159,8 +176,10 @@ class _MembersPageState extends State<MembersPage> {
                                     _reload();
                                   }
                                 }
-                              }, tooltip: 'Hapus')
-                            : null,
+                              }, tooltip: 'Hapus'),
+                            ],
+                          ],
+                        ),
                       ),
                   ],
                 );

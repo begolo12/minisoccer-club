@@ -1,0 +1,247 @@
+Resolving dependencies...
+Downloading packages...
+  code_assets 1.2.1 (2.1.0 available)
+  flutter_secure_storage 9.2.4 (11.2.0 available)
+  flutter_secure_storage_linux 1.2.3 (3.0.3 available)
+  flutter_secure_storage_macos 3.1.3 (4.0.0 available)
+  flutter_secure_storage_platform_interface 1.1.2 (2.1.1 available)
+  flutter_secure_storage_web 1.2.1 (2.1.1 available)
+  flutter_secure_storage_windows 3.1.2 (4.2.2 available)
+  hooks 2.0.2 (2.2.0 available)
+  js 0.6.7 (0.7.2 available)
+  lucide_icons_flutter 3.1.25 (4.0.0 available)
+  material_color_utilities 0.13.0 (0.13.1 available)
+  meta 1.18.3 (1.19.0 available)
+  objective_c 9.5.0 (9.6.2 available)
+  petitparser 7.0.2 (7.1.0 available)
+  record_use 0.6.0 (1.1.1 available)
+  test_api 0.7.12 (0.7.15 available)
+  vector_graphics 1.2.3 (1.2.4 available)
+  vector_math 2.4.0 (2.4.3 available)
+  win32 5.15.0 (6.4.0 available)
+  xml 7.0.1 (7.1.0 available)
+Got dependencies!
+20 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart
+00:00 +0: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: (setUpAll)
+00:00 +0: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: FileCacheStore (berkas JSON di Android) tulis lalu baca kembali dari disk
+00:00 +1: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: FileCacheStore (berkas JSON di Android) listEntries mengembalikan sql & params asli (bahan penambal)
+00:00 +2: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: FileCacheStore (berkas JSON di Android) entri lama tanpa sql dilewati (tidak bisa ditambal)
+00:00 +3: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: FileCacheStore (berkas JSON di Android) berkas rusak tidak menggagalkan entri lain
+00:00 +4: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: FileCacheStore (berkas JSON di Android) clear membuang semua berkas cache
+00:00 +5: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: FileCacheStore (berkas JSON di Android) readRows untuk kunci yang tidak ada mengembalikan null
+00:00 +6: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: outbox_store_io (antrean di berkas) tulis lalu baca kembali
+00:00 +7: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: outbox_store_io (antrean di berkas) tidak meninggalkan berkas .tmp setelah menulis
+00:00 +8: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: outbox_store_io (antrean di berkas) belum pernah menulis → null, bukan error
+00:00 +9: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: antrean offline bertahan setelah app ditutup (Android) tulis offline tersimpan ke disk dan pulih setelah restart
+00:00 +10: C:/Users/User/Documents/porto/minisoccer/test/attendance_sequence_test.dart: menambah 3 peserta satu per satu membagi biaya ke KETIGANYA
+00:00 +11: C:/Users/User/Documents/porto/minisoccer/test/attendance_sequence_test.dart: menambah 3 peserta satu per satu membagi biaya ke KETIGANYA
+00:00 +12: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: antrean offline bertahan setelah app ditutup (Android) cache yang ditambal tersimpan di disk, bukan hanya di memori
+00:00 +13: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: antrean offline bertahan setelah app ditutup (Android) cache yang ditambal tersimpan di disk, bukan hanya di memori
+00:00 +14: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: antrean offline bertahan setelah app ditutup (Android) cache yang ditambal tersimpan di disk, bukan hanya di memori
+00:00 +15: C:/Users/User/Documents/porto/minisoccer/test/attendance_sequence_test.dart: menambah peserta tanpa biaya tidak menghasilkan bagian
+00:00 +16: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: antrean offline bertahan setelah app ditutup (Android) sinkron berhasil membuang cache di disk
+00:00 +17: C:/Users/User/Documents/porto/minisoccer/test/android_offline_io_test.dart: antrean offline bertahan setelah app ditutup (Android) antrean kosong setelah sinkron tidak tersisa di berkas
+00:00 +18: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: token ditolak: lempar Unauthorized dan panggil handler sesi
+00:00 +19: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: token ditolak: lempar Unauthorized dan panggil handler sesi
+00:00 +20: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: tulis yang ditolak tidak menaikkan penghitung perubahan
+00:00 +21: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: tulis berhasil menaikkan penghitung perubahan, baca tidak
+00:00 +22: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: pesan error server diteruskan apa adanya
+00:00 +23: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: balasan bukan JSON tidak membuat app crash
+00:00 +24: C:/Users/User/Documents/porto/minisoccer/test/db_web_test.dart: token dikirim sebagai bearer dan DateTime jadi ISO-8601
+00:00 +25: C:/Users/User/Documents/porto/minisoccer/test/dues_offline_test.dart: iuran offline masuk antrean dan langsung terlihat di riwayat
+00:00 +26: C:/Users/User/Documents/porto/minisoccer/test/dues_offline_test.dart: iuran offline tidak merusak daftar tagihan
+00:00 +27: C:/Users/User/Documents/porto/minisoccer/test/dues_offline_test.dart: iuran offline langsung menandai lunas di daftar tagihan
+00:00 +28: C:/Users/User/Documents/porto/minisoccer/test/dues_offline_test.dart: riwayat iuran offline tidak bocor ke turnamen lain
+00:00 +29: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: tagihan turnamen memisahkan yang sudah bayar dan yang belum
+00:00 +30: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: tagihan turnamen query tagihan memakai turnamen, bukan periode
+00:00 +31: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: tagihan turnamen uang terkumpul dijumlahkan dari database
+00:00 +32: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: catat iuran menyimpan tournament_id, bukan period
+00:00 +33: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: catat iuran cek duplikat memakai anggota + turnamen
+00:00 +34: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: Tournament.entryFee dibaca dari kolom entry_fee
+00:00 +35: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: Tournament.entryFee database lama tanpa entry_fee tidak melempar
+00:00 +36: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: iuran dan kas pembayaran punya nama turnamen untuk ditampilkan
+00:00 +37: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: iuran dan kas pembayaran lama tanpa turnamen tidak melempar
+00:00 +38: C:/Users/User/Documents/porto/minisoccer/test/dues_test.dart: iuran dan kas kas bulanan memfilter dari paid_at, bukan periode
+00:04 +39: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +40: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +41: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +42: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +43: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +44: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +45: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +46: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +47: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +48: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +49: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +50: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +51: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +52: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +53: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +54: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +55: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +56: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +57: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +58: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +59: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +60: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +61: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +62: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +63: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +64: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +65: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +66: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +67: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +68: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +69: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +70: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +71: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +72: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +73: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +74: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +75: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +76: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +77: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +78: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +79: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +80: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +81: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +82: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +83: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +84: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +85: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +86: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +87: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +88: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:04 +89: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +90: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +91: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +92: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +93: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +94: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +95: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +96: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +97: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +98: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +99: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +100: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +101: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +102: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +103: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +104: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +105: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +106: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +107: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +108: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +109: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +110: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +111: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +112: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +113: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +114: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +115: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +116: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +117: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +118: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +119: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim yang kalah mendapat 0 poin, bukan 3
+00:05 +120: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: tim away yang menang mendapat 3 poin
+00:05 +121: C:/Users/User/Documents/porto/minisoccer/test/offline_writes_audit_test.dart: data audit memuat tulis
+00:05 +122: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: seri: kedua tim dapat 1 poin
+00:05 +123: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: seri: kedua tim dapat 1 poin
+00:05 +124: C:/Users/User/Documents/porto/minisoccer/test/offline_writes_audit_test.dart: tulis yang tidak ditambal memang disengaja
+00:05 +125: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: nama pemenang dari sudut pandang tim, bukan selalu tim home
+00:05 +126: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: nama pemenang dari sudut pandang tim, bukan selalu tim home
+00:05 +127: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: nama pemenang dari sudut pandang tim, bukan selalu tim home
+00:05 +128: C:/Users/User/Documents/porto/minisoccer/test/match_row_test.dart: skor dibaca dari sudut pandang tim
+00:05 +129: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+00:05 +130: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+00:05 +131: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+00:05 +132: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+00:05 +133: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+00:05 +134: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+00:05 +135: C:/Users/User/Documents/porto/minisoccer/test/queries_audit_test.dart: rekam semua query model
+terekam 97 query -> .audit/queries.json
+00:05 +136: C:/Users/User/Documents/porto/minisoccer/test/row_patch_schema_test.dart: default kolom sama dengan db/schema.sql peta tidak memuat kolom yang sudah tidak ada di skema
+00:05 +137: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: INSERT kolom + parameter terbaca
+00:05 +138: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: INSERT literal string dan NULL ikut terbaca
+00:05 +139: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: INSERT RETURNING id dikenali
+00:05 +140: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: INSERT ON CONFLICT (kolom) menyimpan kunci upsert
+00:05 +141: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: INSERT INSERT banyak baris tidak ditambal (bukan urusan penambal)
+00:05 +142: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: INSERT nilai yang tidak bisa dihitung di klien → tidak ditambal
+00:05 +143: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: UPDATE SET + WHERE kesamaan
+00:05 +144: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: UPDATE UPDATE dengan subquery → tidak ditambal
+00:05 +145: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: UPDATE WHERE dengan kesamaan ganda tetap ditambal
+00:05 +146: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: UPDATE WHERE berupa perbandingan → tidak ditambal
+00:05 +147: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: DELETE WHERE id
+00:05 +148: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: parseWrite: DELETE DELETE tanpa WHERE tidak menghapus semua baris cache
+00:05 +149: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp INSERT menambah baris di akhir
+00:05 +150: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp INSERT dengan id sementara supaya UI punya pegangan
+00:05 +151: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp upsert memperbarui baris yang kuncinya sama
+00:05 +152: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp UPDATE hanya mengubah baris yang cocok
+00:05 +153: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp DELETE membuang baris yang cocok
+00:05 +154: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp query yang tidak menyentuh tabel itu tidak diubah
+00:05 +155: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp query ringkasan (agregat) tidak ditambal count(*) dibiarkan apa adanya
+00:05 +156: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp query ringkasan (agregat) tidak ditambal GROUP BY dibiarkan apa adanya
+00:05 +157: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp query ringkasan (agregat) tidak ditambal daftar pencetak gol (count FILTER) tidak ketambahan baris
+00:05 +158: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp query ringkasan (agregat) tidak ditambal DELETE pada query agregat juga tidak mengubah baris
+00:05 +159: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp query ringkasan (agregat) tidak ditambal query daftar biasa tetap ditambal
+00:05 +160: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: applyOp id dari JSON (String) cocok dengan parameter int
+00:05 +161: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: sortLikeQuery / trimLikeQuery ORDER BY DESC menaruh yang terbaru di atas
+00:05 +162: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: sortLikeQuery / trimLikeQuery ORDER BY berkualifikasi tabel (m.played_at) tetap dikenali
+00:05 +163: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: sortLikeQuery / trimLikeQuery ORDER BY ekspresi dilewati, urutan asli dipertahankan
+00:05 +164: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: sortLikeQuery / trimLikeQuery LIMIT memotong hasil tambahan
+00:05 +165: C:/Users/User/Documents/porto/minisoccer/test/row_patch_test.dart: sortLikeQuery / trimLikeQuery LIMIT berupa angka literal
+00:05 +166: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly membagi habis saat angkanya pas
+00:05 +167: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly jumlahnya SELALU tepat walau tidak habis dibagi
+00:05 +168: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly sisa pembulatan dibagikan satu rupiah ke orang pertama
+00:05 +169: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly selisih antar orang tidak lebih dari satu rupiah
+00:05 +170: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly biaya berkoma dibulatkan ke rupiah, bukan dipecah jadi sen
+00:05 +171: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly tanpa peserta tidak ada bagian
+00:05 +172: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly biaya nol menghasilkan nol untuk semua orang
+00:05 +173: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: splitEvenly satu orang menanggung seluruh biaya
+00:05 +174: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: BookingSplit tanpa yang hadir, seluruh biaya ditanggung kas
+00:05 +175: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: BookingSplit menghitung terkumpul dan kurang dari status setoran
+00:05 +176: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: BookingSplit semua lunas berarti tidak ada kekurangan
+00:05 +177: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: BookingSplit bagian per orang mengikuti biaya dan jumlah hadir
+00:05 +178: C:/Users/User/Documents/porto/minisoccer/test/split_cost_test.dart: BookingSplit booking tanpa biaya tidak menimbulkan tanggungan
+00:05 +179: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: id sementara yang tidak punya padanan tidak dikirim ke server anak dari insert yang gagal ditandai gagal, bukan dikirim
+00:05 +180: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: id sementara yang tidak punya padanan tidak dikirim ke server rantai yang berhasil tetap terkirim dengan id asli
+00:05 +181: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: UPDATE/DELETE yang tidak mengenai baris apa pun ditandai gagal, bukan dilaporkan terkirim
+00:05 +182: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: UPDATE/DELETE yang tidak mengenai baris apa pun UPDATE yang mengenai baris tetap dihitung terkirim
+00:05 +183: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: UPDATE/DELETE yang tidak mengenai baris apa pun INSERT tidak terpengaruh aturan rowCount
+00:05 +184: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: sesi habis saat sinkron dilaporkan authExpired, antrean tetap utuh
+00:06 +185: C:/Users/User/Documents/porto/minisoccer/test/sync_safety_test.dart: antrean bercampur: sebagian gagal, sebagian berhasil yang berhasil terkirim, yang gagal disimpan untuk dilihat
+00:06 +186: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: shouldOfferUpdate tidak menawarkan kalau tidak ada versi baru
+00:06 +187: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: shouldOfferUpdate tidak menawarkan saat pemeriksaan gagal
+00:06 +188: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: shouldOfferUpdate menawarkan versi baru yang belum pernah ditutup
+00:06 +189: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: shouldOfferUpdate tidak menawarkan lagi versi yang sudah ditutup dengan "Nanti"
+00:06 +190: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: shouldOfferUpdate versi yang lebih baru tetap ditawarkan walau versi lama ditutup
+00:06 +191: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: compareVersions membandingkan per komponen angka, bukan per teks
+00:06 +192: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: compareVersions mengabaikan awalan v dan jumlah komponen berbeda
+00:06 +193: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: parseRelease membaca tag, versi, dan ukuran
+00:06 +194: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: parseRelease membaca digest sha256 untuk verifikasi unduhan
+00:06 +195: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: parseRelease digest kosong berarti verifikasi dilewati, bukan gagal
+00:06 +196: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: parseRelease rilis tanpa aset APK diabaikan
+00:06 +197: C:/Users/User/Documents/porto/minisoccer/test/update_prompt_test.dart: fmtBytes memakai koma desimal seperti format Indonesia
+00:06 +198: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: format uang & periode
+00:06 +199: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: nominal ringkas untuk label sempit
+00:06 +200: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: fmtShortMoney tidak melewati ambang satuan
+00:06 +201: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: poin baris laga dari sudut pandang tim, bukan poin pemenang
+00:06 +202: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: parseMoney: gaya Indonesia dan gaya lain
+00:06 +203: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: pemenang sesi dari skor
+00:06 +204: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: round-robin 4 tim = 6 laga, semua pasangan sekali
+00:06 +205: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: klasemen: menang 3, seri 1, kalah 0 + GM/GK
+00:06 +206: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: buku kas: iuran + transaksi, saldo dan urutan
+00:06 +207: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: poin untuk pemenang tidak bergantung sisi home/away
+00:06 +208: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: skor dari sudut pandang tim, bukan hanya tim home
+00:06 +209: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: klasemen turnamen mengabaikan skor tanpa status done
+00:06 +210: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: round-robin per grup: 5 tim / 2 grup = 3+2 tim, 4 laga
+00:06 +211: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: soft() memakai fallback saat gagal, tidak meninggalkan null
+00:06 +212: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: settle(): sebagian gagal tetap tampil, semua gagal jadi layar error
+00:06 +213: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: failuresOf(): satu baris per sumber, format "Label: pesan"
+00:06 +214: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: cache offline: kunci berbeda per parameter
+00:06 +215: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: versi di app sama dengan pubspec.yaml
+00:06 +216: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: pesan error user tidak membawa prefix kelas
+00:06 +217: C:/Users/User/Documents/porto/minisoccer/test/widget_test.dart: batas grup: tiap grup minimal 2 tim
+00:06 +218: All tests passed!

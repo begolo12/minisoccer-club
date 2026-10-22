@@ -112,6 +112,51 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS booking_id INT
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_booking ON transactions(booking_id)
   WHERE booking_id IS NOT NULL;
 
+-- ---------------------------------------------------------------------
+-- Kehadiran per sesi + patungan biaya lapangan.
+--
+-- Satu baris = satu anggota yang ikut main di satu booking. Dari sini dua hal
+-- dijawab sekaligus:
+--
+--   * SIAPA YANG DATANG  — pertanyaan tiap minggu, dan bahan evaluasi
+--     ("si A jarang hadir") tanpa perlu catatan terpisah.
+--   * SIAPA SUDAH SETOR  — biaya sewa dibagi rata ke yang hadir. Tanpa ini
+--     kas selalu terlihat minus sebesar total sewa, padahal uangnya sudah
+--     dikumpulkan dari pemain.
+--
+-- `share_amount` disimpan (bukan dihitung saat baca) karena pembagiannya
+-- dibulatkan ke rupiah: 300.000 dibagi 7 tidak habis. Nilainya dihitung ulang
+-- setiap kali daftar hadir berubah, dengan sisa pembulatan dibagikan satu per
+-- satu ke baris teratas — supaya JUMLAH semua share selalu tepat sama dengan
+-- `bookings.cost`. Kalau dihitung saat baca, angka "terkumpul" dan "target"
+-- bisa berbeda satu-dua rupiah dan terlihat seperti bug.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS booking_attendance (
+  id           SERIAL PRIMARY KEY,
+  booking_id   INT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  member_id    INT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  share_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+  paid_at      TIMESTAMPTZ,          -- NULL = belum setor
+  note         TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (booking_id, member_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_booking ON booking_attendance(booking_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_member  ON booking_attendance(member_id);
+
+-- Setoran patungan masuk kas sebagai PEMASUKAN. Dihubungkan ke baris
+-- kehadirannya supaya satu setoran = satu catatan kas, dan tidak bisa dicatat
+-- dua kali. Berbeda dari `booking_id` yang menandai PENGELUARAN sewa.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS attendance_id INT
+  REFERENCES booking_attendance(id) ON DELETE CASCADE;
+
+-- Satu setoran = satu catatan kas. Index unik (bukan parsial) supaya
+-- `INSERT ... ON CONFLICT (attendance_id) DO NOTHING` bisa memakainya sebagai
+-- penjaga; Postgres mengizinkan banyak NULL pada kolom unik, jadi baris kas
+-- lain yang tidak berasal dari patungan tetap aman.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_attendance ON transactions(attendance_id);
+
 CREATE TABLE IF NOT EXISTS announcements (
   id         SERIAL PRIMARY KEY,
   title      TEXT NOT NULL,

@@ -428,6 +428,7 @@ const _columnDefaults = <String, Map<String, Object?>>{
   },
   'transactions': {'category': 'lain', 'occurred_at': _SqlToday()},
   'bookings': {'duration_min': 90, 'cost': 0, 'status': 'booked'},
+  'booking_attendance': {'share_amount': 0},
   'tournaments': {
     'match_minutes': 20,
     'break_minutes': 0,
@@ -446,6 +447,7 @@ const _autoTimestamps = <String, List<String>>{
   'transactions': ['created_at'],
   'payments': ['paid_at'],
   'bookings': ['created_at'],
+  'booking_attendance': ['created_at'],
   'announcements': ['created_at'],
   'teams': ['created_at'],
   'tournaments': ['created_at'],

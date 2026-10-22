@@ -518,8 +518,62 @@ class Payment {
     return _withNames(rows.map(Payment.fromMap).toList());
   }
 
-  /// Sudah ada iuran untuk anggota + turnamen ini?
+  /// Semua iuran satu anggota, terbaru di atas.
   ///
+  /// Dipakai halaman riwayat iuran per anggota: bendahara dan anggota bisa
+  /// melihat "saya sudah bayar apa saja" tanpa harus membuka turnamen satu per
+  /// satu.
+  static Future<List<Payment>> forMember(int memberId) async {
+    final rows = await Db.query(
+      '$_select WHERE p.member_id=@m ORDER BY p.paid_at DESC',
+      params: {'m': memberId},
+    );
+    return _withNames(rows.map(Payment.fromMap).toList());
+  }
+
+  /// Turnamen yang seharusnya dibayar anggota ini tetapi belum ada catatannya.
+  ///
+  /// Pesertanya ditentukan sama seperti tagihan: anggota dari tim yang terdaftar
+  /// di turnamen itu. Hanya turnamen yang nominalnya diisi (`entry_fee > 0`)
+  /// yang dianggap menagih — turnamen tanpa nominal tidak punya "tunggakan".
+  static Future<List<Tournament>> unpaidForMember(int memberId) async {
+    final rows = await Db.query(
+      '''SELECT t.* FROM tournaments t
+         JOIN tournament_teams tt ON tt.tournament_id = t.id
+         JOIN team_players tp ON tp.team_id = tt.team_id
+         WHERE tp.member_id = @m
+           AND t.entry_fee > 0
+           AND NOT EXISTS (
+             SELECT 1 FROM payments p
+             WHERE p.member_id = @m AND p.tournament_id = t.id)
+         GROUP BY t.id
+         ORDER BY t.starts_at DESC''',
+      params: {'m': memberId},
+    );
+    return rows.map(Tournament.fromMap).toList();
+  }
+
+  /// Turnamen yang iurannya sudah dicatat tetapi belum terkirim ke server.
+  ///
+  /// [unpaidForMember] adalah query ringkasan (`GROUP BY`), jadi cache tidak
+  /// ditambal saat tulis offline. Tanpa penyaringan ini, turnamen yang baru
+  /// saja dibayar tetap tampil "belum dibayar" dan pengguna mencoba
+  /// mencatatnya lagi.
+  static Future<Set<int>> pendingTournamentIds(int memberId) async {
+    await Outbox.load();
+    final out = <int>{};
+    for (final w in Outbox.items) {
+      if (w.failed) continue;
+      final op = parseWrite(w.sql, w.params);
+      if (op == null || !op.isInsert || op.table != 'payments') continue;
+      if (_int(op.values['member_id']) != memberId) continue;
+      final tournamentId = _int(op.values['tournament_id']);
+      if (tournamentId > 0) out.add(tournamentId);
+    }
+    return out;
+  }
+
+  /// Sudah ada iuran untuk anggota + turnamen ini?
   /// Dipakai form supaya satu anggota tidak tercatat dua kali di turnamen yang
   /// sama (uangnya ikut terhitung dua kali di kas dan di label "Lunas").
   /// Database juga punya index unik sebagai lapis terakhir.
@@ -751,6 +805,13 @@ class Transaction {
   /// booking-nya (atau hapus booking → kas ikut terhapus lewat CASCADE).
   final int? bookingId;
 
+  /// Baris kehadiran patungan yang melahirkan PEMASUKAN ini, kalau ada.
+  ///
+  /// Sama seperti [bookingId]: baris kas seperti ini tidak boleh dikoreksi
+  /// nominalnya dari halaman Kas, karena harus sama dengan bagian biaya orang
+  /// itu. Perubahannya lewat halaman Booking → patungan.
+  final int? attendanceId;
+
   Transaction({
     required this.id,
     required this.kind,
@@ -759,10 +820,17 @@ class Transaction {
     required this.occurredAt,
     this.note,
     this.bookingId,
+    this.attendanceId,
   });
 
   /// True kalau baris ini dikelola oleh booking, bukan dibuat manual.
   bool get fromBooking => bookingId != null;
+
+  /// True kalau baris ini lahir dari setoran patungan lapangan.
+  bool get fromAttendance => attendanceId != null;
+
+  /// True kalau nominalnya tidak boleh diubah dari halaman Kas.
+  bool get managed => fromBooking || fromAttendance;
 
   factory Transaction.fromMap(Map<String, dynamic> m) => Transaction(
         id: _int(m['id']),
@@ -772,11 +840,13 @@ class Transaction {
         occurredAt: _dt(m['occurred_at']),
         note: m['note'] as String?,
         bookingId: m['booking_id'] == null ? null : _int(m['booking_id']),
+        attendanceId: m['attendance_id'] == null ? null : _int(m['attendance_id']),
       );
 
   static const incomeCategories = <String, String>{
     'sponsor': 'Sponsor',
     'sewa': 'Sewa lapangan',
+    'patungan': 'Patungan lapangan',
     'lain': 'Lain-lain',
   };
 
@@ -1061,6 +1131,26 @@ class Booking {
   Future<void> setStatus(String s) async {
     await Db.execute('UPDATE bookings SET status=@s WHERE id=@id', params: {'s': s, 'id': id});
     if (s == 'canceled') {
+      // Batal = sewa tidak jadi dibayar. Pengeluaran sewanya DAN setoran
+      // patungannya sama-sama dibuang, karena keduanya milik laga yang tidak
+      // pernah terjadi; menyisakan pemasukan tanpa pengeluaran membuat saldo
+      // kas terlihat untung.
+      //
+      // Setoran dihapus satu per satu (bukan hanya lewat CASCADE) supaya
+      // cache offline ikut terbarui: halaman Kas membaca cache, dan cascade
+      // hanya terjadi di server.
+      try {
+        for (final a in await BookingAttendance.forBooking(id)) {
+          if (a.paid) await BookingAttendance.unpay(a.id);
+        }
+      } catch (_) {
+        // Daftar hadir tidak terbaca (offline tanpa cache): CASCADE di
+        // database tetap membuang setorannya saat antrean terkirim.
+      }
+      await Db.execute(
+        'DELETE FROM booking_attendance WHERE booking_id=@id',
+        params: {'id': id},
+      );
       await Db.execute(
         'DELETE FROM transactions WHERE booking_id=@id',
         params: {'id': id},
@@ -1072,6 +1162,267 @@ class Booking {
   /// pada `transactions.booking_id`.
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM bookings WHERE id=@id', params: {'id': id});
+}
+
+/// Bagi [total] rata ke [n] orang, dalam rupiah bulat, tanpa kehilangan sepeser.
+///
+/// Pembagian biasa (`total / n`) tidak bisa dipakai: 300.000 dibagi 7 =
+/// 42.857,14, dan kalau setiap orang membayar 42.857, jumlahnya 299.999 —
+/// selisih 1 rupiah yang membuat "terkumpul" tidak pernah mencapai "target".
+/// Sisa pembulatan dibagikan satu rupiah ke orang-orang pertama, sehingga
+/// jumlah seluruh bagian SELALU tepat sama dengan [total].
+///
+/// Hasilnya rupiah bulat karena aplikasi ini tidak mengenal sen: input nominal
+/// menolak desimal, dan tidak ada orang yang menyetor 42.857,14 ke kas klub.
+List<double> splitEvenly(double total, int n) {
+  if (n <= 0) return const [];
+  final whole = total.round();
+  final base = whole ~/ n;
+  final remainder = whole - base * n;
+  return List<double>.generate(
+    n,
+    (i) => (base + (i < remainder ? 1 : 0)).toDouble(),
+  );
+}
+
+/// Satu baris kehadiran: anggota yang ikut main di sebuah booking, bagian
+/// biayanya, dan apakah sudah setor.
+class BookingAttendance {
+  final int id;
+  final int bookingId;
+  final int memberId;
+  final String memberName;
+
+  /// Bagian biaya yang harus dibayar orang ini.
+  final double share;
+
+  /// Null = belum setor.
+  final DateTime? paidAt;
+  final String? note;
+
+  /// Judul & waktu sesi main-nya, supaya riwayat per anggota bisa menyebut
+  /// "Futsal Rabu, 21 Okt" tanpa membuka booking satu per satu.
+  final String bookingTitle;
+  final DateTime? bookingStartsAt;
+
+  /// Id pemasukan kas yang lahir dari setoran ini, kalau sudah dibayar.
+  final int? transactionId;
+
+  BookingAttendance({
+    required this.id,
+    required this.bookingId,
+    required this.memberId,
+    required this.memberName,
+    required this.share,
+    this.paidAt,
+    this.note,
+    this.bookingTitle = '',
+    this.bookingStartsAt,
+    this.transactionId,
+  });
+
+  factory BookingAttendance.fromMap(Map<String, dynamic> m) => BookingAttendance(
+        id: _int(m['id']),
+        bookingId: _int(m['booking_id']),
+        memberId: _int(m['member_id']),
+        memberName: (m['member_name'] as String?) ?? '',
+        share: _num(m['share_amount']),
+        paidAt: m['paid_at'] == null ? null : _dt(m['paid_at']),
+        note: m['note'] as String?,
+        bookingTitle: (m['booking_title'] as String?) ?? '',
+        bookingStartsAt:
+            m['booking_starts_at'] == null ? null : _dt(m['booking_starts_at']),
+        transactionId: m['transaction_id'] == null ? null : _int(m['transaction_id']),
+      );
+
+  bool get paid => paidAt != null;
+
+  static const _select = '''
+    SELECT a.*, m.name AS member_name, t.id AS transaction_id,
+           b.title AS booking_title, b.starts_at AS booking_starts_at
+    FROM booking_attendance a
+    JOIN members m ON m.id = a.member_id
+    JOIN bookings b ON b.id = a.booking_id
+    LEFT JOIN transactions t ON t.attendance_id = a.id''';
+
+  /// Semua yang hadir di satu booking, urut nama.
+  static Future<List<BookingAttendance>> forBooking(int bookingId) async {
+    final rows = await Db.query(
+      '$_select WHERE a.booking_id=@bid ORDER BY m.name',
+      params: {'bid': bookingId},
+    );
+    return rows.map(BookingAttendance.fromMap).toList();
+  }
+
+  /// Semua sesi yang diikuti satu anggota, terbaru di atas.
+  static Future<List<BookingAttendance>> forMember(int memberId) async {
+    final rows = await Db.query(
+      '$_select WHERE a.member_id=@m ORDER BY b.starts_at DESC',
+      params: {'m': memberId},
+    );
+    return rows.map(BookingAttendance.fromMap).toList();
+  }
+
+  /// Ringkasan patungan satu booking.
+  static Future<BookingSplit> splitFor(Booking booking) async {
+    final rows = await forBooking(booking.id);
+    return BookingSplit(booking: booking, rows: rows);
+  }
+
+  /// Hitung ulang bagian tiap orang setelah daftar hadir berubah.
+  ///
+  /// Dipanggil setiap kali ada yang ditambah/dihapus. Tanpa ini orang yang
+  /// hadir belakangan mendapat bagian lama, dan jumlah semua bagian tidak lagi
+  /// sama dengan biaya sewa.
+  ///
+  /// SATU pernyataan untuk semua baris, bukan satu UPDATE per orang. Dua
+  /// alasannya nyata:
+  ///   * Kecepatan: 20 peserta berarti 20 perjalanan ke server, dan itu
+  ///     terasa beberapa detik di jaringan HP.
+  ///   * Kebenaran: dengan UPDATE terpisah, ada saat ketika sebagian baris
+  ///     sudah dibagi dan sisanya belum. Layar yang memuat ulang tepat pada
+  ///     saat itu menampilkan "terkumpul 200.000 dari 300.000" padahal
+  ///     hitungannya sedang berjalan — persis yang terlihat seperti bug.
+  ///
+  /// Yang SUDAH setor tidak diubah nominal kas-nya — setoran yang sudah masuk
+  /// tidak boleh bergerak sendiri. Kalau bagiannya naik, dia tampil kurang.
+  static Future<void> rebalance(int bookingId, double totalCost) async {
+    final rows = await forBooking(bookingId);
+    if (rows.isEmpty) return;
+    final shares = splitEvenly(totalCost, rows.length);
+
+    // Hanya baris yang angkanya berubah yang dikirim; biasanya tidak ada.
+    final changed = <int, double>{};
+    final params = <String, Object?>{};
+    for (var i = 0; i < rows.length; i++) {
+      if ((rows[i].share - shares[i]).abs() < 0.005) continue;
+      params['id${changed.length}'] = rows[i].id;
+      params['s${changed.length}'] = shares[i];
+      changed[rows[i].id] = shares[i];
+    }
+    if (changed.isEmpty) return;
+
+    // Cast eksplisit wajib: driver Neon mengirim parameter sebagai teks, dan
+    // tanpa `::int` Postgres menolak membandingkan `integer = text`.
+    final values = [
+      for (var i = 0; i < changed.length; i++) '(@id$i::int, @s$i::numeric)',
+    ].join(', ');
+    await Db.execute(
+      '''UPDATE booking_attendance SET share_amount = v.share
+         FROM (VALUES $values) AS v(id, share)
+         WHERE booking_attendance.id = v.id''',
+      params: params,
+    );
+    // Penambal cache tidak mengenali bentuk `FROM (VALUES ...)`, jadi cache
+    // ditambal dengan angka yang sudah dihitung di sini. Tanpa ini, saat
+    // offline bagian tiap orang tertinggal di angka lama dan yang baru
+    // ditambahkan tetap 0.
+    await Db.patchCacheRows(
+      table: 'booking_attendance',
+      valuesById: {
+        for (final e in changed.entries) e.key: {'share_amount': e.value},
+      },
+    );
+  }
+
+  /// Tambahkan anggota ke daftar hadir. Diam saja kalau sudah ada.
+  static Future<void> add(int bookingId, int memberId, double totalCost) async {
+    await Db.execute(
+      '''INSERT INTO booking_attendance (booking_id, member_id, share_amount)
+         VALUES (@bid, @m, 0)
+         ON CONFLICT (booking_id, member_id) DO NOTHING''',
+      params: {'bid': bookingId, 'm': memberId},
+    );
+    await rebalance(bookingId, totalCost);
+  }
+
+  /// Keluarkan anggota dari daftar hadir.
+  ///
+  /// Setoran yang sudah tercatat ikut terhapus lewat `ON DELETE CASCADE`
+  /// (`transactions.attendance_id`), jadi pemanggil WAJIB memperingatkan lebih
+  /// dulu kalau orang itu sudah setor.
+  static Future<void> remove(int attendanceId, int bookingId, double totalCost) async {
+    await Db.execute(
+      'DELETE FROM booking_attendance WHERE id=@id',
+      params: {'id': attendanceId},
+    );
+    await rebalance(bookingId, totalCost);
+  }
+
+  /// Catat setoran: tandai lunas DAN masukkan uangnya ke kas.
+  ///
+  /// Dua langkah ini harus bersama. Kalau hanya `paid_at` yang diisi, uangnya
+  /// tidak pernah muncul di Kas; kalau hanya kas yang dicatat, status di
+  /// halaman Booking tidak berubah dan orang yang sama bisa ditagih lagi.
+  static Future<void> pay({
+    required int attendanceId,
+    required int memberId,
+    required double amount,
+    required DateTime occurredAt,
+    required String note,
+  }) async {
+    await Db.execute(
+      'UPDATE booking_attendance SET paid_at=now() WHERE id=@id',
+      params: {'id': attendanceId},
+    );
+    await Db.execute(
+      '''INSERT INTO transactions (kind, category, amount, occurred_at, member_id, note, attendance_id)
+         VALUES ('income', 'patungan', @amount, @date, @member, @note, @a)
+         ON CONFLICT (attendance_id) DO NOTHING''',
+      params: {
+        'amount': amount,
+        'date': occurredAt,
+        'member': memberId,
+        'note': note,
+        'a': attendanceId,
+      },
+    );
+  }
+
+  /// Batalkan setoran: status kembali "belum" dan catatan kasnya dibuang.
+  static Future<void> unpay(int attendanceId) async {
+    await Db.execute(
+      'DELETE FROM transactions WHERE attendance_id=@a',
+      params: {'a': attendanceId},
+    );
+    await Db.execute(
+      'UPDATE booking_attendance SET paid_at=NULL WHERE id=@id',
+      params: {'id': attendanceId},
+    );
+  }
+}
+
+/// Angka patungan satu booking: siapa hadir, terkumpul, dan kurang berapa.
+class BookingSplit {
+  const BookingSplit({required this.booking, required this.rows});
+
+  final Booking booking;
+  final List<BookingAttendance> rows;
+
+  bool get hasAttendees => rows.isNotEmpty;
+
+  /// Biaya per orang menurut daftar hadir saat ini.
+  double get perPerson {
+    if (rows.isEmpty) return 0;
+    return splitEvenly(booking.cost, rows.length).first;
+  }
+
+  /// Uang yang sudah masuk dari setoran patungan.
+  double get collected => rows.fold<double>(0, (s, r) => s + (r.paid ? r.share : 0));
+
+  /// Bagian yang belum disetor.
+  double get outstanding => rows.fold<double>(0, (s, r) => s + (r.paid ? 0 : r.share));
+
+  int get paidCount => rows.where((r) => r.paid).length;
+  int get unpaidCount => rows.length - paidCount;
+
+  /// Selisih yang ditanggung klub kalau biaya belum habis dibagi.
+  ///
+  /// Terisi hanya kalau tidak ada yang hadir sama sekali: biaya sewa tetap
+  /// keluar dari kas, tapi tidak ada yang bisa ditagih.
+  double get uncovered => rows.isEmpty ? booking.cost : 0;
+
+  List<BookingAttendance> get unpaid => rows.where((r) => !r.paid).toList();
 }
 
 // ---------- Announcements ----------

@@ -158,21 +158,53 @@ class Db {
     // membaca `m['id'] as int`) gagal dan seluruh daftar tidak bisa dibaca —
     // data offline terlihat "tidak tersimpan" padahal antreannya benar.
     final id = tempId ?? (op.isInsert ? _displayId-- : null);
+    await _applyToCache([op], id);
+  }
+
+  /// Tambal cache untuk tulis yang SQL-nya tidak bisa diurai penambal
+  /// otomatis.
+  ///
+  /// Satu pemakainya: pembagian biaya patungan, yang sengaja dikirim sebagai
+  /// satu `UPDATE ... FROM (VALUES ...)` massal. Bentuk itu tidak dikenali
+  /// [parseWrite], jadi tanpa panggilan ini baris di cache tetap memakai angka
+  /// lama: saat offline orang yang baru ditambahkan tampil dengan bagian Rp 0,
+  /// dan tombol "sudah setor" mencatat Rp 0 ke kas.
+  static Future<void> patchCacheRows({
+    required String table,
+    required Map<int, Map<String, Object?>> valuesById,
+  }) async {
+    if (valuesById.isEmpty) return;
+    await _applyToCache([
+      for (final e in valuesById.entries)
+        WriteOp(
+          kind: 'update',
+          table: table,
+          values: e.value,
+          whereEq: {'id': e.key},
+          patchable: true,
+        ),
+    ], null);
+  }
+
+  static Future<void> _applyToCache(List<WriteOp> ops, int? tempId) async {
     try {
       final entries = await activeCacheStore.listEntries();
       for (final entry in entries) {
-        final patched = applyOp(
-          entry.rows,
-          op,
-          querySql: entry.sql,
-          // Parameter query ASAL entri ini, bukan parameter tulis: syarat
-          // WHERE milik query itulah yang menentukan baris mana yang boleh
-          // ditambahkan.
-          queryParams: entry.params,
-          tempId: id,
-        );
-        if (identical(patched, entry.rows)) continue;
-        final ordered = sortLikeQuery(patched, entry.sql);
+        var rows = entry.rows;
+        for (final op in ops) {
+          rows = applyOp(
+            rows,
+            op,
+            querySql: entry.sql,
+            // Parameter query ASAL entri ini, bukan parameter tulis: syarat
+            // WHERE milik query itulah yang menentukan baris mana yang boleh
+            // ditambahkan.
+            queryParams: entry.params,
+            tempId: tempId,
+          );
+        }
+        if (identical(rows, entry.rows)) continue;
+        final ordered = sortLikeQuery(rows, entry.sql);
         final trimmed = trimLikeQuery(ordered, entry.sql, entry.params);
         await activeCacheStore.writeEntry(entry.copyWith(rows: trimmed));
       }

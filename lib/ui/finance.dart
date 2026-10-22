@@ -192,7 +192,7 @@ Transaction? _manualTx(_FinanceData d, CashEntry entry) {
   final id = entry.transactionId;
   if (id == null) return null;
   final tx = d.byId[id];
-  if (tx == null || tx.fromBooking) return null;
+  if (tx == null || tx.managed) return null;
   return tx;
 }
 

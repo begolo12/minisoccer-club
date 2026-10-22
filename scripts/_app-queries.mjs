@@ -71,6 +71,36 @@ export const reads = {
                   m.joined_at, p.id, p.amount, p.paid_at, p.note
          ORDER BY m.name`,
   paymentExists: 'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
+  paymentsForMember: `SELECT p.*, m.name AS member_name, t.name AS tournament_name
+         FROM payments p
+         JOIN members m ON m.id = p.member_id
+         LEFT JOIN tournaments t ON t.id = p.tournament_id
+         WHERE p.member_id = @m
+         ORDER BY p.paid_at DESC`,
+  unpaidForMember: `SELECT t.* FROM tournaments t
+         JOIN tournament_teams tt ON tt.tournament_id = t.id
+         JOIN team_players tp ON tp.team_id = tt.team_id
+         WHERE tp.member_id = @m
+           AND t.entry_fee > 0
+           AND NOT EXISTS (
+             SELECT 1 FROM payments p
+             WHERE p.member_id = @m AND p.tournament_id = t.id)
+         GROUP BY t.id
+         ORDER BY t.starts_at DESC`,
+  attendanceForBooking: `SELECT a.*, m.name AS member_name, t.id AS transaction_id,
+                b.title AS booking_title, b.starts_at AS booking_starts_at
+         FROM booking_attendance a
+         JOIN members m ON m.id = a.member_id
+         JOIN bookings b ON b.id = a.booking_id
+         LEFT JOIN transactions t ON t.attendance_id = a.id
+         WHERE a.booking_id=@bid ORDER BY m.name`,
+  attendanceForMember: `SELECT a.*, m.name AS member_name, t.id AS transaction_id,
+                b.title AS booking_title, b.starts_at AS booking_starts_at
+         FROM booking_attendance a
+         JOIN members m ON m.id = a.member_id
+         JOIN bookings b ON b.id = a.booking_id
+         LEFT JOIN transactions t ON t.attendance_id = a.id
+         WHERE a.member_id=@m ORDER BY b.starts_at DESC`,
   transactions: `SELECT * FROM transactions
          WHERE to_char(occurred_at, 'YYYY-MM') = @p
          ORDER BY occurred_at DESC, id DESC`,
@@ -137,6 +167,20 @@ export const writes = {
            VALUES (@t, @s, @d, @c) RETURNING id`,
   insertBookingCash: `INSERT INTO transactions (kind, category, amount, occurred_at, note, booking_id)
          VALUES ('expense', 'sewa', @amount, @date, @note, @booking)`,
+  insertAttendance: `INSERT INTO booking_attendance (booking_id, member_id, share_amount)
+         VALUES (@bid, @m, 0)
+         ON CONFLICT (booking_id, member_id) DO NOTHING`,
+  updateAttendanceShare: 'UPDATE booking_attendance SET share_amount=@share WHERE id=@id',
+  rebalanceAttendance: `UPDATE booking_attendance SET share_amount = v.share
+         FROM (VALUES (@id0, @s0), (@id1, @s1)) AS v(id, share)
+         WHERE booking_attendance.id = v.id`,
+  deleteAttendance: 'DELETE FROM booking_attendance WHERE id=@id',
+  markAttendancePaid: 'UPDATE booking_attendance SET paid_at=now() WHERE id=@id',
+  clearAttendancePaid: 'UPDATE booking_attendance SET paid_at=NULL WHERE id=@id',
+  insertAttendanceCash: `INSERT INTO transactions (kind, category, amount, occurred_at, member_id, note, attendance_id)
+         VALUES ('income', 'patungan', @amount, @date, @member, @note, @a)
+         ON CONFLICT (attendance_id) DO NOTHING`,
+  deleteAttendanceCash: 'DELETE FROM transactions WHERE attendance_id=@a',
   upsertSession: `INSERT INTO match_sessions (match_id, session_no, score_home, score_away, winner, ended_at)
            VALUES (@m, @sn, @h, @a, @w, now())
            ON CONFLICT (match_id, session_no) DO UPDATE SET
@@ -205,6 +249,15 @@ export const sampleParams = {
   a: 2,
   mid: 1,
   mem: 1,
+  // Booking untuk kehadiran/patungan. Sengaja `bid`, bukan `b`: huruf b
+  // sudah dipakai sebagai isi pengumuman, jadi satu nilai contoh tidak bisa
+  // mewakili dua arti berbeda.
+  bid: 1,
+  share: 50000,
+  id0: 1,
+  s0: 50000,
+  id1: 2,
+  s1: 50000,
   min: 12,
   m: 1,
   p: '2026-10',
