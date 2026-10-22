@@ -1208,6 +1208,15 @@ class BookingAttendance {
   /// Id pemasukan kas yang lahir dari setoran ini, kalau sudah dibayar.
   final int? transactionId;
 
+  /// Nominal yang benar-benar masuk kas untuk baris ini (dari transaksi), atau
+  /// null kalau belum setor.
+  ///
+  /// Dibedakan dari [share]: setelah peserta lain ditambahkan, bagian ideal
+  /// orang yang sudah setor bisa naik, tetapi uang yang sudah masuk kas tetap
+  /// nominal lama. Menampilkan [share] sebagai "terkumpul" akan melebihkan
+  /// saldo; angka inilah yang benar.
+  final double? paidAmount;
+
   BookingAttendance({
     required this.id,
     required this.bookingId,
@@ -1219,6 +1228,7 @@ class BookingAttendance {
     this.bookingTitle = '',
     this.bookingStartsAt,
     this.transactionId,
+    this.paidAmount,
   });
 
   factory BookingAttendance.fromMap(Map<String, dynamic> m) => BookingAttendance(
@@ -1233,12 +1243,20 @@ class BookingAttendance {
         bookingStartsAt:
             m['booking_starts_at'] == null ? null : _dt(m['booking_starts_at']),
         transactionId: m['transaction_id'] == null ? null : _int(m['transaction_id']),
+        paidAmount: m['transaction_amount'] == null ? null : _num(m['transaction_amount']),
       );
 
   bool get paid => paidAt != null;
 
+  /// Uang yang sudah masuk kas untuk baris ini; 0 kalau belum setor.
+  double get cash => paid ? (paidAmount ?? share) : 0;
+
+  /// Bagian yang masih harus dibayar orang ini.
+  double get due => paid ? 0 : share;
+
   static const _select = '''
     SELECT a.*, m.name AS member_name, t.id AS transaction_id,
+           t.amount AS transaction_amount,
            b.title AS booking_title, b.starts_at AS booking_starts_at
     FROM booking_attendance a
     JOIN members m ON m.id = a.member_id
@@ -1444,14 +1462,29 @@ class BookingSplit {
 
   bool get uneven => rows.isNotEmpty && perPersonMin != perPerson;
 
-  /// Uang yang sudah masuk dari setoran patungan.
-  double get collected => rows.fold<double>(0, (s, r) => s + (r.paid ? r.share : 0));
+  /// Uang yang sudah masuk dari setoran patungan (nominal di kas).
+  ///
+  /// Bukan jumlah `share` baris yang sudah dibayar: bagian ideal bisa naik
+  /// setelah peserta lain bergabung, sedangkan uang yang sudah masuk tidak.
+  /// Menjumlahkan `share` akan menampilkan "terkumpul" lebih besar daripada
+  /// isi kas sebenarnya.
+  double get collected => rows.fold<double>(0, (s, r) => s + r.cash);
 
   /// Bagian yang belum disetor.
-  double get outstanding => rows.fold<double>(0, (s, r) => s + (r.paid ? 0 : r.share));
+  double get outstanding => rows.fold<double>(0, (s, r) => s + r.due);
 
   int get paidCount => rows.where((r) => r.paid).length;
   int get unpaidCount => rows.length - paidCount;
+
+  /// Selisih yang belum tertutup setoran, walau semua orang sudah setor.
+  ///
+  /// Terjadi kalau biaya sewa naik setelah ada yang menyetor: setoran lama
+  /// tidak boleh diubah sendiri, jadi selisihnya ditanggung kas sampai
+  /// bendahara menagih kekurangannya.
+  double get shortfall {
+    final gap = booking.cost - collected;
+    return gap > 0.005 ? gap : 0;
+  }
 
   /// Selisih yang ditanggung klub kalau biaya belum habis dibagi.
   ///

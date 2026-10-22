@@ -40,15 +40,22 @@ class MemoryCacheStore implements CacheStore {
   }
 }
 
-/// SQL yang sama dengan `BookingAttendance.forBooking`, karena cache dikunci
-/// oleh teks query + parameternya.
-const _selectForBooking = '''
-    SELECT a.*, m.name AS member_name, t.id AS transaction_id,
-           b.title AS booking_title, b.starts_at AS booking_starts_at
-    FROM booking_attendance a
-    JOIN members m ON m.id = a.member_id
-    JOIN bookings b ON b.id = a.booking_id
-    LEFT JOIN transactions t ON t.attendance_id = a.id WHERE a.booking_id=@bid ORDER BY m.name''';
+/// Isi cache lewat jalur yang sesungguhnya: satu pembacaan online berhasil,
+/// hasilnya disimpan `Db` ke cache. Menulis entri cache dengan teks SQL
+/// salinan sendiri rapuh — begitu `_select` di model berubah (mis. kolom baru),
+/// kuncinya tidak cocok lagi dan tes gagal dengan "tidak bisa menghubungi
+/// server" padahal logikanya benar.
+Future<void> _seedOnline(List<Map<String, Object?>> rows) async {
+  useClient(MockClient((_) async => http.Response(
+        jsonEncode({'rows': rows, 'rowCount': rows.length}),
+        200,
+        headers: {'content-type': 'application/json'},
+      )));
+  await BookingAttendance.forBooking(1);
+  // Kembali ke keadaan offline: setiap permintaan gagal seperti HP tanpa sinyal.
+  useClient(MockClient(
+      (_) async => throw http.ClientException('Failed host lookup: api')));
+}
 
 Map<String, Object?> _row(int id, int memberId, double share) => {
       'id': id,
@@ -86,19 +93,10 @@ void main() {
   });
 
   /// Isi cache seperti setelah halaman detail dimuat saat online.
-  void seed(List<Map<String, Object?>> rows) {
-    const params = {'bid': 1};
-    store.entries[cacheKey(_selectForBooking, params)] = CacheEntry(
-      key: cacheKey(_selectForBooking, params),
-      sql: _selectForBooking,
-      params: params,
-      rows: rows,
-      savedAt: DateTime.now(),
-    );
-  }
+  Future<void> seed(List<Map<String, Object?>> rows) => _seedOnline(rows);
 
   test('menambah peserta saat offline membagi ulang bagian di cache', () async {
-    seed([_row(1, 10, 150000), _row(2, 11, 150000)]);
+    await seed([_row(1, 10, 150000), _row(2, 11, 150000)]);
 
     await BookingAttendance.add(1, 12, 300000);
 
@@ -111,7 +109,7 @@ void main() {
   });
 
   test('mengeluarkan peserta saat offline membagi ulang sisanya', () async {
-    seed([_row(1, 10, 100000), _row(2, 11, 100000), _row(3, 12, 100000)]);
+    await seed([_row(1, 10, 100000), _row(2, 11, 100000), _row(3, 12, 100000)]);
 
     await BookingAttendance.remove(3, 1, 300000);
 
@@ -121,7 +119,7 @@ void main() {
   });
 
   test('setoran saat offline memakai bagian yang benar, bukan nol', () async {
-    seed([_row(1, 10, 150000), _row(2, 11, 150000)]);
+    await seed([_row(1, 10, 150000), _row(2, 11, 150000)]);
     await BookingAttendance.add(1, 12, 300000);
 
     // Persis yang dilakukan halaman detail: nominal diambil dari baris.
@@ -148,7 +146,7 @@ void main() {
 
   test('antrean kehadiran terkirim memakai id asli, bukan id sementara',
       () async {
-    seed([]);
+    await seed([]);
     await BookingAttendance.add(1, 12, 300000, memberName: 'Anggota 12');
     expect(Outbox.items, hasLength(2),
         reason: 'satu INSERT kehadiran + satu pembagian biaya');

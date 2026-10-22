@@ -410,6 +410,16 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     'sepenuhnya ditanggung kas.',
                     style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
                   ),
+                )
+              else if (s.shortfall > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    'Masih kurang ${fmtMoney(s.shortfall)} dari biaya sewa. '
+                    'Setoran yang sudah masuk tidak diubah otomatis; '
+                    'kekurangannya ditanggung kas sampai ditagih.',
+                    style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
+                  ),
                 ),
               const SectionTitle('Yang hadir'),
               if (s.rows.isEmpty)
@@ -497,7 +507,11 @@ class _AttendeeRow extends StatelessWidget {
         color: row.paid ? t.colorScheme.primary : t.colorScheme.mutedForeground,
       ),
       title: row.memberName,
-      subtitle: row.paid ? 'Sudah setor' : 'Belum setor',
+      subtitle: row.paid
+          ? (row.cash + 0.005 < row.share
+              ? 'Sudah setor ${fmtMoney(row.cash)}, kurang ${fmtMoney(row.share - row.cash)}'
+              : 'Sudah setor')
+          : 'Belum setor',
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

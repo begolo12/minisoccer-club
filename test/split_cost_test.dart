@@ -108,14 +108,38 @@ void main() {
       expect(s.paidCount, 2);
       expect(s.unpaidCount, 1);
       expect(s.uncovered, 0);
+      expect(s.shortfall, 150000);
     });
 
-    test('semua lunas berarti tidak ada kekurangan', () {
+    test('terkumpul memakai uang yang benar-benar masuk, bukan bagian ideal', () {
+      // Setor 50.000 waktu hadir 6 orang, lalu biaya naik sehingga bagiannya
+      // jadi 75.000. Uang di kas tetap 50.000: menampilkan 75.000 akan
+      // melebihkan saldo yang sebenarnya ada.
       final s = BookingSplit(booking: booking(), rows: [
-        row(id: 1, paid: true),
-        row(id: 2, paid: true),
+        BookingAttendance(
+          id: 1,
+          bookingId: 1,
+          memberId: 1,
+          memberName: 'Anggota 1',
+          share: 75000,
+          paidAt: DateTime(2026, 10, 21),
+          paidAmount: 50000,
+        ),
+        row(id: 2, share: 75000),
       ]);
+      expect(s.collected, 50000);
+      expect(s.outstanding, 75000);
+      expect(s.shortfall, 175000);
+    });
+
+    test('semua setor dengan nominal pas berarti tidak ada kekurangan', () {
+      final s = BookingSplit(booking: booking(cost: 100000), rows: [
+        row(id: 1, share: 50000, paid: true),
+        row(id: 2, share: 50000, paid: true),
+      ]);
+      expect(s.collected, 100000);
       expect(s.outstanding, 0);
+      expect(s.shortfall, 0);
       expect(s.unpaid, isEmpty);
     });
 
