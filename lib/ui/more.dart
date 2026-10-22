@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/version.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'announcements.dart';
@@ -201,7 +202,7 @@ class _MorePageState extends State<MorePage> {
               const SizedBox(height: 20),
               Center(
                 child: Text(
-                  'Minisoccer Club v1.6.0',
+                  'Minisoccer Club v$kAppVersion',
                   style: t.textTheme.small.copyWith(letterSpacing: 0.2),
                 ),
               ),

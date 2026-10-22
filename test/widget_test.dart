@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minisoccer_club/data/models.dart';
+import 'dart:io';
+
 import 'package:minisoccer_club/core/db_web.dart' show ApiException;
+import 'package:minisoccer_club/core/version.dart';
 import 'package:minisoccer_club/ui/fmt.dart';
 import 'package:minisoccer_club/ui/tournament.dart';
 
@@ -187,6 +190,15 @@ void main() {
     expect(total, 4, reason: '3 tim = 3 laga, 2 tim = 1 laga');
     expect(roundRobin([4, 5]).length, 1);
     expect(roundRobin([1]).length, 0, reason: 'grup 1 tim tidak punya laga');
+  });
+
+  test('versi di app sama dengan pubspec.yaml', () {
+    // Release GitHub dibuat dari tag vX.Y.Z; kalau label di app tertinggal,
+    // APK baru terbit dengan nomor versi lama dan tidak ada yang menyadari.
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    final m = RegExp(r'^version:\s*([0-9.]+)\+', multiLine: true).firstMatch(pubspec);
+    expect(m, isNotNull, reason: 'pubspec tanpa baris version: x.y.z+build');
+    expect(m!.group(1), kAppVersion);
   });
 
   test('pesan error user tidak membawa prefix kelas', () {

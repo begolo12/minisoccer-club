@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/api.dart';
 import '../core/db.dart';
+import '../core/version.dart';
 import '../data/auth.dart';
 import 'fmt.dart';
 import 'theme.dart';
@@ -152,7 +153,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Minisoccer Club v1.6.0', style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('Minisoccer Club v$kAppVersion', style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 Text(
                   'Dibuat dengan Flutter + shadcn UI + Neon Postgres.\n'
