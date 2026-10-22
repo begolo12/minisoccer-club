@@ -161,6 +161,8 @@ scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
 scripts/dev-api.mjs         API lokal tanpa `vercel dev` (npm run dev:api)
 scripts/check-schema.mjs    Deteksi schema produksi ketinggalan (npm run check:schema)
 scripts/e2e-check.mjs       Semua query app untuk tiap role (npm run check:e2e)
+scripts/flow-check.mjs      Alur admin ujung ke ujung: anggota→tim→laga→klasemen (npm run check:flow)
+scripts/rotate-db-password.mjs  Ganti password role DB (dipakai setelah kredensial bocor)
 scripts/_app-queries.mjs    Daftar query app — satu sumber untuk tes & e2e
 scripts/_grants.mjs         Daftar tabel/view yang boleh diakses app_web
 scripts/_neon.mjs           Runner Neon (IPv4 dipaksa) + pemecah statement SQL
@@ -176,12 +178,15 @@ flutter analyze          # wajib bersih
 flutter test             # unit: format, round-robin, klasemen, buku kas, soft()
 npm run check:schema     # schema produksi vs db/schema.sql (tanpa kredensial)
 npm run check:e2e        # semua query app untuk tamu/anggota/bendahara/admin
+npm run check:flow       # alur admin: anggota→tim→laga→sesi→klasemen→kas
 npm run check:live       # keamanan endpoint produksi
 ```
 
-`check:e2e` dan `check:live` membuat akun sementara, menguji batas baca/tulis,
-lalu menghapusnya lagi. Jalankan setelah deploy, bukan di CI biasa (menyentuh
-data produksi).
+`check:e2e`, `check:flow`, dan `check:live` membuat data sementara, menguji
+batas baca/tulis, lalu menghapusnya lagi. Jalankan setelah deploy, bukan di CI
+biasa (menyentuh data produksi). `check:flow` membuktikan rangkaian yang dipakai
+admin benar-benar saling menyambung — id dari INSERT dipakai query berikutnya,
+status ikut berubah, dan klasemen menghitung hasilnya.
 
 ## CI/CD
 

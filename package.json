@@ -9,6 +9,7 @@
     "test": "node --test \"api/*.test.mjs\"",
     "check:schema": "node scripts/check-schema.mjs",
     "check:e2e": "node scripts/e2e-check.mjs",
+    "check:flow": "node scripts/flow-check.mjs",
     "check:live": "node scripts/security-check.mjs",
     "db:fix": "node scripts/fix-data.mjs"
   },
