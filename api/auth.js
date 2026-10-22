@@ -99,12 +99,12 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      if (!user || user.length > MAX_USER || pass.length < MIN_PASS || pass.length > MAX_PASS) {
-        return res.status(400).json({ error: `Username wajib (maks ${MAX_USER}), password ${MIN_PASS}-${MAX_PASS} karakter` });
-      }
       const safeRole = role === 'admin' || role === 'treasurer' ? role : 'member';
 
       if (action === 'create') {
+        if (!user || user.length > MAX_USER || pass.length < MIN_PASS || pass.length > MAX_PASS) {
+          return res.status(400).json({ error: `Username wajib (maks ${MAX_USER}), password ${MIN_PASS}-${MAX_PASS} karakter` });
+        }
         const rows = await sql(
           `INSERT INTO users (username, role, password_hash)
            VALUES ($1, $2, crypt($3, gen_salt('bf', 10)))
@@ -116,7 +116,10 @@ export default async function handler(req, res) {
         return res.status(200).json(rows[0]);
       }
 
-      // reset
+      // reset — klien hanya mengirim id + password, jadi username tidak wajib.
+      if (pass.length < MIN_PASS || pass.length > MAX_PASS) {
+        return res.status(400).json({ error: `Password ${MIN_PASS}-${MAX_PASS} karakter` });
+      }
       const uid = Number(id);
       if (!uid) return res.status(400).json({ error: 'id wajib' });
       const rows = await sql(

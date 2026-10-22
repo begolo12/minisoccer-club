@@ -1,9 +1,10 @@
 // Batasi koneksi web ke role `app_web`: tanpa DDL, tanpa kolom password.
 // Jalankan sekali: `node scripts/harden-db.mjs` (butuh DATABASE_URL owner).
 // Password role dibuat acak dan dicetak sebagai DATABASE_URL_WEB — simpan di Vercel.
-import { request } from 'node:https';
-import { resolve4 } from 'node:dns/promises';
 import { randomBytes } from 'node:crypto';
+
+import { makeRunner } from './_neon.mjs';
+import { APP_WEB_TABLES, APP_WEB_VIEWS } from './_grants.mjs';
 
 const owner = process.env.DATABASE_URL;
 if (!owner) {
@@ -11,55 +12,12 @@ if (!owner) {
   process.exit(1);
 }
 
-const host = new URL(owner).hostname;
-const [ip] = await resolve4(host);
-// ponytail: paksa IPv4, tanpa fallback IPv6 (lihat scripts/init-db.mjs).
-const lookup = (_h, o, cb) => (o.all ? cb(null, [{ address: ip, family: 4 }]) : cb(null, ip, 4));
-
-function run(conn, query, params = []) {
-  const body = JSON.stringify({ query, params });
-  return new Promise((resolve, reject) => {
-    const req = request(
-      {
-        host,
-        servername: host,
-        lookup,
-        family: 4,
-        path: '/sql',
-        method: 'POST',
-        timeout: 30000,
-        headers: {
-          'content-type': 'application/json',
-          'content-length': Buffer.byteLength(body),
-          'neon-connection-string': conn,
-          'neon-pooler': 'true',
-        },
-      },
-      (res) => {
-        let raw = '';
-        res.on('data', (d) => (raw += d));
-        res.on('end', () => {
-          let json = {};
-          try {
-            json = JSON.parse(raw);
-          } catch {
-            return reject(new Error(`HTTP ${res.statusCode}: ${raw.slice(0, 200)}`));
-          }
-          if (res.statusCode !== 200) return reject(new Error(json.message || raw));
-          resolve(json);
-        });
-      },
-    );
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-    req.on('error', reject);
-    req.end(body);
-  });
-}
+const runOwner = await makeRunner(owner);
 
 const password = process.env.APP_WEB_PASSWORD || randomBytes(18).toString('base64url');
 
-const exists = await run(owner, "SELECT 1 FROM pg_roles WHERE rolname = 'app_web'");
-if (!exists.rows?.length) await run(owner, 'CREATE ROLE app_web LOGIN');
+const exists = await runOwner("SELECT 1 FROM pg_roles WHERE rolname = 'app_web'");
+if (!exists.rows?.length) await runOwner('CREATE ROLE app_web LOGIN');
 
 const setup = [
   `ALTER ROLE app_web WITH LOGIN PASSWORD '${password}'`,
@@ -70,19 +28,18 @@ const setup = [
   // users: hanya kolom aman. password_hash sengaja tidak diberikan.
   'GRANT SELECT (id, username, role, member_id, active, created_at) ON users TO app_web',
   `GRANT SELECT, INSERT, UPDATE, DELETE ON
-     members, matches, match_sessions, match_events, transactions, payments,
-     bookings, announcements, settings, tournaments, teams, team_players,
-     tournament_matches
+     ${APP_WEB_TABLES.join(', ')}
    TO app_web`,
   'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_web',
-  'GRANT SELECT ON v_monthly_finance, v_player_stats, v_standings TO app_web',
+  `GRANT SELECT ON ${APP_WEB_VIEWS.join(', ')} TO app_web`,
 ];
 
-for (const q of setup) await run(owner, q);
+for (const q of setup) await runOwner(q);
 
 const web = new URL(owner);
 web.username = 'app_web';
 web.password = password;
+const runWeb = await makeRunner(web.toString());
 
 // ---- uji batas akses ----
 const mustOk = [
@@ -99,7 +56,7 @@ const mustFail = [
 let bad = 0;
 for (const q of mustOk) {
   try {
-    await run(web.toString(), q);
+    await runWeb(q);
   } catch (e) {
     bad++;
     console.error('HARUS BOLEH tapi gagal:', q, '->', e.message);
@@ -107,14 +64,14 @@ for (const q of mustOk) {
 }
 for (const q of mustFail) {
   try {
-    await run(web.toString(), q);
+    await runWeb(q);
     bad++;
     console.error('HARUS DITOLAK tapi lolos:', q);
   } catch {
     /* diharapkan gagal */
   }
 }
-await run(owner, "DELETE FROM announcements WHERE title = '_uji_akses'").catch(() => {});
+await runOwner("DELETE FROM announcements WHERE title = '_uji_akses'").catch(() => {});
 
 if (bad) {
   console.error(`GAGAL: ${bad} pemeriksaan tidak sesuai.`);

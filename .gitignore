@@ -26,3 +26,8 @@ node_modules/
 
 # Screenshot pembanding milik produk lain — jangan ikut repo.
 design/ref/
+
+# Screenshot kerja (harness `design/mock/`) dan konfigurasi tooling lokal.
+# Baseline yang dipakai dokumentasi tetap di `design/current/`.
+.shots/
+.claude/

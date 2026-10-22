@@ -6,7 +6,8 @@
     "db:init": "node scripts/init-db.mjs",
     "db:harden": "node scripts/harden-db.mjs",
     "test": "node --test \"api/*.test.mjs\"",
-    "check:live": "node scripts/security-check.mjs"
+    "check:live": "node scripts/security-check.mjs",
+    "db:fix": "node scripts/fix-data.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4"

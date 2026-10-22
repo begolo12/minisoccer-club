@@ -34,15 +34,20 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 
 -- Sesi pertandingan (1 match bisa beberapa sesi / babak; tiap sesi punya pemenang).
+--
+-- Tanding klub ini INTERNAL: dua tim anggota klub saling bertemu, jadi
+-- pertandingan menunjuk ke `teams` (Tim A, Tim B, ...), bukan nama lawan luar.
+-- Kolom `opponent`/`is_home` lama dibiarkan (nullable) hanya untuk membaca
+-- data lama; UI baru tidak memakainya.
 CREATE TABLE IF NOT EXISTS matches (
   id            SERIAL PRIMARY KEY,
-  opponent      TEXT NOT NULL,
+  opponent      TEXT,
   played_at     TIMESTAMPTZ NOT NULL,
   venue         TEXT,
   is_home       BOOLEAN NOT NULL DEFAULT TRUE,
   status        TEXT NOT NULL DEFAULT 'scheduled', -- scheduled | ongoing | finished
-  goals_for     INT NOT NULL DEFAULT 0,
-  goals_against INT NOT NULL DEFAULT 0,
+  goals_for     INT NOT NULL DEFAULT 0,   -- skor tim home (internal)
+  goals_against INT NOT NULL DEFAULT 0,   -- skor tim away (internal)
   notes         TEXT
 );
 
@@ -98,6 +103,16 @@ CREATE TABLE IF NOT EXISTS bookings (
   status       TEXT NOT NULL DEFAULT 'booked' -- booked | done | canceled
 );
 
+-- Biaya sewa lapangan hidup di `bookings`, tapi uangnya keluar dari kas.
+-- Kolom ini menghubungkan keduanya supaya satu pengeluaran tidak tercatat
+-- dua kali (manual di Kas + otomatis dari booking). ON DELETE CASCADE:
+-- hapus booking = hapus catatan kasnya.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS booking_id INT
+  REFERENCES bookings(id) ON DELETE CASCADE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_booking ON transactions(booking_id)
+  WHERE booking_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS announcements (
   id         SERIAL PRIMARY KEY,
   title      TEXT NOT NULL,
@@ -118,47 +133,46 @@ CREATE INDEX IF NOT EXISTS idx_tx_occurred        ON transactions(occurred_at DE
 CREATE INDEX IF NOT EXISTS idx_tx_period          ON transactions(period);
 CREATE INDEX IF NOT EXISTS idx_payments_member    ON payments(member_id);
 
--- View rekap keuangan per bulan.
-CREATE OR REPLACE VIEW v_monthly_finance AS
-SELECT to_char(occurred_at, 'YYYY-MM') AS period,
-       COALESCE(SUM(amount) FILTER (WHERE kind = 'income'), 0)  AS income,
-       COALESCE(SUM(amount) FILTER (WHERE kind = 'expense'), 0) AS expense
-FROM transactions
-GROUP BY 1
-ORDER BY 1 DESC;
+-- Satu anggota hanya boleh punya satu catatan iuran per periode. Klien
+-- mengeceknya lebih dulu (`Payment.existsFor`), tapi dua perangkat bisa
+-- menulis bersamaan. Index dibuat hanya kalau data lama sudah bersih;
+-- kalau masih ada duplikat, `npm run db:fix` merapikannya lalu jalankan
+-- `db:init` lagi.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE indexname = 'idx_payments_member_period'
+  ) THEN
+    IF EXISTS (
+      SELECT 1 FROM payments GROUP BY member_id, period HAVING count(*) > 1
+    ) THEN
+      RAISE NOTICE 'index unik iuran dilewati: ada catatan ganda. Jalankan npm run db:fix.';
+    ELSE
+      CREATE UNIQUE INDEX idx_payments_member_period ON payments (member_id, period);
+    END IF;
+  END IF;
+END
+$$;
 
--- View papan skor / klasemen pemain.
-CREATE OR REPLACE VIEW v_player_stats AS
-SELECT m.id, m.name, m.position,
-       COUNT(e.id) FILTER (WHERE e.type = 'goal')   AS goals,
-       COUNT(e.id) FILTER (WHERE e.type = 'assist') AS assists,
-       COUNT(e.id) FILTER (WHERE e.type = 'yellow') AS yellows,
-       COUNT(e.id) FILTER (WHERE e.type = 'red')    AS reds
-FROM members m
-LEFT JOIN match_events e ON e.member_id = m.id
-GROUP BY m.id, m.name, m.position;
+-- Tiga view lama dihapus: app menghitung rekap kas, pencetak gol, dan
+-- klasemen turnamen di Dart (`mergeCashLedger`, `ScorerRow.top`,
+-- `Standing.compute`). Membiarkannya berarti dua sumber kebenaran yang bisa
+-- berbeda hasilnya. `DROP` dibuat IF EXISTS supaya `db:init` aman diulang.
+DROP VIEW IF EXISTS v_monthly_finance;
+DROP VIEW IF EXISTS v_player_stats;
+DROP VIEW IF EXISTS v_standings;
 
 -- =====================================================================
--- Turnamen internal: 4 tim, round-robin (semua bertemu semua),
--- dijadwalkan dalam satu blok waktu (mis. 2 jam).
+-- Tim tetap klub + tanding internal.
+-- Satu klub punya beberapa tim (7-8 pemain per tim). Tanding internal
+-- mempertemukan dua tim klub; klasemen dihitung dari semua laga selesai.
+-- Turnamen internal memakai tim yang sama, dibagi ke beberapa grup.
 -- =====================================================================
-
-CREATE TABLE IF NOT EXISTS tournaments (
-  id            SERIAL PRIMARY KEY,
-  name          TEXT NOT NULL,
-  venue         TEXT,
-  starts_at     TIMESTAMPTZ NOT NULL,
-  match_minutes INT NOT NULL DEFAULT 20,  -- durasi 1 laga
-  break_minutes INT NOT NULL DEFAULT 0,   -- jeda antar laga
-  status        TEXT NOT NULL DEFAULT 'draft', -- draft | running | done
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);
 
 CREATE TABLE IF NOT EXISTS teams (
-  id            SERIAL PRIMARY KEY,
-  tournament_id INT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL,
-  UNIQUE (tournament_id, name)
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS team_players (
@@ -167,9 +181,35 @@ CREATE TABLE IF NOT EXISTS team_players (
   PRIMARY KEY (team_id, member_id)
 );
 
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS home_team_id INT REFERENCES teams(id) ON DELETE SET NULL;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS away_team_id INT REFERENCES teams(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS tournaments (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  venue         TEXT,
+  starts_at     TIMESTAMPTZ NOT NULL,
+  match_minutes INT NOT NULL DEFAULT 20,  -- durasi 1 laga
+  break_minutes INT NOT NULL DEFAULT 0,   -- jeda antar laga
+  groups        INT NOT NULL DEFAULT 1,   -- jumlah grup (1 = liga penuh)
+  status        TEXT NOT NULL DEFAULT 'draft', -- draft | running | done
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS groups INT NOT NULL DEFAULT 1;
+
+-- Pembagian tim ke grup pada satu turnamen.
+CREATE TABLE IF NOT EXISTS tournament_teams (
+  tournament_id INT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  team_id       INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  group_no      INT NOT NULL DEFAULT 1,
+  PRIMARY KEY (tournament_id, team_id)
+);
+
 CREATE TABLE IF NOT EXISTS tournament_matches (
   id            SERIAL PRIMARY KEY,
   tournament_id INT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+  group_no      INT NOT NULL DEFAULT 1,
   round         INT NOT NULL DEFAULT 1,
   slot          INT NOT NULL,             -- urutan main (1..n)
   home_team_id  INT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
@@ -181,35 +221,36 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   UNIQUE (tournament_id, slot)
 );
 
-CREATE INDEX IF NOT EXISTS idx_teams_tournament    ON teams(tournament_id);
+ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS group_no INT NOT NULL DEFAULT 1;
+
 CREATE INDEX IF NOT EXISTS idx_tm_tournament       ON tournament_matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_team_players_member ON team_players(member_id);
+CREATE INDEX IF NOT EXISTS idx_tournament_teams    ON tournament_teams(tournament_id);
+CREATE INDEX IF NOT EXISTS idx_matches_teams       ON matches(home_team_id, away_team_id);
 
--- Klasemen grup: menang 3, seri 1, kalah 0.
-CREATE OR REPLACE VIEW v_standings AS
-SELECT t.tournament_id,
-       t.id AS team_id,
+-- Klasemen abadi antar tim klub: semua laga internal yang sudah selesai.
+CREATE OR REPLACE VIEW v_team_standings AS
+SELECT t.id AS team_id,
        t.name,
-       COUNT(m.id) FILTER (WHERE m.status = 'done') AS played,
-       COUNT(m.id) FILTER (WHERE m.status = 'done' AND (
-              (m.home_team_id = t.id AND m.score_home > m.score_away) OR
-              (m.away_team_id = t.id AND m.score_away > m.score_home))) AS won,
-       COUNT(m.id) FILTER (WHERE m.status = 'done' AND m.score_home = m.score_away) AS drawn,
-       COUNT(m.id) FILTER (WHERE m.status = 'done' AND (
-              (m.home_team_id = t.id AND m.score_home < m.score_away) OR
-              (m.away_team_id = t.id AND m.score_away < m.score_home))) AS lost,
-       COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.score_home
-                         WHEN m.away_team_id = t.id THEN m.score_away END)
-                FILTER (WHERE m.status = 'done'), 0) AS goals_for,
-       COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.score_away
-                         WHEN m.away_team_id = t.id THEN m.score_home END)
-                FILTER (WHERE m.status = 'done'), 0) AS goals_against,
-       3 * COUNT(m.id) FILTER (WHERE m.status = 'done' AND (
-              (m.home_team_id = t.id AND m.score_home > m.score_away) OR
-              (m.away_team_id = t.id AND m.score_away > m.score_home)))
-         + COUNT(m.id) FILTER (WHERE m.status = 'done' AND m.score_home = m.score_away) AS points
+       COUNT(m.id) FILTER (WHERE m.status = 'finished') AS played,
+       COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
+              (m.home_team_id = t.id AND m.goals_for > m.goals_against) OR
+              (m.away_team_id = t.id AND m.goals_against > m.goals_for))) AS won,
+       COUNT(m.id) FILTER (WHERE m.status = 'finished' AND m.goals_for = m.goals_against) AS drawn,
+       COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
+              (m.home_team_id = t.id AND m.goals_for < m.goals_against) OR
+              (m.away_team_id = t.id AND m.goals_against < m.goals_for))) AS lost,
+       COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.goals_for
+                         WHEN m.away_team_id = t.id THEN m.goals_against END)
+                FILTER (WHERE m.status = 'finished'), 0) AS goals_for,
+       COALESCE(SUM(CASE WHEN m.home_team_id = t.id THEN m.goals_against
+                         WHEN m.away_team_id = t.id THEN m.goals_for END)
+                FILTER (WHERE m.status = 'finished'), 0) AS goals_against,
+       3 * COUNT(m.id) FILTER (WHERE m.status = 'finished' AND (
+              (m.home_team_id = t.id AND m.goals_for > m.goals_against) OR
+              (m.away_team_id = t.id AND m.goals_against > m.goals_for)))
+         + COUNT(m.id) FILTER (WHERE m.status = 'finished' AND m.goals_for = m.goals_against) AS points
 FROM teams t
-LEFT JOIN tournament_matches m
-       ON m.tournament_id = t.tournament_id
-      AND (m.home_team_id = t.id OR m.away_team_id = t.id)
-GROUP BY t.tournament_id, t.id, t.name;
+LEFT JOIN matches m
+       ON (m.home_team_id = t.id OR m.away_team_id = t.id)
+GROUP BY t.id, t.name;

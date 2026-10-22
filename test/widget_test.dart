@@ -1,14 +1,27 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:minisoccer_club/data/models.dart';
+import 'package:minisoccer_club/core/db_web.dart' show ApiException;
 import 'package:minisoccer_club/ui/fmt.dart';
+import 'package:minisoccer_club/ui/tournament.dart';
 
 void main() {
   test('format uang & periode', () {
     expect(fmtMoney(100000), 'Rp 100.000');
     expect(fmtMoney(0), 'Rp 0');
+    expect(fmtMoney(-350000), '-Rp 350.000');
+    expect(fmtNumber(-1500), '-1.500');
     expect(periodLabel('2026-03'), 'Maret 2026');
     expect(periodLabel('bad'), 'bad');
     expect(fmtDate(DateTime(2026, 1, 5)), '5 Jan 2026');
+    expect(fmtShortDate(DateTime(2026, 10, 21)), '21 Okt');
+  });
+
+  test('nominal ringkas untuk label sempit', () {
+    expect(fmtShortMoney(75000), 'Rp 75 rb');
+    expect(fmtShortMoney(1950000), 'Rp 1,95 jt');
+    expect(fmtShortMoney(2500000000), 'Rp 2,50 M');
+    expect(fmtShortMoney(7500), 'Rp 7.500');
+    expect(fmtShortMoney(-350000), '-Rp 350 rb');
   });
 
   test('pemenang sesi dari skor', () {
@@ -33,8 +46,8 @@ void main() {
 
   test('klasemen: menang 3, seri 1, kalah 0 + GM/GK', () {
     final teams = [
-      Team(id: 1, tournamentId: 1, name: 'A'),
-      Team(id: 2, tournamentId: 1, name: 'B'),
+      Team(id: 1, name: 'A'),
+      Team(id: 2, name: 'B'),
     ];
     final matches = [
       TournamentMatch(
@@ -110,5 +123,83 @@ void main() {
     expect(s.expense, 350000);
     expect(s.income, 650000);
     expect(s.balance, 300000);
+  });
+
+  test('poin untuk pemenang tidak bergantung sisi home/away', () {
+    Match m(int gf, int ga, {String status = 'finished'}) => Match(
+          id: 1,
+          playedAt: DateTime(2026, 10, 21),
+          status: status,
+          goalsFor: gf,
+          goalsAgainst: ga,
+        );
+    expect(m(2, 1).pointsForWinner, 3);
+    expect(m(1, 2).pointsForWinner, 3, reason: 'menang di kandang lawan tetap 3');
+    expect(m(1, 1).pointsForWinner, 1);
+    expect(m(0, 0, status: 'ongoing').pointsForWinner, isNull);
+  });
+
+  test('skor dari sudut pandang tim, bukan hanya tim home', () {
+    final m = Match(
+      id: 1,
+      playedAt: DateTime(2026, 10, 21),
+      status: 'finished',
+      goalsFor: 1,
+      goalsAgainst: 4,
+      homeTeamId: 1,
+      awayTeamId: 4,
+    );
+    expect(m.goalsForTeam(1), 1);
+    expect(m.goalsAgainstTeam(1), 4);
+    expect(m.goalsForTeam(4), 4, reason: 'tim away mencetak 4');
+    expect(m.goalsAgainstTeam(4), 1);
+  });
+
+  test('klasemen turnamen mengabaikan skor tanpa status done', () {
+    final teams = [Team(id: 1, name: 'A'), Team(id: 2, name: 'B')];
+    final matches = [
+      TournamentMatch(
+        id: 1, tournamentId: 1, round: 1, slot: 1,
+        homeTeamId: 1, awayTeamId: 2, kickoff: DateTime(2026),
+        scoreHome: 3, scoreAway: 0, status: 'done',
+      ),
+      // Skor ada tetapi status belum selesai: data lama seperti ini tidak
+      // boleh menambah poin, karena UI pun menampilkannya sebagai "vs".
+      TournamentMatch(
+        id: 2, tournamentId: 1, round: 2, slot: 2,
+        homeTeamId: 2, awayTeamId: 1, kickoff: DateTime(2026),
+        scoreHome: 5, scoreAway: 0, status: 'scheduled',
+      ),
+    ];
+    final s = Standing.compute(teams, matches);
+    expect(s.first.name, 'A');
+    expect(s.first.points, 3);
+    expect(s.first.played, 1);
+    expect(s.last.points, 0);
+    expect(s.last.played, 1);
+    expect(s.last.goalsFor, 0, reason: 'skor laga non-done tidak dihitung');
+  });
+
+  test('round-robin per grup: 5 tim / 2 grup = 3+2 tim, 4 laga', () {
+    // `assignGroups` memakai snake, jadi grup tidak selalu sama besar.
+    final groups = <int, List<int>>{1: [1, 2, 3], 2: [4, 5]};
+    final total = groups.values.fold<int>(0, (s, ids) => s + roundRobin(ids).length);
+    expect(total, 4, reason: '3 tim = 3 laga, 2 tim = 1 laga');
+    expect(roundRobin([4, 5]).length, 1);
+    expect(roundRobin([1]).length, 0, reason: 'grup 1 tim tidak punya laga');
+  });
+
+  test('pesan error user tidak membawa prefix kelas', () {
+    expect(errText(Exception('Sudah ada laga dengan skor')), 'Sudah ada laga dengan skor');
+    expect(errText(ApiException('Server tidak merespons')), 'Server tidak merespons');
+    expect(errText('  teks biasa  '), 'teks biasa');
+  });
+
+  test('batas grup: tiap grup minimal 2 tim', () {
+    expect(groupCap(3), 1, reason: '3 tim tidak bisa dibagi 2 grup');
+    expect(groupCap(4), 2);
+    expect(groupCap(5), 2);
+    expect(groupCap(8), 4);
+    expect(groupCap(12), 4, reason: 'maksimal 4 grup');
   });
 }
