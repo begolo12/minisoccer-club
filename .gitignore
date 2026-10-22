@@ -87,6 +87,11 @@ design/ref/
 *.tmp
 *.bak
 
+# Keluaran terminal yang tertangkap saat menjalankan perintah manual.
+# Pernah tidak sengaja ter-commit dan membuat repo berisi sampah.
+ftest.txt
+tmpout.txt
+
 # ---------- OS ----------
 .DS_Store
 Thumbs.db

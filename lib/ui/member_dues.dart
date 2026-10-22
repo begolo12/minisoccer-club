@@ -38,7 +38,7 @@ class _MemberDuesPageState extends State<MemberDuesPage> {
   Future<_DuesHistory> _load() async {
     // Ketiga bacaan dijalankan bersama: halaman ini dibuka untuk satu orang,
     // jadi menunggunya berurutan hanya menambah waktu tunggu tanpa manfaat.
-    final results = await Future.wait<List<Object?>>([
+    final results = await Future.wait<Object?>([
       Payment.forMember(widget.member.id),
       Payment.unpaidForMember(widget.member.id),
       BookingAttendance.forMember(widget.member.id),
