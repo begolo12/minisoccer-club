@@ -9,28 +9,69 @@ import 'forms.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
+/// Data halaman Iuran: turnamen yang bisa dipilih, tagihan turnamen terpilih,
+/// dan riwayat pembayarannya.
+///
+/// Iuran ditarik **per turnamen**, bukan per bulan: tim yang ikut tiap turnamen
+/// berbeda, jadi yang ditagih adalah anggota dari tim yang terdaftar di
+/// turnamen itu.
 class _PayData {
+  final List<Tournament> tournaments;
+  final Tournament? selected;
+  final List<DuesRow> bill;
   final List<Payment> payments;
-  final List<Member> members;
-  final double? standard;
-
-  /// Sumber yang gagal dimuat; halaman tetap menampilkan sisanya.
   final List<String> failures;
 
-  _PayData(this.payments, this.members, this.standard, this.failures);
+  _PayData({
+    required this.tournaments,
+    required this.selected,
+    required this.bill,
+    required this.payments,
+    required this.failures,
+  });
 
-  static Future<_PayData> load(String period) async {
+  double get collected => payments.fold<double>(0, (s, p) => s + p.amount);
+
+  List<DuesRow> get unpaid => bill.where((r) => !r.paid).toList();
+  int get paidCount => bill.where((r) => r.paid).length;
+
+  /// Perkiraan uang yang belum masuk: nominal turnamen × jumlah yang belum bayar.
+  double get missing => (selected?.entryFee ?? 0) * unpaid.length;
+
+  static Future<_PayData> load(int? tournamentId) async {
     final r = await Future.wait<Soft<Object?>>([
-      soft('Iuran bulan ini', () => Payment.all(period: period), fallback: const <Payment>[]),
-      soft('Daftar anggota', () => Member.all(activeOnly: true), fallback: const <Member>[]),
-      soft('Nominal iuran', Payment.standardAmount, fallback: null),
+      soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
     ]);
     final failures = settle(r);
+    final tournaments = r[0].value! as List<Tournament>;
+
+    // Turnamen terpilih: yang diminta kalau masih ada, kalau tidak yang paling
+    // relevan — berjalan dulu, lalu yang akan datang.
+    Tournament? selected;
+    for (final t in tournaments) {
+      if (t.id == tournamentId) selected = t;
+    }
+    selected ??= tournaments.isEmpty ? null : tournaments.first;
+
+    var bill = const <DuesRow>[];
+    var payments = const <Payment>[];
+    if (selected != null) {
+      final r2 = await Future.wait<Soft<Object?>>([
+        soft('Tagihan', () => Payment.bill(selected!.id), fallback: const <DuesRow>[]),
+        soft('Riwayat iuran', () => Payment.all(tournamentId: selected!.id),
+            fallback: const <Payment>[]),
+      ]);
+      failures.addAll(settle(r2));
+      bill = r2[0].value! as List<DuesRow>;
+      payments = r2[1].value! as List<Payment>;
+    }
+
     return _PayData(
-      r[0].value! as List<Payment>,
-      r[1].value! as List<Member>,
-      r[2].value as double?,
-      failures,
+      tournaments: tournaments,
+      selected: selected,
+      bill: bill,
+      payments: payments,
+      failures: failures,
     );
   }
 }
@@ -43,158 +84,274 @@ class PaymentsPage extends StatefulWidget {
 }
 
 class _PaymentsPageState extends State<PaymentsPage> {
-  String _period = periodNow();
+  int? _tournamentId;
   late Future<_PayData> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = _PayData.load(_period);
+    _future = _PayData.load(_tournamentId);
   }
 
   Future<void> _reload() async {
-    final f = _PayData.load(_period);
+    final f = _PayData.load(_tournamentId);
     setState(() => _future = f);
     await f;
   }
 
-  List<String> get _periods => recentPeriods();
+  Future<void> _record(_PayData d, {int? memberId}) async {
+    final t = d.selected;
+    if (t == null) return;
+    final saved = await showPaymentForm(
+      context,
+      tournamentId: t.id,
+      memberId: memberId,
+      entryFee: t.entryFee,
+    );
+    if (saved) _reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PageScaffold(
+      title: 'Iuran',
+      subtitle: 'Per turnamen',
+      actions: [
+        if (Auth.canWrite)
+          FutureBuilder<_PayData>(
+            future: _future,
+            builder: (context, snap) => iconAction(
+              context,
+              Icons.add,
+              () {
+                final d = snap.data;
+                // Tombol tetap aktif: menonaktifkannya tanpa alasan membuat
+                // pengguna bingung. Ketuk → beri tahu langkah berikutnya.
+                if (d?.selected == null) {
+                  toast(context, 'Buat turnamen dulu — iuran ditarik per turnamen');
+                  return;
+                }
+                _record(d!);
+              },
+              tooltip: 'Catat iuran',
+            ),
+          ),
+      ],
+      child: AsyncView<_PayData>(
+        future: _future,
+        onRefresh: _reload,
+        builder: (d) => d.tournaments.isEmpty ? _noTournaments(d) : _content(d),
+      ),
+    );
+  }
+
+  /// Belum ada turnamen = belum ada yang bisa ditagih. Arahkan ke langkah
+  /// berikutnya, jangan tampilkan halaman kosong tanpa penjelasan.
+  Widget _noTournaments(_PayData d) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      children: [
+        if (d.failures.isNotEmpty) DegradedNotice(failures: d.failures, onRetry: _reload),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: EmptyState(
+            icon: Icons.emoji_events_outlined,
+            title: 'Belum ada turnamen',
+            message: 'Iuran ditarik per turnamen. Buat turnamen dulu, lalu catat '
+                'iuran anggota yang ikut.',
+            actionLabel: null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _content(_PayData d) {
+    final t = ShadTheme.of(context);
+    final selected = d.selected!;
+    final unpaid = d.unpaid;
+
+    return Column(
+      children: [
+        _TournamentChips(
+          tournaments: d.tournaments,
+          selectedId: selected.id,
+          onChanged: (id) {
+            setState(() => _tournamentId = id);
+            _reload();
+          },
+        ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            children: [
+              if (d.failures.isNotEmpty) DegradedNotice(failures: d.failures, onRetry: _reload),
+              StatStrip(
+                children: [
+                  StatTile(
+                    label: 'Terkumpul',
+                    value: fmtMoney(d.collected),
+                    color: AppThemes.money(context),
+                  ),
+                  StatTile(
+                    label: 'Lunas',
+                    value: '${d.paidCount}/${d.bill.length}',
+                    hint: d.bill.isEmpty
+                        ? 'belum ada peserta'
+                        : (unpaid.isEmpty ? 'semua lunas' : '${unpaid.length} belum'),
+                    color: d.bill.isNotEmpty && unpaid.isEmpty
+                        ? t.colorScheme.primary
+                        : null,
+                  ),
+                  if (d.missing > 0)
+                    StatTile(
+                      label: 'Kurang',
+                      value: fmtMoney(d.missing),
+                      hint: '${unpaid.length} anggota',
+                      color: AppThemes.bad(context),
+                    ),
+                ],
+              ),
+              if (selected.entryFee > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Iuran ${fmtMoney(selected.entryFee)} per anggota',
+                    style: t.textTheme.small,
+                  ),
+                ),
+
+              // Peserta = anggota dari tim yang ikut turnamen ini. Kalau timnya
+              // belum diisi pemain, tidak ada yang bisa ditagih — jelaskan.
+              if (d.bill.isEmpty) ...[
+                const SizedBox(height: 12),
+                EmptyState(
+                  icon: Icons.group_outlined,
+                  title: 'Belum ada peserta',
+                  message: 'Tambahkan tim ke turnamen ini dan isi pemainnya. '
+                      'Anggota dari tim itulah yang muncul di daftar iuran.',
+                  actionLabel: null,
+                ),
+              ] else ...[
+                if (unpaid.isNotEmpty) ...[
+                  const SectionTitle('Belum bayar'),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final r in unpaid)
+                        _UnpaidChip(
+                          name: r.member.name,
+                          onTap: Auth.canWrite ? () => _record(d, memberId: r.member.id) : null,
+                        ),
+                    ],
+                  ),
+                ],
+                const SectionTitle('Riwayat pembayaran'),
+                if (d.payments.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Text(
+                      'Belum ada pembayaran untuk ${selected.name}.',
+                      style: t.textTheme.small,
+                    ),
+                  )
+                else
+                  for (final p in d.payments)
+                    RowItem(
+                      leading: Icon(Icons.check_circle, size: 15, color: t.colorScheme.primary),
+                      title: p.memberName,
+                      subtitle:
+                          '${fmtDate(p.paidAt)}${p.note != null ? " • ${p.note}" : ""}',
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            fmtMoney(p.amount),
+                            style: t.textTheme.table.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: AppThemes.money(context),
+                            ),
+                          ),
+                          if (Auth.canWrite) ...[
+                            const SizedBox(width: 6),
+                            iconAction(context, Icons.delete_outline, () async {
+                              final name = p.memberName;
+                              final title = selected.name;
+                              final ok = await confirm(context, 'Hapus iuran?',
+                                  'Catatan $name untuk $title dihapus.');
+                              if (!ok) return;
+                              // `context` di sini milik State, jadi penjaganya
+                              // `mounted` (bukan `context.mounted`).
+                              if (!mounted) return;
+                              if (await attempt(context, () => Payment.delete(p.id),
+                                  fail: 'Gagal menghapus')) {
+                                _reload();
+                              }
+                            }, tooltip: 'Hapus'),
+                          ],
+                        ],
+                      ),
+                    ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Pemilih turnamen. Menggantikan pemilih bulan: iuran terikat turnamen, dan
+/// tiap turnamen punya daftar peserta sendiri.
+class _TournamentChips extends StatelessWidget {
+  const _TournamentChips({
+    required this.tournaments,
+    required this.selectedId,
+    required this.onChanged,
+  });
+
+  final List<Tournament> tournaments;
+  final int selectedId;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return PageScaffold(
-      title: 'Iuran',
-      subtitle: periodLabel(_period),
-      actions: [
-        if (Auth.canWrite)
-          iconAction(context, Icons.add, () async {
-            if (await showPaymentForm(context, period: _period)) _reload();
-          }, tooltip: 'Catat iuran'),
-      ],
-      child: Column(
-        children: [
-          PeriodChips(
-            periods: _periods,
-            selected: _period,
-            onChanged: (p) {
-              if (p == null) return;
-              setState(() => _period = p);
-              _reload();
-            },
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: AsyncView<_PayData>(
-              future: _future,
-              onRefresh: _reload,
-              builder: (d) {
-                final total = d.payments.fold<double>(0, (s, p) => s + p.amount);
-                final paidIds = d.payments.map((p) => p.memberId).toSet();
-                final unpaid = d.members.where((m) => !paidIds.contains(m.id)).toList();
-                final paid = d.members.length - unpaid.length;
-                final missing = (d.standard ?? 0) * unpaid.length;
-
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-                  children: [
-                    if (d.failures.isNotEmpty)
-                      DegradedNotice(failures: d.failures, onRetry: _reload),
-                    StatStrip(
-                      children: [
-                        StatTile(
-                          label: 'Terkumpul',
-                          value: fmtMoney(total),
-                          color: AppThemes.money(context),
-                        ),
-                        StatTile(
-                          label: 'Lunas',
-                          value: '$paid/${d.members.length}',
-                          hint: unpaid.isEmpty ? 'semua lunas' : '${unpaid.length} belum',
-                          color: unpaid.isEmpty ? t.colorScheme.primary : null,
-                        ),
-                        if (missing > 0)
-                          StatTile(
-                            label: 'Kurang',
-                            value: fmtMoney(missing),
-                            hint: '${unpaid.length} anggota',
-                            color: AppThemes.bad(context),
-                          ),
-                      ],
-                    ),
-                    if (unpaid.isNotEmpty) ...[
-                      const SectionTitle('Belum bayar'),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          for (final m in unpaid)
-                            _UnpaidChip(
-                              name: m.name,
-                              onTap: Auth.canWrite
-                                  ? () async {
-                                      if (await showPaymentForm(context,
-                                          period: _period, memberId: m.id)) {
-                                        _reload();
-                                      }
-                                    }
-                                  : null,
-                            ),
-                        ],
-                      ),
-                    ],
-                    const SectionTitle('Riwayat pembayaran'),
-                    if (d.payments.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
-                        child: EmptyState(
-                          icon: Icons.account_balance_wallet_outlined,
-                          title: 'Belum ada iuran tercatat',
-                          message: 'Catat pembayaran pertama untuk ${periodLabel(_period)}.',
-                          actionLabel: Auth.canWrite ? 'Catat iuran' : null,
-                          onAction: Auth.canWrite
-                              ? () async {
-                                  if (await showPaymentForm(context, period: _period)) _reload();
-                                }
-                              : null,
-                        ),
-                      )
-                    else
-                      for (final p in d.payments)
-                        RowItem(
-                          leading: Icon(Icons.check_circle, size: 15, color: t.colorScheme.primary),
-                          title: p.memberName,
-                          subtitle: '${fmtDate(p.paidAt)}${p.note != null ? " • ${p.note}" : ""}',
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                fmtMoney(p.amount),
-                                style: t.textTheme.table.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                  color: AppThemes.money(context),
-                                ),
-                              ),
-                              if (Auth.canWrite) ...[
-                                const SizedBox(width: 6),
-                                iconAction(context, Icons.delete_outline, () async {
-                                  if (await confirm(context, 'Hapus iuran?', 'Catatan ${p.memberName} dihapus.')) {
-                                    if (!context.mounted) return;
-                                    if (await attempt(context, () => Payment.delete(p.id), fail: 'Gagal menghapus')) {
-                                      _reload();
-                                    }
-                                  }
-                                }, tooltip: 'Hapus'),
-                              ],
-                            ],
-                          ),
-                        ),
-                  ],
-                );
-              },
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: tournaments.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final item = tournaments[i];
+          final active = item.id == selectedId;
+          return GestureDetector(
+            onTap: () => onChanged(item.id),
+            child: Container(
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: active ? t.colorScheme.primary : Colors.transparent,
+                borderRadius: BorderRadius.circular(7),
+                border: Border.all(
+                  color: active ? t.colorScheme.primary : t.colorScheme.border,
+                ),
+              ),
+              child: Text(
+                item.name,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                  color: active ? t.colorScheme.primaryForeground : t.colorScheme.foreground,
+                ),
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

@@ -33,6 +33,11 @@ class _DashboardData {
   final List<Announcement> news;
   final List<Member> unpaid;
   final double? dues;
+
+  /// Turnamen yang tagihannya ditampilkan di beranda (yang sedang berjalan,
+  /// atau yang terdekat). Iuran ditarik per turnamen, jadi "belum bayar"
+  /// selalu merujuk ke satu turnamen tertentu.
+  final Tournament? activeTournament;
   final List<Team> teams;
   final Map<int, String> teamNames;
   final List<Booking> bookings;
@@ -65,6 +70,7 @@ class _DashboardData {
     required this.news,
     required this.unpaid,
     required this.dues,
+    this.activeTournament,
     required this.teams,
     required this.teamNames,
     required this.bookings,
@@ -127,10 +133,8 @@ class _DashboardData {
       soft('Jumlah anggota', Member.countActive, fallback: 0),
       soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]),
       soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]),
-      soft('Anggota', () => Member.all(activeOnly: true), fallback: const <Member>[]),
-      soft('Iuran bulan ini', () => Payment.all(period: period), fallback: const <Payment>[]),
+      soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
-      soft('Nominal iuran', Payment.standardAmount, fallback: null),
       soft('Daftar tim', Team.all, fallback: const <Team>[]),
       soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]),
       soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
@@ -145,15 +149,43 @@ class _DashboardData {
     final memberCount = r[3].value! as int;
     final scorers = r[4].value! as List<ScorerRow>;
     final news = r[5].value! as List<Announcement>;
-    final active = r[6].value! as List<Member>;
-    final payments = r[7].value! as List<Payment>;
-    final transactions = r[8].value! as List<Transaction>;
-    final dues = r[9].value as double?;
-    final teams = r[10].value! as List<Team>;
-    final bookings = r[11].value! as List<Booking>;
-    final standings = r[12].value! as List<Standing>;
+    final payments = r[6].value! as List<Payment>;
+    final transactions = r[7].value! as List<Transaction>;
+    final teams = r[8].value! as List<Team>;
+    final bookings = r[9].value! as List<Booking>;
+    final standings = r[10].value! as List<Standing>;
 
-    final paid = {for (final p in payments) p.memberId};
+    // Tagihan "belum bayar" mengikuti TURNAMEN AKTIF, bukan bulan: iuran
+    // ditarik per turnamen dan pesertanya berbeda-beda tiap turnamen.
+    // Turnamen aktif = yang sedang berjalan, kalau tidak ada yang paling
+    // dekat jadwalnya di antara draft, kalau tidak ada yang terakhir selesai.
+    Tournament? active;
+    for (final t in tournaments) {
+      if (t.status == 'running') {
+        active = t;
+        break;
+      }
+    }
+    if (active == null) {
+      for (final t in tournaments) {
+        if (t.status == 'draft') {
+          active = t;
+          break;
+        }
+      }
+    }
+    active ??= tournaments.isEmpty ? null : tournaments.first;
+
+    var bill = const <DuesRow>[];
+    var billKnown = true;
+    if (active != null) {
+      final b = await soft('Iuran turnamen', () => Payment.bill(active!.id),
+          fallback: const <DuesRow>[]);
+      failures.addAll(settle([b]));
+      bill = b.value!;
+      billKnown = b.ok;
+    }
+
     final cash = CashSummary.fromEntries(mergeCashLedger(
       payments: payments,
       transactions: transactions,
@@ -167,21 +199,23 @@ class _DashboardData {
       cash: cash,
       scorers: scorers,
       news: news,
-      unpaid: active.where((m) => !paid.contains(m.id)).toList(),
-      dues: dues,
+      unpaid: bill.where((r) => !r.paid).map((r) => r.member).toList(),
+      dues: active?.entryFee,
+      activeTournament: active,
       teams: teams,
       teamNames: {for (final t in teams) t.id: t.name},
       bookings: bookings,
       standings: standings,
       failures: failures,
-      // `r[7]` = iuran bulan ini, `r[6]` = anggota aktif. Kalau salah satunya
-      // gagal, daftar kosongnya BUKAN fakta: jangan menuduh semua orang
-      // menunggak, dan jangan menulis "semua sudah lunas".
-      paymentsKnown: r[7].ok,
-      membersKnown: r[6].ok,
+      // `r[6]` = iuran bulan ini. Kalau gagal, daftar kosongnya BUKAN fakta:
+      // jangan menuduh semua orang menunggak, dan jangan menulis "semua lunas".
+      paymentsKnown: r[6].ok,
+      // Daftar tagihan turnamen juga bisa gagal sendiri (mis. tabel peserta
+      // kosong); tanpa flag ini semua anggota akan tampak menunggak.
+      membersKnown: billKnown,
       // Kas = iuran + transaksi; kalau salah satu gagal, angkanya bukan nol
       // yang sebenarnya melainkan nol yang tidak diketahui.
-      cashKnown: r[7].ok && r[8].ok,
+      cashKnown: r[6].ok && r[7].ok,
     );
   }
 }
@@ -388,10 +422,10 @@ class _MainColumn extends StatelessWidget {
                 label: 'Iuran',
                 value: fmtMoney(d.income),
                 color: AppThemes.money(context),
-                // Jumlah lunas = irisan dua sumber. Kalau salah satunya gagal,
-                // angkanya tidak bermakna ("0/0 lunas"), jadi jangan diklaim.
+                // Lunas dihitung dari daftar peserta turnamen aktif. Kalau
+                // sumbernya gagal, angkanya tidak bermakna — jangan diklaim.
                 hint: (d.paymentsKnown && d.membersKnown)
-                    ? '${d.members - d.unpaid.length}/${d.members} lunas'
+                    ? '${d.unpaid.isEmpty ? 'semua' : '${d.unpaid.length} belum'} lunas'
                     : 'data belum lengkap',
               ),
             ],
@@ -431,7 +465,15 @@ class _MainColumn extends StatelessWidget {
                       onChanged();
                     }),
                     _QuickAction(Icons.payments, 'Iuran', () async {
-                      if (await showPaymentForm(context)) onChanged();
+                      final t = d.activeTournament;
+                      if (t == null) {
+                        toast(context, 'Buat turnamen dulu — iuran ditarik per turnamen');
+                        return;
+                      }
+                      if (await showPaymentForm(context,
+                          tournamentId: t.id, entryFee: t.entryFee)) {
+                        onChanged();
+                      }
                     }),
                     _QuickAction(Icons.person_add_alt, 'Anggota', () async {
                       if (await showMemberForm(context)) onChanged();
@@ -1103,21 +1145,35 @@ class _RailColumn extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SectionTitle('Belum bayar', top: 0),
-              // Tanpa data iuran/anggota yang lengkap, daftar ini tidak bisa
-              // disimpulkan: daftar kosong berarti "semua lunas" hanya kalau
-              // kedua sumbernya benar-benar terbaca.
+              SectionTitle(
+                d.activeTournament == null
+                    ? 'Belum bayar'
+                    : 'Belum bayar — ${d.activeTournament!.name}',
+                top: 0,
+              ),
+              // Tanpa daftar peserta yang terbaca, daftar kosong BUKAN berarti
+              // "semua lunas".
               if (!d.paymentsKnown || !d.membersKnown)
                 Text('Data iuran belum bisa dimuat.', style: t.textTheme.muted)
+              else if (d.activeTournament == null)
+                Text(
+                  'Belum ada turnamen. Iuran ditarik per turnamen.',
+                  style: t.textTheme.muted,
+                )
               else if (d.unpaid.isEmpty)
-                Text('Semua anggota aktif sudah lunas bulan ini.', style: t.textTheme.muted)
+                Text(
+                  d.dues != null && d.dues! > 0
+                      ? 'Semua peserta sudah lunas untuk turnamen ini.'
+                      : 'Belum ada peserta yang perlu ditagih.',
+                  style: t.textTheme.muted,
+                )
               else
                 for (final m in d.unpaid.take(6))
                   RowItem(
                     title: m.name,
                     subtitle: m.position,
                     trailing: Text(
-                      d.dues == null ? 'Belum bayar' : fmtMoney(d.dues!),
+                      (d.dues ?? 0) > 0 ? fmtMoney(d.dues!) : 'Belum bayar',
                       style: t.textTheme.table.copyWith(color: AppThemes.bad(context)),
                     ),
                   ),

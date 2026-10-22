@@ -47,13 +47,30 @@ export const reads = {
   events: `SELECT e.*, m.name AS member_name FROM match_events e
          LEFT JOIN members m ON m.id = e.member_id
          WHERE e.match_id = @mid ORDER BY e.minute NULLS LAST, e.id`,
-  payments: `SELECT p.*, m.name AS member_name FROM payments p
+  // Iuran terikat TURNAMEN (bukan bulan): `tournament_id`, bukan `period`.
+  payments: `SELECT p.*, m.name AS member_name, t.name AS tournament_name
+         FROM payments p
          JOIN members m ON m.id = p.member_id
-         WHERE p.period = @p
+         LEFT JOIN tournaments t ON t.id = p.tournament_id
+         WHERE p.tournament_id = @t
          ORDER BY p.paid_at DESC`,
-  standardAmount: `SELECT amount, count(*)::int AS n FROM payments
-         GROUP BY amount ORDER BY n DESC, amount DESC LIMIT 1`,
-  paymentExists: 'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND period=@p LIMIT 1',
+  paymentsInMonth: `SELECT p.*, m.name AS member_name, t.name AS tournament_name
+         FROM payments p
+         JOIN members m ON m.id = p.member_id
+         LEFT JOIN tournaments t ON t.id = p.tournament_id
+         WHERE p.paid_at >= @from AND p.paid_at < @to
+         ORDER BY p.paid_at DESC`,
+  duesBill: `SELECT m.*, p.id AS payment_id, p.amount AS paid_amount,
+                p.paid_at AS paid_at, p.note AS paid_note
+         FROM members m
+         JOIN team_players tp ON tp.member_id = m.id
+         JOIN tournament_teams tt ON tt.team_id = tp.team_id
+         LEFT JOIN payments p ON p.member_id = m.id AND p.tournament_id = @t
+         WHERE tt.tournament_id = @t
+         GROUP BY m.id, m.name, m.phone, m.position, m.jersey, m.active,
+                  m.joined_at, p.id, p.amount, p.paid_at, p.note
+         ORDER BY m.name`,
+  paymentExists: 'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
   transactions: `SELECT * FROM transactions
          WHERE to_char(occurred_at, 'YYYY-MM') = @p
          ORDER BY occurred_at DESC, id DESC`,
@@ -112,8 +129,8 @@ export const writes = {
            WHERE id=@id`,
   insertEvent: `INSERT INTO match_events (match_id, member_id, minute, type)
            VALUES (@mid, @mem, @min, @type)`,
-  insertPayment: `INSERT INTO payments (member_id, amount, period, note)
-           VALUES (@mid, @amt, @period, @note)`,
+  insertPayment: `INSERT INTO payments (member_id, amount, tournament_id, note)
+           VALUES (@mid, @amt, @t, @note) RETURNING id`,
   insertTransaction: `INSERT INTO transactions (kind, category, amount, occurred_at, note)
            VALUES (@kind, @category, @amount, @date, @note)`,
   insertBooking: `INSERT INTO bookings (title, starts_at, duration_min, cost)
@@ -178,7 +195,7 @@ export const writes = {
 /**
  * Nilai contoh untuk setiap parameter `@nama` supaya query bisa dijalankan
  * sungguhan (bukan hanya diikat). Tipe sengaja cocok dengan kolomnya: id
- * integer, tanggal ISO, dan `period` berformat YYYY-MM.
+ * integer dan tanggal ISO.
  */
 export const sampleParams = {
   limit: 20,
@@ -191,7 +208,10 @@ export const sampleParams = {
   min: 12,
   m: 1,
   p: '2026-10',
-  period: '2026-10',
+  // Rentang bulan untuk `Payment.inMonth` (nama sengaja bukan @a/@b supaya
+  // tidak bertabrakan dengan id tim tamu).
+  from: '2026-10-01T00:00:00.000Z',
+  to: '2026-11-01T00:00:00.000Z',
   amt: 50000,
   amount: 50000,
   name: '_uji_query',

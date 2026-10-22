@@ -417,14 +417,20 @@ class MatchEvent {
       Db.execute('DELETE FROM match_events WHERE id=@id', params: {'id': id});
 }
 
-// ---------- Payments ----------
+// ---------- Payments (iuran per turnamen) ----------
+//
+// Iuran klub ini ditarik PER TURNAMEN, bukan per bulan. Tim yang ikut tiap
+// turnamen berbeda-beda, jadi tagihan yang benar adalah "anggota X untuk
+// turnamen Y" — dan daftar yang ditagih adalah anggota dari tim yang terdaftar
+// di turnamen itu (lewat `tournament_teams` → `team_players`).
 
 class Payment {
   final int id;
   final int memberId;
   final String memberName;
   final double amount;
-  final String period;
+  final int? tournamentId;
+  final String tournamentName;
   final DateTime paidAt;
   final String? note;
 
@@ -433,7 +439,8 @@ class Payment {
     required this.memberId,
     required this.memberName,
     required this.amount,
-    required this.period,
+    required this.tournamentId,
+    required this.tournamentName,
     required this.paidAt,
     this.note,
   });
@@ -443,29 +450,58 @@ class Payment {
         memberId: m['member_id'] as int,
         memberName: (m['member_name'] as String?) ?? '',
         amount: _num(m['amount']),
-        period: m['period'] as String,
+        tournamentId: m['tournament_id'] == null ? null : _int(m['tournament_id']),
+        tournamentName: (m['tournament_name'] as String?) ?? '',
         paidAt: _dt(m['paid_at']),
         note: m['note'] as String?,
       );
 
-  static Future<List<Payment>> all({String? period}) async {
+  static const _select = '''
+    SELECT p.*, m.name AS member_name, t.name AS tournament_name
+    FROM payments p
+    JOIN members m ON m.id = p.member_id
+    LEFT JOIN tournaments t ON t.id = p.tournament_id''';
+
+  /// Semua pembayaran, atau hanya untuk satu turnamen.
+  static Future<List<Payment>> all({int? tournamentId}) async {
     final rows = await Db.query(
-      '''SELECT p.*, m.name AS member_name FROM payments p
-         JOIN members m ON m.id = p.member_id
-         ${period != null ? 'WHERE p.period = @p' : ''}
+      '''$_select
+         ${tournamentId != null ? 'WHERE p.tournament_id = @t' : ''}
          ORDER BY p.paid_at DESC''',
-      params: period != null ? {'p': period} : const {},
+      params: tournamentId != null ? {'t': tournamentId} : const {},
     );
     return rows.map(Payment.fromMap).toList();
   }
 
-  /// Sudah ada iuran untuk anggota + periode ini? Dipakai form supaya satu
-  /// anggota tidak tercatat dua kali di bulan yang sama (uangnya ikut
-  /// terhitung dua kali di kas dan di label "Lunas").
-  static Future<bool> existsFor(int memberId, String period) async {
+  /// Pembayaran yang uangnya masuk pada bulan tertentu.
+  ///
+  /// Iuran tidak lagi punya "periode" — yang menentukan bulan kas adalah
+  /// `paid_at` (kapan uangnya diterima), bukan turnamen mana yang dibayar.
+  /// Turnamen bulan lalu bisa dibayar bulan ini, dan uangnya masuk kas bulan ini.
+  ///
+  /// Nama parameter `@from`/`@to` (bukan `@a`/`@b`) supaya tidak bertabrakan
+  /// dengan `@a` yang di query lain berarti id tim tamu.
+  static Future<List<Payment>> inMonth(DateTime month) async {
+    final start = DateTime(month.year, month.month);
+    final end = DateTime(month.year, month.month + 1);
     final rows = await Db.query(
-      'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND period=@p LIMIT 1',
-      params: {'mid': memberId, 'p': period},
+      '''$_select
+         WHERE p.paid_at >= @from AND p.paid_at < @to
+         ORDER BY p.paid_at DESC''',
+      params: {'from': start.toUtc(), 'to': end.toUtc()},
+    );
+    return rows.map(Payment.fromMap).toList();
+  }
+
+  /// Sudah ada iuran untuk anggota + turnamen ini?
+  ///
+  /// Dipakai form supaya satu anggota tidak tercatat dua kali di turnamen yang
+  /// sama (uangnya ikut terhitung dua kali di kas dan di label "Lunas").
+  /// Database juga punya index unik sebagai lapis terakhir.
+  static Future<bool> existsFor(int memberId, int tournamentId) async {
+    final rows = await Db.query(
+      'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
+      params: {'mid': memberId, 't': tournamentId},
     );
     return rows.isNotEmpty;
   }
@@ -473,34 +509,96 @@ class Payment {
   static Future<void> insert({
     required int memberId,
     required double amount,
-    required String period,
+    required int tournamentId,
     String? note,
   }) async {
-    if (await existsFor(memberId, period)) {
-      throw Exception('Iuran periode ini sudah dicatat. Hapus catatan lama dulu '
-          'kalau nominalnya salah.');
+    if (await existsFor(memberId, tournamentId)) {
+      throw Exception('Iuran turnamen ini sudah dicatat untuk anggota itu. '
+          'Hapus catatan lama dulu kalau nominalnya salah.');
     }
     await Db.insertId(
-      '''INSERT INTO payments (member_id, amount, period, note)
-         VALUES (@mid, @amt, @period, @note) RETURNING id''',
-      params: {'mid': memberId, 'amt': amount, 'period': period, 'note': note},
+      '''INSERT INTO payments (member_id, amount, tournament_id, note)
+         VALUES (@mid, @amt, @t, @note) RETURNING id''',
+      params: {'mid': memberId, 'amt': amount, 't': tournamentId, 'note': note},
     );
   }
 
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM payments WHERE id=@id', params: {'id': id});
 
-  /// Nominal iuran yang paling sering dibayar — dipakai sebagai isian awal
-  /// form dan label tunggakan, supaya tidak ada angka iuran yang ditulis
-  /// mati di UI.
-  static Future<double?> standardAmount() async {
+  /// Satu baris tagihan: anggota yang ikut turnamen, dan status bayarnya.
+  static Future<List<DuesRow>> bill(int tournamentId) async {
+    final rows = await Db.query(
+      '''SELECT m.*, p.id AS payment_id, p.amount AS paid_amount,
+                p.paid_at AS paid_at, p.note AS paid_note
+         FROM members m
+         JOIN team_players tp ON tp.member_id = m.id
+         JOIN tournament_teams tt ON tt.team_id = tp.team_id
+         LEFT JOIN payments p ON p.member_id = m.id AND p.tournament_id = @t
+         WHERE tt.tournament_id = @t
+         GROUP BY m.id, m.name, m.phone, m.position, m.jersey, m.active,
+                  m.joined_at, p.id, p.amount, p.paid_at, p.note
+         ORDER BY m.name''',
+      params: {'t': tournamentId},
+    );
+    return rows.map(DuesRow.fromMap).toList();
+  }
+
+  /// Total iuran yang sudah masuk untuk satu turnamen.
+  static Future<double> collectedFor(int tournamentId) async {
+    final rows = await Db.query(
+      'SELECT COALESCE(sum(amount), 0) AS total FROM payments WHERE tournament_id=@t',
+      params: {'t': tournamentId},
+    );
+    if (rows.isEmpty) return 0;
+    return _num(rows.first['total']);
+  }
+
+  /// Nominal iuran yang paling sering dibayar untuk sebuah turnamen — isian
+  /// awal form kalau `tournaments.entry_fee` masih 0.
+  static Future<double?> usualAmountFor(int tournamentId) async {
     final rows = await Db.query(
       '''SELECT amount, count(*)::int AS n FROM payments
+         WHERE tournament_id=@t
          GROUP BY amount ORDER BY n DESC, amount DESC LIMIT 1''',
+      params: {'t': tournamentId},
     );
     if (rows.isEmpty) return null;
     final v = _num(rows.first['amount']);
     return v > 0 ? v : null;
+  }
+}
+
+/// Tagihan satu anggota pada satu turnamen.
+class DuesRow {
+  const DuesRow({required this.member, this.payment});
+
+  final Member member;
+
+  /// Null = belum bayar.
+  final Payment? payment;
+
+  bool get paid => payment != null;
+
+  double get paidAmount => payment?.amount ?? 0;
+
+  factory DuesRow.fromMap(Map<String, dynamic> m) {
+    final paymentId = m['payment_id'];
+    return DuesRow(
+      member: Member.fromMap(m),
+      payment: paymentId == null
+          ? null
+          : Payment(
+              id: _int(paymentId),
+              memberId: _int(m['id']),
+              memberName: (m['name'] as String?) ?? '',
+              amount: _num(m['paid_amount']),
+              tournamentId: null,
+              tournamentName: '',
+              paidAt: _dt(m['paid_at']),
+              note: m['paid_note'] as String?,
+            ),
+    );
   }
 }
 
@@ -1092,6 +1190,10 @@ class Tournament {
   final int matchMinutes;
   final int breakMinutes;
   final int groups;
+
+  /// Iuran per anggota untuk turnamen ini. Beda tiap turnamen karena biaya
+  /// pendaftaran dan jumlah pemainnya berbeda.
+  final double entryFee;
   final String status; // draft | running | done
 
   Tournament({
@@ -1102,6 +1204,7 @@ class Tournament {
     required this.matchMinutes,
     required this.breakMinutes,
     required this.groups,
+    this.entryFee = 0,
     required this.status,
   });
 
@@ -1113,13 +1216,23 @@ class Tournament {
         matchMinutes: (m['match_minutes'] as int?) ?? 20,
         breakMinutes: (m['break_minutes'] as int?) ?? 0,
         groups: (m['groups'] as int?) ?? 1,
+        entryFee: _num(m['entry_fee']),
         status: (m['status'] as String?) ?? 'draft',
       );
 
   static const statusLabels = {'draft': 'Draft', 'running': 'Berjalan', 'done': 'Selesai'};
 
-  static Future<List<Tournament>> all() async {
-    final rows = await Db.query('SELECT * FROM tournaments ORDER BY starts_at DESC');
+  /// Satu turnamen menurut id, atau null kalau sudah dihapus.
+  static Future<Tournament?> byId(int id) async {
+    final rows = await Db.query(
+      'SELECT * FROM tournaments WHERE id=@id',
+      params: {'id': id},
+    );
+    if (rows.isEmpty) return null;
+    return Tournament.fromMap(rows.first);
+  }
+
+  static Future<List<Tournament>> all() async {    final rows = await Db.query('SELECT * FROM tournaments ORDER BY starts_at DESC');
     final items = rows.map(Tournament.fromMap).toList();
     // Urut tanggal menaruh draft paling depan karena jadwalnya paling akhir.
     // Yang dicari saat membuka halaman: yang sedang berjalan dulu, lalu yang
@@ -1145,13 +1258,15 @@ class Tournament {
     int matchMinutes = 20,
     int breakMinutes = 0,
     int groups = 1,
+    double entryFee = 0,
   }) async {
     // Satu angka untuk baris turnamen dan pembagian grup; kalau berbeda,
     // kolom `groups` bisa bilang 8 sementara jadwalnya dibuat untuk 3.
     final g = groups.clamp(1, 8);
     final rows = await Db.query(
-      '''INSERT INTO tournaments (name, venue, starts_at, match_minutes, break_minutes, groups)
-         VALUES (@n, @v, @s, @mm, @bm, @g) RETURNING id''',
+      '''INSERT INTO tournaments
+           (name, venue, starts_at, match_minutes, break_minutes, groups, entry_fee)
+         VALUES (@n, @v, @s, @mm, @bm, @g, @fee) RETURNING id''',
       params: {
         'n': name,
         'v': venue,
@@ -1159,6 +1274,7 @@ class Tournament {
         'mm': matchMinutes,
         'bm': breakMinutes,
         'g': g,
+        'fee': entryFee,
       },
     );
     final id = rows.first['id'] as int;
@@ -1166,6 +1282,14 @@ class Tournament {
     await _schedule(id, startsAt, matchMinutes, breakMinutes);
     return id;
   }
+
+  /// Ubah nominal iuran turnamen. Dipisah dari [updateTeams] supaya nominal
+  /// bisa diperbaiki kapan saja — termasuk saat turnamen sudah berjalan dan
+  /// jadwalnya tidak boleh diubah lagi.
+  static Future<void> setEntryFee(int id, double fee) => Db.execute(
+        'UPDATE tournaments SET entry_fee=@f WHERE id=@t',
+        params: {'f': fee, 't': id},
+      );
 
   /// Ganti tim yang ikut turnamen lalu buat ulang jadwalnya.
   ///

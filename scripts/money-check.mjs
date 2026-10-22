@@ -97,26 +97,43 @@ try {
   const orphan = await rows('SELECT id FROM transactions WHERE booking_id=@b', { b: bookingId });
   check('hapus booking menghapus kasnya (cascade)', orphan.length === 0, `${orphan.length} sisa`);
 
-  // ---------- 4. iuran unik per periode ----------
+  // ---------- 4. iuran unik per (anggota, turnamen) ----------
   const mem = await q(
     'INSERT INTO members (name, position) VALUES (@n, @p) RETURNING id',
     { n: tag, p: 'Bebas' },
   );
   const memberId = mem.json.rows?.[0]?.id;
+  const tour = await q(
+    `INSERT INTO tournaments (name, starts_at, entry_fee) VALUES (@n, now(), 50000) RETURNING id`,
+    { n: tag },
+  );
+  const tournamentId = tour.json.rows?.[0]?.id;
   const first = await q(
-    'INSERT INTO payments (member_id, amount, period) VALUES (@m, 50000, @p)',
-    { m: memberId, p: '2026-10' },
+    'INSERT INTO payments (member_id, amount, tournament_id) VALUES (@m, 50000, @t)',
+    { m: memberId, t: tournamentId },
   );
   check('iuran pertama tersimpan', first.code === 200, first.json.error ?? '');
   const second = await q(
-    'INSERT INTO payments (member_id, amount, period) VALUES (@m, 50000, @p)',
-    { m: memberId, p: '2026-10' },
+    'INSERT INTO payments (member_id, amount, tournament_id) VALUES (@m, 50000, @t)',
+    { m: memberId, t: tournamentId },
   );
   check(
-    'iuran ganda periode sama ditolak DB',
+    'iuran ganda turnamen sama ditolak DB',
     second.code !== 200,
     second.code === 200 ? 'DITERIMA (index unik hilang)' : 'ditolak',
   );
+
+  // Anggota yang sama untuk turnamen BERBEDA harus boleh — itu inti
+  // perubahan sistem: tiap turnamen punya tagihan sendiri.
+  const tour2 = await q(
+    `INSERT INTO tournaments (name, starts_at, entry_fee) VALUES (@n, now(), 75000) RETURNING id`,
+    { n: `${tag}_2` },
+  );
+  const other = await q(
+    'INSERT INTO payments (member_id, amount, tournament_id) VALUES (@m, 75000, @t)',
+    { m: memberId, t: tour2.json.rows?.[0]?.id },
+  );
+  check('iuran turnamen berbeda tetap boleh', other.code === 200, other.json.error ?? '');
 
   // ---------- 5. klasemen: angka, bukan string ----------
   await q("INSERT INTO teams (name) VALUES (@a), (@b)", { a: `${tag}_A`, b: `${tag}_B` });

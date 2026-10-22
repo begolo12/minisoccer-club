@@ -59,7 +59,7 @@ class _Counts {
     final r = await Future.wait<Soft<Object?>>([
       soft('Anggota', Member.all, fallback: const <Member>[]),
       soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]),
-      soft('Iuran bulan ini', () => Payment.all(period: period), fallback: const <Payment>[]),
+      soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
       soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
       soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
@@ -68,7 +68,6 @@ class _Counts {
     final failures = settle(r);
     final members = r[0].value! as List<Member>;
     final active = members.where((m) => m.active).toList();
-    final paid = {for (final p in r[2].value! as List<Payment>) p.memberId};
     final cash = CashSummary.fromEntries(mergeCashLedger(
       payments: r[2].value! as List<Payment>,
       transactions: r[3].value! as List<Transaction>,
@@ -77,12 +76,41 @@ class _Counts {
     final stats = r[5].value! as List<int>;
     final news = r[6].value! as List<Announcement>;
     final bookings = r[1].value! as List<Booking>;
+
+    // "Belum bayar" mengikuti turnamen aktif (yang sedang berjalan, atau yang
+    // terdekat). Iuran ditarik per turnamen, jadi menghitungnya dari seluruh
+    // anggota tidak lagi bermakna: peserta tiap turnamen berbeda.
+    Tournament? activeTour;
+    for (final t in tours) {
+      if (t.status == 'running') {
+        activeTour = t;
+        break;
+      }
+    }
+    if (activeTour == null) {
+      for (final t in tours) {
+        if (t.status == 'draft') {
+          activeTour = t;
+          break;
+        }
+      }
+    }
+    activeTour ??= tours.isEmpty ? null : tours.first;
+
+    var unpaid = 0;
+    if (activeTour != null) {
+      final b = await soft('Iuran turnamen', () => Payment.bill(activeTour!.id),
+          fallback: const <DuesRow>[]);
+      failures.addAll(settle([b]));
+      unpaid = b.value!.where((r) => !r.paid).length;
+    }
+
     return _Counts(
       active: active.length,
       inactive: members.length - active.length,
       nextBooking: bookings.isEmpty ? null : bookings.first,
       saldo: cash.balance,
-      unpaid: active.where((m) => !paid.contains(m.id)).length,
+      unpaid: unpaid,
       playing: tours.where((t) => t.status == 'running').length,
       tournaments: tours.length,
       played: stats[0] + stats[1] + stats[2],

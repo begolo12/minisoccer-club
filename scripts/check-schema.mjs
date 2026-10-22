@@ -30,13 +30,19 @@ const EXPECTED = {
   match_sessions: ['id', 'match_id', 'session_no', 'score_home', 'score_away', 'winner', 'started_at', 'ended_at'],
   match_events: ['id', 'match_id', 'session_id', 'member_id', 'minute', 'type'],
   transactions: ['id', 'kind', 'category', 'amount', 'occurred_at', 'member_id', 'period', 'note', 'created_at', 'booking_id'],
-  payments: ['id', 'member_id', 'amount', 'period', 'paid_at', 'note'],
+  // Iuran terikat TURNAMEN, bukan bulan: `period` sudah dihapus, diganti
+  // `tournament_id`. Index unik (member_id, tournament_id) mencegah satu
+  // anggota tercatat dua kali untuk turnamen yang sama.
+  payments: ['id', 'member_id', 'amount', 'tournament_id', 'paid_at', 'note'],
   bookings: ['id', 'title', 'starts_at', 'duration_min', 'cost', 'status'],
   announcements: ['id', 'title', 'body', 'created_at'],
   settings: ['key', 'value'],
   teams: ['id', 'name', 'created_at'],
   team_players: ['team_id', 'member_id'],
-  tournaments: ['id', 'name', 'venue', 'starts_at', 'match_minutes', 'break_minutes', 'groups', 'status', 'created_at'],
+  tournaments: [
+    'id', 'name', 'venue', 'starts_at', 'match_minutes', 'break_minutes',
+    'groups', 'entry_fee', 'status', 'created_at',
+  ],
   tournament_teams: ['tournament_id', 'team_id', 'group_no'],
   tournament_matches: [
     'id', 'tournament_id', 'group_no', 'round', 'slot', 'home_team_id', 'away_team_id',

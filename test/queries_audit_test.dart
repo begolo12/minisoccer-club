@@ -193,18 +193,21 @@ void main() {
         ));
     await capture('MatchEvent.delete', () => MatchEvent.delete(1));
 
-    // ---- Payment ----
+    // ---- Payment (iuran per turnamen) ----
     await capture('Payment.all', () => Payment.all());
-    await capture('Payment.all(period)', () => Payment.all(period: '2026-10'));
-    await capture('Payment.existsFor', () => Payment.existsFor(1, '2026-10'));
+    await capture('Payment.all(tournament)', () => Payment.all(tournamentId: 1));
+    await capture('Payment.inMonth', () => Payment.inMonth(DateTime(2026, 10)));
+    await capture('Payment.existsFor', () => Payment.existsFor(1, 1));
     await capture('Payment.insert', () => Payment.insert(
           memberId: 1,
           amount: 50000,
-          period: '2026-10',
+          tournamentId: 1,
           note: '_audit',
         ));
     await capture('Payment.delete', () => Payment.delete(1));
-    await capture('Payment.standardAmount', () => Payment.standardAmount());
+    await capture('Payment.bill', () => Payment.bill(1));
+    await capture('Payment.collectedFor', () => Payment.collectedFor(1));
+    await capture('Payment.usualAmountFor', () => Payment.usualAmountFor(1));
 
     // ---- Transaction ----
     await capture('Transaction.all', () => Transaction.all());

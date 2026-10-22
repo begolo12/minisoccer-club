@@ -86,10 +86,14 @@ const sessions = [
   ended_at: iso(day * 5),
 }));
 
+// Iuran ditarik PER TURNAMEN (bukan per bulan). Sebagian peserta turnamen 1
+// sudah membayar; turnamen 2 (draft) belum ada yang bayar — supaya tampilan
+// "belum bayar" punya isi.
 const payments = members
   .filter((m) => m.active && m.id <= 26)
+  .filter((_, i) => i % 3 !== 2)
   .map((m, i) => ({
-    id: i + 1, member_id: m.id, amount: 75000, period,
+    id: i + 1, member_id: m.id, amount: 50000, tournament_id: 1,
     paid_at: iso(day * (2 + i)), note: null,
   }));
 
@@ -133,11 +137,11 @@ const users = [
 const tournaments = [
   {
     id: 1, name: 'Turnamen Internal Oktober', venue: 'Lapangan Cimahi',
-    starts_at: at(0, 19), match_minutes: 20, break_minutes: 0, groups: 1, status: 'running',
+    starts_at: at(0, 19), match_minutes: 20, break_minutes: 0, groups: 1, entry_fee: 50000, status: 'running',
   },
   {
     id: 2, name: 'Turnamen Akhir Pekan', venue: 'Lapangan UPI',
-    starts_at: at(6, 19), match_minutes: 15, break_minutes: 5, groups: 2, status: 'draft',
+    starts_at: at(6, 19), match_minutes: 15, break_minutes: 5, groups: 2, entry_fee: 75000, status: 'draft',
   },
 ];
 const tournament_teams = [
@@ -287,13 +291,29 @@ function rowsFor(sql, params = {}) {
     }
     return rows.map(withNames);
   }
-  if (/from \( select 1 from payments group by member_id, period having/.test(q)) {
-    const groups = new Map();
-    for (const p of payments) {
-      const k = `${p.member_id}|${p.period}`;
-      groups.set(k, (groups.get(k) ?? 0) + 1);
-    }
-    return [{ n: [...groups.values()].filter((n) => n > 1).length }];
+  // Tagihan turnamen: anggota dari tim yang ikut turnamen, plus status bayar.
+  // Dikenali dari kolom `payment_id` (khas query `Payment.bill`).
+  if (/payment_id/.test(q)) {
+    const tid = params.t ?? 1;
+    const teamIds = tournament_teams
+      .filter((tt) => tt.tournament_id === tid)
+      .map((tt) => tt.team_id);
+    const playerIds = new Set(
+      team_players.filter((tp) => teamIds.includes(tp.team_id)).map((tp) => tp.member_id),
+    );
+    return members
+      .filter((m) => playerIds.has(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((m) => {
+        const p = payments.find((x) => x.member_id === m.id && x.tournament_id === tid);
+        return {
+          ...m,
+          payment_id: p ? p.id : null,
+          paid_amount: p ? p.amount : null,
+          paid_at: p ? p.paid_at : null,
+          paid_note: p ? p.note : null,
+        };
+      });
   }
   if (/from payments/.test(q)) {
     if (/group by amount/.test(q)) {
@@ -303,10 +323,14 @@ function rowsFor(sql, params = {}) {
       return [{ amount, n }];
     }
     if (/coalesce\(sum\(amount\)/.test(q)) {
-      return [{ total: payments.reduce((s, p) => s + p.amount, 0) }];
+      let sum = payments;
+      if (params.t != null) sum = sum.filter((p) => p.tournament_id === params.t);
+      return [{ total: sum.reduce((s, p) => s + p.amount, 0) }];
     }
     let rows = payments;
-    if (params.p != null) rows = rows.filter((p) => p.period === params.p);
+    if (params.t != null) rows = rows.filter((p) => p.tournament_id === params.t);
+    if (params.a != null) rows = rows.filter((p) => p.paid_at >= params.a);
+    if (params.b != null) rows = rows.filter((p) => p.paid_at < params.b);
     if (params.mid != null) rows = rows.filter((p) => p.member_id === params.mid);
     return rows.map((p) => ({
       ...p, member_name: members.find((m) => m.id === p.member_id)?.name ?? '',
@@ -417,11 +441,12 @@ function applyWrite(sql, params) {
     return i >= 0 ? 1 : 0;
   }
   if (/^\s*insert\s+into\s+payments/.test(q)) {
+    const id = payments.length + 1;
     payments.unshift({
-      id: payments.length + 1, member_id: params.mid, amount: params.amt,
-      period: params.period, paid_at: new Date().toISOString(), note: params.note ?? null,
+      id, member_id: params.mid, amount: params.amt,
+      tournament_id: params.t, paid_at: new Date().toISOString(), note: params.note ?? null,
     });
-    return 1;
+    return [{ id }];
   }
   if (/^\s*delete\s+from\s+payments/.test(q)) {
     const i = payments.findIndex((p) => p.id === params.id);

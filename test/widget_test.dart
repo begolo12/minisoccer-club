@@ -152,7 +152,8 @@ void main() {
         memberId: 1,
         memberName: 'Rizky',
         amount: 75000,
-        period: '2026-10',
+        tournamentId: 1,
+        tournamentName: 'Turnamen Internal',
         paidAt: DateTime(2026, 10, 5),
       ),
       Payment(
@@ -160,7 +161,8 @@ void main() {
         memberId: 2,
         memberName: 'Bagas',
         amount: 75000,
-        period: '2026-10',
+        tournamentId: 1,
+        tournamentName: 'Turnamen Internal',
         paidAt: DateTime(2026, 10, 6),
       ),
     ];

@@ -191,12 +191,13 @@ try {
   );
   check('catat sewa ke kas', cash.code === 200, cash.json.error ?? '');
 
+  // Iuran terikat turnamen (bukan bulan). Turnamen sudah dibuat di langkah 6.
   const pay = await q(
     token,
-    'INSERT INTO payments (member_id, amount, period, note) VALUES (@m, 50000, @p, @n)',
-    { m: idA, p: '2026-10', n: `${tag}_iuran` },
+    'INSERT INTO payments (member_id, amount, tournament_id, note) VALUES (@m, 50000, @t, @n) RETURNING id',
+    { m: idA, t: tourId, n: `${tag}_iuran` },
   );
-  check('catat iuran', pay.code === 200, pay.json.error ?? '');
+  check('catat iuran turnamen', pay.code === 200, pay.json.error ?? '');
 
   // ---------- 7. pengumuman ----------
   const ann = await q(

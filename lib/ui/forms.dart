@@ -442,27 +442,59 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
   return ok ?? false;
 }
 
-Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberId}) async {
-  // Hanya anggota aktif: iuran anggota nonaktif tidak masuk label "Lunas"
-  // di halaman Iuran, jadi mencatatnya di sini menghasilkan data yatim.
-  final members = await Member.all(activeOnly: true);
+/// Form catat iuran untuk satu turnamen.
+///
+/// Iuran terikat turnamen, jadi pilihannya bukan bulan melainkan anggota yang
+/// ikut turnamen itu (anggota dari tim yang terdaftar). Nominal awal diambil
+/// dari `tournaments.entry_fee`, supaya bendahara tidak mengetik ulang angka
+/// yang sama untuk setiap anggota.
+Future<bool> showPaymentForm(
+  BuildContext context, {
+  required int tournamentId,
+  int? memberId,
+  double entryFee = 0,
+}) async {
+  // Peserta turnamen = anggota dari tim yang terdaftar. Kalau daftar peserta
+  // kosong (tim belum diisi pemain), jatuh ke semua anggota aktif supaya
+  // pencatatan tetap mungkin dilakukan.
+  List<DuesRow> bill;
+  try {
+    bill = await Payment.bill(tournamentId);
+  } catch (_) {
+    bill = const [];
+  }
   if (!context.mounted) return false;
-  if (members.isEmpty) {
-    toast(context, 'Tambah anggota dulu');
+
+  List<Member> candidates = bill.map((r) => r.member).toList();
+  if (candidates.isEmpty) {
+    try {
+      candidates = await Member.all(activeOnly: true);
+    } catch (_) {
+      candidates = const [];
+    }
+  }
+  if (!context.mounted) return false;
+  if (candidates.isEmpty) {
+    toast(context, 'Tambahkan anggota dulu');
     return false;
   }
-  // Isi awal memakai nominal yang paling sering dibayar, bukan angka mati.
-  double? standard;
-  try {
-    standard = await Payment.standardAmount();
-  } catch (_) {
-    standard = null;
+
+  // Nominal awal: nominal turnamen, atau yang paling sering dibayar, atau kosong.
+  var initial = entryFee;
+  if (initial <= 0) {
+    try {
+      initial = await Payment.usualAmountFor(tournamentId) ?? 0;
+    } catch (_) {
+      initial = 0;
+    }
   }
   if (!context.mounted) return false;
-  final amount = TextEditingController(text: standard == null ? '' : fmtNumber(standard));
+
+  final amount = TextEditingController(
+    text: initial > 0 ? fmtNumber(initial) : '',
+  );
   final note = TextEditingController();
-  var selected = memberId ?? members.first.id;
-  var per = period ?? periodNow();
+  var selected = memberId ?? candidates.first.id;
   var saving = false;
 
   final ok = await showShadDialog<bool>(
@@ -470,9 +502,9 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
-          // `saving` diset SEBELUM await apa pun: sebelumnya flag baru
-          // menyala setelah cek duplikat, jadi dua ketukan cepat pada Simpan
-          // menjalankan dua alur simpan dan bisa menghasilkan iuran ganda.
+          // `saving` diset SEBELUM await apa pun: dua ketukan cepat pada
+          // Simpan bisa menjalankan dua alur simpan dan menghasilkan iuran
+          // ganda.
           setLocal(() => saving = true);
           final amt = parseFormattedMoney(amount.text);
           if (amt <= 0) {
@@ -481,14 +513,19 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
             return;
           }
           try {
-            if (await Payment.existsFor(selected, per)) {
+            if (await Payment.existsFor(selected, tournamentId)) {
               if (ctx.mounted) {
-                final name = members.firstWhere((m) => m.id == selected).name;
-                toast(ctx, 'Iuran $name untuk ${periodLabel(per)} sudah tercatat');
+                final name = candidates.firstWhere((m) => m.id == selected).name;
+                toast(ctx, 'Iuran $name untuk turnamen ini sudah tercatat');
               }
               return;
             }
-            await Payment.insert(memberId: selected, amount: amt, period: per, note: _nullIfEmpty(note.text));
+            await Payment.insert(
+              memberId: selected,
+              amount: amt,
+              tournamentId: tournamentId,
+              note: _nullIfEmpty(note.text),
+            );
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
             if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
@@ -497,14 +534,9 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
           }
         }
 
-        final periods = List.generate(6, (i) {
-          final d = DateTime(DateTime.now().year, DateTime.now().month - i);
-          return '${d.year}-${d.month.toString().padLeft(2, '0')}';
-        });
-
         return ShadDialog(
           title: const Text('Catat iuran'),
-          description: Text('Periode ${periodLabel(per)}'),
+          description: const Text('Iuran untuk turnamen ini'),
           actions: [
             ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
             SaveButton(saving: saving, onPressed: save),
@@ -515,8 +547,9 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
               ShadSelect<int>(
                 placeholder: const Text('Anggota'),
                 initialValue: selected,
-                options: members.map((m) => ShadOption(value: m.id, child: Text(m.name))).toList(),
-                selectedOptionBuilder: (c, v) => Text(members.firstWhere((m) => m.id == v).name),
+                options: candidates.map((m) => ShadOption(value: m.id, child: Text(m.name))).toList(),
+                selectedOptionBuilder: (c, v) =>
+                    Text(candidates.firstWhere((m) => m.id == v).name),
                 onChanged: (v) => setLocal(() => selected = v ?? selected),
               ),
               const SizedBox(height: 10),
@@ -524,14 +557,6 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
                 controller: amount,
                 autofocus: true,
                 textInputAction: TextInputAction.done,
-              ),
-              const SizedBox(height: 10),
-              ShadSelect<String>(
-                placeholder: const Text('Periode'),
-                initialValue: per,
-                options: periods.map((p) => ShadOption(value: p, child: Text(periodLabel(p)))).toList(),
-                selectedOptionBuilder: (c, v) => Text(periodLabel(v)),
-                onChanged: (v) => setLocal(() => per = v ?? per),
               ),
               const SizedBox(height: 10),
               ShadInput(controller: note, placeholder: const Text('Catatan (opsional)'), textInputAction: TextInputAction.done),

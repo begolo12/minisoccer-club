@@ -386,6 +386,7 @@ const _columnDefaults = <String, Map<String, Object?>>{
     'match_minutes': 20,
     'break_minutes': 0,
     'groups': 1,
+    'entry_fee': 0,
     'status': 'draft',
   },
   'tournament_teams': {'group_no': 1},

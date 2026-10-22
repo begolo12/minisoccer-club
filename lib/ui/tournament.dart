@@ -5,6 +5,7 @@ import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
+import 'money_input.dart';
 import 'widgets.dart';
 
 /// Turnamen internal: 4 tim, round-robin, semua laga dalam satu blok waktu
@@ -178,6 +179,11 @@ class TournamentDetailPage extends StatefulWidget {
 class _TournamentDetailPageState extends State<TournamentDetailPage> {
   late Future<_Data> _future;
 
+  /// Salinan turnamen yang bisa diperbarui. `widget.tournament` tidak pernah
+  /// berubah, jadi setelah nominal iuran diubah, tampilan akan tetap
+  /// menampilkan angka lama kalau hanya membaca dari widget.
+  late Tournament _t = widget.tournament;
+
   @override
   void initState() {
     super.initState();
@@ -194,8 +200,11 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
           fallback: const <int, List<Member>>{}),
       soft('Klasemen grup', () => Tournament.standingsByGroup(id),
           fallback: const <int, List<Standing>>{}),
+      soft('Turnamen', () => Tournament.byId(id), fallback: null),
     ]);
     final failures = settle(results);
+    final fresh = results[4].value as Tournament?;
+    if (fresh != null) _t = fresh;
     return _Data(
       groups: results[3].value! as Map<int, List<Standing>>,
       matches: results[0].value! as List<TournamentMatch>,
@@ -254,9 +263,55 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
     if (ok) await _reload();
   }
 
+  /// Ubah nominal iuran turnamen.
+  ///
+  /// Dipisah dari form "atur tim" karena nominal bisa perlu dikoreksi kapan
+  /// saja — termasuk saat turnamen sudah berjalan, ketika jadwal tidak boleh
+  /// diubah lagi.
+  Future<void> _editFee() async {
+    final fee = TextEditingController(
+      text: _t.entryFee > 0
+          ? fmtNumber(_t.entryFee)
+          : '',
+    );
+    var saving = false;
+    final ok = await showShadDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          Future<void> save() async {
+            setLocal(() => saving = true);
+            final value = parseFormattedMoney(fee.text);
+            try {
+              await Tournament.setEntryFee(widget.tournament.id, value);
+              if (ctx.mounted) Navigator.pop(ctx, true);
+            } catch (e) {
+              if (ctx.mounted) toast(ctx, 'Gagal menyimpan: ${errText(e)}');
+            } finally {
+              if (ctx.mounted) setLocal(() => saving = false);
+            }
+          }
+
+          return ShadDialog(
+            title: const Text('Iuran turnamen'),
+            description: const Text('Nominal per anggota untuk turnamen ini.'),
+            actions: [
+              ShadButton.outline(
+                onPressed: saving ? null : () => Navigator.pop(ctx, false),
+                child: const Text('Batal'),
+              ),
+              SaveButton(saving: saving, onPressed: save),
+            ],
+            child: MoneyField(controller: fee, autofocus: true),
+          );
+        },
+      ),
+    );
+    if (ok == true) await _reload();
+  }
+
   Future<void> _delete() async {
-    if (!await confirm(context, 'Hapus turnamen?', 'Jadwal dan skor turnamen ini ikut terhapus. Tim klub tetap ada.')) return;
-    if (!mounted) return;
+    if (!await confirm(context, 'Hapus turnamen?', 'Jadwal dan skor turnamen ini ikut terhapus. Tim klub tetap ada.')) return;    if (!mounted) return;
     if (!await attempt(context, () => Tournament.delete(widget.tournament.id), fail: 'Gagal menghapus')) {
       return;
     }
@@ -319,6 +374,22 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
                   backgroundColor: t.colorScheme.muted,
                   color: t.colorScheme.primary,
                 ),
+              ),
+              // Iuran turnamen: nominal per anggota. Bisa diubah kapan saja,
+              // termasuk saat turnamen sudah berjalan — nominal yang salah
+              // ketik tidak boleh memaksa jadwal dibuat ulang.
+              RowItem(
+                leading: Icon(Icons.payments_outlined, size: 15, color: t.colorScheme.mutedForeground),
+                title: 'Iuran per anggota',
+                subtitle: _t.entryFee > 0
+                    ? fmtMoney(_t.entryFee)
+                    : 'Belum diisi',
+                trailing: Auth.canWrite
+                    ? TextButton(
+                        onPressed: () => _editFee(),
+                        child: const Text('Ubah'),
+                      )
+                    : null,
               ),
               // Belum ada laga selesai = semua angka nol. Tabel kosong seperti
               // itu tidak memberi informasi; satu baris cukup sampai skor
@@ -628,6 +699,7 @@ Future<bool> showTournamentForm(BuildContext context) async {
     text: 'Turnamen Internal ${fmtDate(DateTime.now())}',
   );
   final venue = TextEditingController();
+  final fee = TextEditingController();
   final minutes = TextEditingController(text: '20');
   final breakMin = TextEditingController(text: '0');
   var selected = teams.map((t) => t.id).toSet();
@@ -687,6 +759,7 @@ Future<bool> showTournamentForm(BuildContext context) async {
               matchMinutes: per,
               breakMinutes: rest,
               groups: groupCount,
+              entryFee: parseFormattedMoney(fee.text),
             );
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
@@ -716,9 +789,16 @@ Future<bool> showTournamentForm(BuildContext context) async {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                ShadInput(controller: name, placeholder: const Text('Nama turnamen')),
+                ShadInput(controller: name, placeholder: const Text('Nama turnamen'), autofocus: true, textInputAction: TextInputAction.next),
                 const SizedBox(height: 10),
-                ShadInput(controller: venue, placeholder: const Text('Lokasi (opsional)')),
+                ShadInput(controller: venue, placeholder: const Text('Lokasi (opsional)'), textInputAction: TextInputAction.next),
+                const SizedBox(height: 10),
+                // Iuran per anggota untuk turnamen ini. Beda tiap turnamen
+                // karena biaya pendaftaran dan jumlah pemainnya berbeda.
+                MoneyField(
+                  controller: fee,
+                  placeholder: const Text('Iuran per anggota (opsional)'),
+                ),
                 const SizedBox(height: 10),
                 Row(
                   children: [

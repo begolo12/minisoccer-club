@@ -29,7 +29,9 @@ class _FinanceData {
 
   static Future<_FinanceData> load(String? period) async {
     final results = await Future.wait<Soft<Object?>>([
-      soft('Iuran', () => Payment.all(period: period), fallback: const <Payment>[]),
+      // Kas dihitung dari kapan uangnya MASUK (`paid_at`), bukan turnamen mana
+      // yang dibayar: turnamen bulan lalu bisa dibayar bulan ini.
+      soft('Iuran', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas', () => Transaction.all(period: period), fallback: const <Transaction>[]),
     ]);
     final failures = settle(results);

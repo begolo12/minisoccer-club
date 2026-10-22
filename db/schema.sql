@@ -89,7 +89,6 @@ CREATE TABLE IF NOT EXISTS payments (
   id        SERIAL PRIMARY KEY,
   member_id INT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
   amount    NUMERIC(12,2) NOT NULL,
-  period    TEXT NOT NULL,
   paid_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   note      TEXT
 );
@@ -227,11 +226,13 @@ CREATE TABLE IF NOT EXISTS tournaments (
   match_minutes INT NOT NULL DEFAULT 20,  -- durasi 1 laga
   break_minutes INT NOT NULL DEFAULT 0,   -- jeda antar laga
   groups        INT NOT NULL DEFAULT 1,   -- jumlah grup (1 = liga penuh)
+  entry_fee     NUMERIC(12,2) NOT NULL DEFAULT 0, -- iuran per anggota untuk turnamen ini
   status        TEXT NOT NULL DEFAULT 'draft', -- draft | running | done
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS groups INT NOT NULL DEFAULT 1;
+ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS entry_fee NUMERIC(12,2) NOT NULL DEFAULT 0;
 
 -- Pembagian tim ke grup pada satu turnamen.
 CREATE TABLE IF NOT EXISTS tournament_teams (
@@ -257,6 +258,45 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
 );
 
 ALTER TABLE tournament_matches ADD COLUMN IF NOT EXISTS group_no INT NOT NULL DEFAULT 1;
+
+-- ---------------------------------------------------------------------
+-- Migrasi: iuran BULANAN → iuran PER TURNAMEN.
+--
+-- Dulu `payments` punya kolom `period` ('2026-10') dan halaman Iuran memilih
+-- bulan. Kenyataannya iuran klub ini ditarik per turnamen, dan tim yang ikut
+-- tiap turnamen berbeda-beda — jadi tagihan yang benar adalah "anggota X untuk
+-- turnamen Y", bukan "anggota X untuk bulan Z".
+--
+-- Urutannya penting:
+--   1. tambah kolom `tournament_id`;
+--   2. hapus pembayaran bulanan lama (tidak punya padanan turnamen; pemilik
+--      klub memilih menghapusnya daripada menyisakan tagihan menggantung);
+--   3. baru buang kolom `period`.
+--
+-- Semua dibungkus pengecekan kolom supaya idempoten: `db:init` aman dijalankan
+-- berkali-kali dan di database yang sudah lama maupun yang baru.
+-- ---------------------------------------------------------------------
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS tournament_id INT
+  REFERENCES tournaments(id) ON DELETE CASCADE;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'payments' AND column_name = 'period'
+  ) THEN
+    DELETE FROM payments WHERE tournament_id IS NULL;
+    ALTER TABLE payments DROP COLUMN period;
+  END IF;
+END
+$$;
+
+-- Satu anggota hanya membayar sekali per turnamen. Tanpa ini, dua entri bisa
+-- tercatat untuk orang dan turnamen yang sama dan totalnya jadi dobel.
+CREATE UNIQUE INDEX IF NOT EXISTS payments_member_tournament_uniq
+  ON payments(member_id, tournament_id);
+
+CREATE INDEX IF NOT EXISTS idx_payments_tournament ON payments(tournament_id);
 
 CREATE INDEX IF NOT EXISTS idx_tm_tournament       ON tournament_matches(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_team_players_member ON team_players(member_id);
