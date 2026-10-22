@@ -21,17 +21,21 @@ Versi web: **https://minisoccer-club.vercel.app**
 
 | Fitur | Isi |
 |---|---|
-| **Beranda** | Jadwal terdekat, W/D/L, iuran bulan ini, aksi cepat, top skor, pengumuman |
+| **Beranda** | Sapaan akun, papan skor laga berjalan (kalau ada) atau hero turnamen berikutnya, turnamen terakhir dengan progres laga — hasil per pertandingan dibuka dengan diketuk, ringkasan anggota/main/iuran, kas bulan ini, aksi cepat, pengumuman; di layar lebar ditambah klasemen, top skor, dan sewa lapangan |
+| **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol/assist/kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
+| **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
 | **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif |
-| **Tanding** | Jadwal & hasil, sesi/babak dengan pemenang tiap sesi, catat gol / assist / kartu |
-| **Turnamen internal** | 4 tim round-robin (semua bertemu semua), jadwal otomatis per 20 menit dalam 2 jam, pembagian tim acak merata, klasemen grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin) |
-| **Iuran** | Bayar per bulan, siapa yang belum, riwayat, total terkumpul |
-| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu |
-| **Booking lapangan** | Jadwal sewa, durasi, biaya, status |
+| **Turnamen internal** | Pilih tim klub, bagi ke grup (1–4), jadwal round-robin otomatis per grup, klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga |
+| **Iuran** | Bayar per bulan, siapa yang belum (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat |
+| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan) |
+| **Booking lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu booking = satu catatan kas) |
 | **Pengumuman** | Info klub untuk anggota |
-| **Statistik** | Main/menang/draw/kalah, gol, poin, top skor & assist |
+| **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + assist (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Pengguna** | Akun + role admin / bendahara / anggota |
 | **Pengaturan** | Tema terang/gelap (langsung), info server, tes koneksi, keluar |
+
+Poin klasemen hanya dihitung dari laga berstatus selesai; skor laga yang
+punya sesi selalu sama dengan jumlah sesinya.
 
 QoL: pull-to-refresh (termasuk daftar pendek), empty state yang mengarahkan,
 konfirmasi hapus, error state + retry, skeleton loading, layout menyesuaikan
@@ -52,6 +56,11 @@ hanya ada di env server, tidak lagi disimpan di HP.
    ```
 3. Isi `DATABASE_URL` di `.env` lokal dan di env Vercel, lalu jalankan
    `npm run db:init` (schema) dan `npm run db:harden` (role `app_web`).
+   `db:harden` mencetak `DATABASE_URL_WEB` — **wajib** dipasang di env Vercel;
+   tanpa itu server memakai koneksi owner dan izin tabel (lapis pengaman
+   pertama) hilang.
+   Daftar tabel/view yang di-grant ada di `scripts/_grants.mjs`; query baru
+   yang memakai tabel belum ter-grant akan gagal di `npm test`.
 4. Buka app → layar masuk → akun pertama dibuat lewat form **Admin pertama**,
    lalu tambah akun lain dari menu **Pengguna**.
 
@@ -78,10 +87,14 @@ npm install
 cp .env.example .env                 # isi DATABASE_URL + AUTH_SECRET
 set -a && . ./.env && set +a
 npm run db:init                      # buat tabel di Neon (sekali saja)
+npm run db:harden                    # role app_web + izin tabel (sekali saja)
+DATABASE_URL=... npm run db:fix -- --dry   # lihat data lama yang perlu dirapikan
+npm run db:fix                       # booking lama → kas, iuran ganda → satu
 
 npx vercel link                      # sekali saja
 npx vercel env add DATABASE_URL production
-npx vercel env add AUTH_SECRET production   # string acak panjang
+npx vercel env add DATABASE_URL_WEB production   # dicetak oleh db:harden
+npx vercel env add AUTH_SECRET production        # string acak panjang
 
 flutter build web --release
 npx vercel --prod
@@ -101,8 +114,8 @@ lib/
   core/   api.dart (URL API) · db.dart (akses DB + secure storage) · db_web.dart (HTTP driver)
   data/   models.dart (model + query) · auth.dart (login, sesi, kelola user)
   ui/     theme (token warna/font + ThemeController), widgets (RowItem, Panel,
-          PageScaffold, AppScrollBehavior), fmt, forms, finance (buku kas),
-          halaman per fitur
+          StatStrip, StandingsTable, MatchRow, PeriodChips, PageScaffold,
+          AppScrollBehavior), fmt, forms, finance (buku kas), halaman per fitur
 api/sql.js                  Satu-satunya pintu SQL (role terbatas)
 api/_guard.js               Filter statement + pengikat parameter `@nama`
 api/_guard.test.mjs         Uji filter & parameter (node --test)
@@ -114,6 +127,9 @@ design/                     catatan desain + mock server & preview (dev saja)
 lib/preview_main.dart       entrypoint preview tanpa DB (dev saja)
 scripts/init-db.mjs         Jalankan schema (npm run db:init)
 scripts/harden-db.mjs       Buat role app_web + uji batas akses (npm run db:harden)
+scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
+scripts/_grants.mjs         Daftar tabel/view yang boleh diakses app_web
+scripts/_neon.mjs           Runner Neon (IPv4 dipaksa) + pemecah statement SQL
 scripts/security-check.mjs  Uji endpoint live (npm run check:live)
 .github/workflows/build.yml Build APK otomatis
 ```
