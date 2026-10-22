@@ -90,17 +90,47 @@ Banner di atas isi menampilkan jumlah perubahan yang belum terkirim, karena
 itulah data yang belum ada di cloud. Pengaturan → **Data offline** menunjukkan
 status, tombol sinkron, dan tombol buang antrean.
 
+### Web juga bisa dibuka tanpa jaringan
+
+Flutter 3.47 tidak lagi membuat service worker (opsi `--pwa-strategy` sudah
+dihapus), jadi tanpa penanganan khusus, membuka atau memuat ulang halaman saat
+jaringan mati hanya menampilkan halaman error browser — padahal antrean
+tersimpan di localStorage. `web/sw.js` menutup celah itu:
+
+| Permintaan | Perlakuan |
+|---|---|
+| Navigasi & aset (canvaskit, `main.dart.js`, font) | cache-first, diperbarui di latar |
+| `version.json` | selalu dari jaringan (untuk deteksi pembaruan) |
+| `/api/*` | **tidak** disentuh — data klub dikelola aplikasi, bukan cache HTTP |
+
+Daftar berkas yang di-precache dibuat saat build oleh
+`scripts/gen-sw-manifest.mjs` (136 berkas), karena pada pemuatan pertama service
+worker baru aktif setelah aset selesai dimuat — tanpa precache, aplikasi tidak
+bisa start offline.
+
 > **Batasannya jujur:** penambalan cache hanya mengenali bentuk SQL yang
 > dipakai app ini. Tulis yang memakai ekspresi SQL (`CASE`, `COALESCE(subquery)`,
 > agregat) tidak ditambal — data tampil apa adanya sampai sinkron berhasil.
 > Lebih baik menampilkan data lama daripada angka karangan. `INSERT` banyak
 > baris (jadwal turnamen) juga tidak ditambal; jadwalnya muncul setelah sinkron.
+> Daftar tulis yang sengaja tidak ditambal beserta alasannya ada di
+> `test/offline_writes_audit_test.dart`, dan tes itu membaca SQL asli dari
+> `.audit/queries.json` — tulis baru yang belum ditangani akan menggagalkannya.
 
 Implementasi: `lib/core/row_patch.dart` (urai SQL + tambal baris),
 `lib/core/offline.dart` (antrean + pemetaan id sementara),
 `lib/core/cache_*.dart` dan `outbox_store_*.dart` (berkas di Android,
-localStorage di web). Diuji oleh `test/row_patch_test.dart`,
-`test/offline_test.dart`, dan `test/offline_first_test.dart`.
+localStorage di web), `web/sw.js` + `scripts/gen-sw-manifest.mjs` (shell offline
+di web).
+
+### Cara memverifikasi mode offline
+
+| Perintah | Yang dibuktikan |
+|---|---|
+| `flutter test` | 91 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi |
+| `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
+| `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
+| `npm run check:features` | 23 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan di database |
 
 ## Setup database Neon (Vercel)
 

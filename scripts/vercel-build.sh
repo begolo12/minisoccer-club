@@ -20,6 +20,9 @@ OUT="build/web"
 
 if [ -f "$OUT/index.html" ] && [ -f "$OUT/main.dart.js" ]; then
   echo "build/web sudah ada (deploy dari CLI) — lewati build."
+  # Daftar precache service worker harus mengikuti artefak yang benar-benar
+  # diunggah, jadi dibuat di sini juga (bukan hanya setelah flutter build).
+  node scripts/gen-sw-manifest.mjs
   exit 0
 fi
 
@@ -58,6 +61,10 @@ echo "== flutter build web =="
 # --no-web-resources-cdn: CanvasKit disajikan dari domain sendiri (CSP
 # produksi tidak mengizinkan unpkg/jsdelivr).
 flutter build web --release --no-web-resources-cdn
+
+# Daftar berkas untuk precache service worker (web/sw.js). Harus setelah
+# build: isinya mengikuti artefak yang dihasilkan.
+node scripts/gen-sw-manifest.mjs
 
 test -f "$OUT/index.html" || { echo "build/web/index.html tidak terbentuk"; exit 1; }
 echo "selesai: $(du -sh "$OUT" | cut -f1) di $OUT"

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -337,9 +338,14 @@ class _UpdatePanelState extends State<_UpdatePanel> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _checking
-                          ? 'Memeriksa GitHub…'
-                          : (check == null ? 'Belum diperiksa' : check.status),
+                      // Di web tidak ada yang perlu diperiksa: halaman selalu
+                      // memuat versi terbaru. Sebutkan itu, jangan "Belum
+                      // diperiksa" yang terdengar seperti tugas yang tertunda.
+                      kIsWeb
+                          ? 'Versi web selalu yang terbaru setelah halaman dimuat ulang.'
+                          : (_checking
+                              ? 'Memeriksa GitHub…'
+                              : (check == null ? 'Belum diperiksa' : check.status)),
                       style: t.textTheme.small,
                     ),
                   ],
@@ -417,14 +423,19 @@ class _UpdatePanelState extends State<_UpdatePanel> {
               ),
           ],
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ShadButton.outline(
-              onPressed: _checking || _downloading ? null : _runCheck,
-              leading: const Icon(Icons.refresh, size: 15),
-              child: Text(_checking ? 'Memeriksa…' : 'Cek pembaruan'),
+          // Di web, pemeriksaan APK tidak ada gunanya: CSP produksi memblokir
+          // api.github.com, dan versi web selalu yang terbaru setelah halaman
+          // dimuat ulang. Tombolnya disembunyikan supaya tidak menampilkan
+          // error yang tidak bisa ditindaklanjuti pengguna.
+          if (!kIsWeb)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ShadButton.outline(
+                onPressed: _checking || _downloading ? null : _runCheck,
+                leading: const Icon(Icons.refresh, size: 15),
+                child: Text(_checking ? 'Memeriksa…' : 'Cek pembaruan'),
+              ),
             ),
-          ),
         ],
       ),
     );

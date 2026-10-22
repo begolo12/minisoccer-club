@@ -47,5 +47,16 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    // Daftarkan service worker supaya aplikasi bisa dibuka saat offline
+    // (Flutter 3.47 tidak lagi membuatnya otomatis). Lihat web/sw.js.
+    // Kegagalan registrasi tidak boleh menghalangi app: di mode privat
+    // service worker memang tidak tersedia.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>

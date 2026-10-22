@@ -12,6 +12,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'errors.dart';
+
 import 'db.dart';
 import 'update_models.dart';
 import 'version.dart';
@@ -79,7 +81,19 @@ class UpdateChecker {
     } on TimeoutException {
       return UpdateCheck(current: current, error: 'GitHub tidak merespons.');
     } catch (e) {
-      return UpdateCheck(current: current, error: 'Gagal memeriksa: $e');
+      // Di web, CSP produksi hanya mengizinkan koneksi ke domain sendiri
+      // (`connect-src 'self'`), jadi permintaan ke api.github.com diblokir
+      // browser. Itu bukan gangguan jaringan biasa, dan pesan aslinya
+      // ("ClientException: Failed to fetch, uri=...") tidak berguna bagi
+      // pengguna — sebutkan jalan keluarnya.
+      if (kIsWeb && e.toString().contains('Failed to fetch')) {
+        return UpdateCheck(
+          current: current,
+          error: 'Pemeriksaan pembaruan hanya tersedia di aplikasi Android. '
+              'Di web, versi baru otomatis terpakai saat halaman dimuat ulang.',
+        );
+      }
+      return UpdateCheck(current: current, error: 'Gagal memeriksa pembaruan: ${errText(e)}');
     } finally {
       if (client == null) httpClient.close();
     }
@@ -98,7 +112,12 @@ class UpdateService {
 
   /// Pemeriksaan latar saat start. Tidak pernah melempar: kegagalan hanya
   /// mengisi [UpdateCheck.error] dan tidak mengganggu layar lain.
+  ///
+  /// Di web tidak dijalankan sama sekali: CSP produksi memblokir
+  /// `api.github.com`, dan versi web selalu terbaru setelah halaman dimuat
+  /// ulang — memeriksa hanya akan menghasilkan error yang tidak berguna.
   static Future<void> autoCheck() async {
+    if (kIsWeb) return;
     if (_running) return;
     _running = true;
     try {

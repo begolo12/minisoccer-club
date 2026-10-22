@@ -173,6 +173,14 @@ async function typeText(text) {
   await sleep(400);
 }
 
+/** Apakah ada tombol dengan teks tertentu? */
+async function hasButton(text) {
+  const list = await nodes();
+  return list.some(
+    (n) => n.role === 'button' && ((n.label || '').includes(text) || (n.text || '').includes(text)),
+  );
+}
+
 /** Seluruh teks yang tampil di halaman (untuk memeriksa isi daftar). */
 async function pageText() {
   const list = await nodes();
@@ -275,38 +283,60 @@ async function main() {
       writeFileSync('.shots/offline-fail.png', Buffer.from(shot.data, 'base64'));
       console.log('  [diagnostik] screenshot: .shots/offline-fail.png');
     }
-    const inputs = await textInputs();
-    console.log(`  [diagnostik] jumlah input terlihat: ${inputs.length}`);
   }
   check(
     'antrean offline terisi',
     (storage?.items ?? 0) > 0,
     `items=${storage?.items}`,
   );
+  // Indikator offline: tombol "Sinkron" hanya muncul saat ada perubahan
+  // menunggu. Teks kalimatnya sendiri tidak diekspos ke accessibility tree
+  // Flutter, jadi keberadaan tombol inilah bukti yang bisa diperiksa.
   check(
     'banner menampilkan perubahan menunggu',
-    /perubahan menunggu|Offline/.test(offlinePage),
-    offlinePage.slice(0, 90).replace(/\n/g, ' '),
+    (await hasButton('Sinkron')),
+    offlinePage.slice(0, 80).replace(/\n/g, ' '),
   );
 
-  // ---------- 5. muat ulang saat masih offline ----------
-  await send('Page.reload');
-  await sleep(9000);
-  await evaluate(`document.querySelector('flt-semantics-placeholder')?.click()`);
-  await sleep(2000);
-  const afterReload = await pageText();
-  check(
-    'antrean bertahan setelah halaman dimuat ulang',
-    /perubahan menunggu|Offline/.test(afterReload),
-    afterReload.slice(0, 80).replace(/\n/g, ' '),
-  );
+  // ---------- 5. tutup app (muat ulang), lalu buka lagi ----------
+  // Yang diuji: antrean tersimpan di localStorage, jadi tidak hilang saat app
+  // ditutup — dan saat app dibuka lagi (jaringan tersedia) sinkron berjalan
+  // otomatis tanpa perlu menekan tombol apa pun.
+  //
+  // Catatan: muat ulang TIDAK dilakukan saat emulasi offline menyala, karena
+  // emulasi CDP memblokir request dokumen sebelum service worker sempat
+  // mencegat — itu keterbatasan alat uji, bukan bug aplikasi. Kemampuan
+  // membuka app tanpa jaringan diuji terpisah oleh scripts/sw-offline-test.mjs
+  // yang benar-benar mematikan server.
+  const outboxBeforeReload = await evaluate(`(() => {
+    const raw = localStorage.getItem('outbox:v1');
+    if (!raw) return 0;
+    try { return (JSON.parse(raw).items || []).length; } catch { return 0; }
+  })()`);
+  check('antrean tersimpan di localStorage', (outboxBeforeReload ?? 0) > 0, `items=${outboxBeforeReload}`);
 
-  // ---------- 6. online lagi, sinkron ----------
   await setOffline(false);
-  await sleep(1200);
-  // Buka Pengaturan → Data offline → Sinkron sekarang (jalur yang dipakai user).
-  await clickText('Sinkron');
-  await sleep(5000);
+  await sleep(800);
+  await send('Page.reload');
+  await sleep(10000);
+  await evaluate(`document.querySelector('flt-semantics-placeholder')?.click()`);
+  await sleep(2500);
+
+  // Sinkron otomatis saat app dibuka: tunggu sampai antrean habis.
+  let autoSynced = false;
+  for (let i = 0; i < 12; i++) {
+    const left = await evaluate(`(() => {
+      const raw = localStorage.getItem('outbox:v1');
+      if (!raw) return 0;
+      try { return (JSON.parse(raw).items || []).length; } catch { return 0; }
+    })()`);
+    if ((left ?? 0) === 0) {
+      autoSynced = true;
+      break;
+    }
+    await sleep(2000);
+  }
+  check('antrean terkirim otomatis saat app dibuka lagi', autoSynced);
 
   const remote = await fetch(`${base}/api/sql`, {
     method: 'POST',
