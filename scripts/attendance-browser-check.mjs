@@ -306,36 +306,12 @@ async function main() {
       cash.rows[0].category === 'patungan',
     JSON.stringify(cash.rows));
 
-  // Uangnya harus TERLIHAT di buku kas, bukan hanya benar di database: baris
-  // kas adalah satu-satunya cara bendahara melihat uang masuk.
-  //
-  // Detail booking dan daftar booking sama-sama menutupi shell, jadi nav
-  // "Lainnya" baru muncul setelah dua kali Kembali. Tanpa ini ketukan mendarat
-  // di halaman yang salah dan pemeriksaan berikutnya membaca layar Booking.
-  for (let i = 0; i < 2; i++) {
-    if (!(await clickText('Kembali', { role: 'button' }))) break;
-    await sleep(1800);
-  }
-  await clickNav('Lainnya'); await sleep(2200);
-  await clickText('Kas klub', { role: null }); await sleep(3500);
-  let kasText = '';
-  for (let i = 0; i < 10; i++) {
-    kasText = await pageText();
-    if (/Patungan lapangan/.test(kasText)) break;
-    await sleep(1000);
-  }
-  check('setoran tampil di buku kas sebagai "Patungan lapangan"',
-    /Patungan lapangan/.test(kasText),
-    kasText.slice(0, 90).replace(/\n/g, ' '));
-
-  // Kembali ke detail kehadiran untuk uji offline.
-  await clickText('Kembali', { role: 'button' }); await sleep(1800);
-  await clickText('Booking lapangan', { role: null }); await sleep(3000);
-  const backRow = (await nodes()).find((n) => `${n.label || ''}${n.text || ''}`.includes(`${tag}_futsal`));
-  if (backRow) { await clickAt(backRow.x, backRow.y); await sleep(3000); }
-  check('kembali ke detail kehadiran', Boolean(backRow));
-
   // --- offline: tandai hadir tanpa jaringan ---
+  // Dilakukan SELAGI masih di halaman detail kehadiran. Dulu urutannya
+  // "pergi ke Kas lalu kembali ke detail" — dan rantai navigasi bolak-balik
+  // itu rapuh: satu ketukan "Kembali" yang meleset membuat pemeriksaan
+  // berikutnya membaca halaman yang salah dan menyimpulkan fitur rusak.
+  // Buku kas diperiksa paling akhir, saat tidak perlu kembali lagi.
   await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
   await sleep(800);
   const probe = await evaluate(
@@ -386,6 +362,28 @@ async function main() {
     await sleep(2000);
   }
   check('antrean offline terkirim', synced);
+
+  // --- buku kas: uangnya harus TERLIHAT, bukan hanya benar di database ---
+  // Baris kas adalah satu-satunya cara bendahara melihat uang masuk. Diperiksa
+  // paling akhir karena halaman turunan menutupi shell: kembali sampai rail
+  // nav terlihat, lalu buka Kas. Tidak ada langkah "kembali" setelah ini.
+  for (let i = 0; i < 4; i++) {
+    const hasNav = (await nodes()).some((n) => (n.label || n.text || '').trim() === 'Lainnya');
+    if (hasNav) break;
+    if (!(await clickText('Kembali', { role: 'button' }))) break;
+    await sleep(1800);
+  }
+  await clickNav('Lainnya'); await sleep(2500);
+  await clickText('Kas klub', { role: null }); await sleep(4000);
+  let kasText = '';
+  for (let i = 0; i < 12; i++) {
+    kasText = await pageText();
+    if (/Patungan lapangan/.test(kasText)) break;
+    await sleep(1000);
+  }
+  check('setoran tampil di buku kas sebagai "Patungan lapangan"',
+    /Patungan lapangan/.test(kasText),
+    kasText.replace(/\n/g, ' ').slice(0, 140));
 
   check('tidak ada error JavaScript', errors.length === 0, errors.slice(0, 2).join(' | '));
 

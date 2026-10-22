@@ -19,7 +19,16 @@ if (!url) {
 const dry = process.argv.includes('--dry');
 const run = await makeRunner(url);
 
-const PATTERNS = ['_bug_%', '_uji_%', '_flow_%', '_money_%', '_e2e_%', '_audit_%'];
+// Awalan tag uji. Selain tag lama, ini mencakup tag yang dipakai skrip uji
+// browser (`_at_` kehadiran, `_md_` riwayat iuran, `_dt_` iuran, `_ft_` fitur,
+// `_ob_` offline, `_mo_` laga offline, …) supaya sisa run yang berhenti di
+// tengah jalan tidak menumpuk di database produksi dan terlihat pengguna
+// sebagai data klub palsu.
+const PATTERNS = [
+  '_bug_%', '_uji_%', '_flow_%', '_money_%', '_e2e_%', '_audit_%',
+  '_at_%', '_md_%', '_dt_%', '_ft_%', '_ob_%', '_mo_%', '_pz_%', '_dv_%',
+  '_rl_%', '_rb_%', '_dg_%', '_dg2_%', '_dg3_%',
+];
 // `_` adalah wildcard satu karakter di LIKE. Tanpa escape, `_uji_%` juga cocok
 // dengan nama asli seperti "Auji" dan menghapus data klub yang bukan data uji.
 const like = (col) =>
@@ -34,6 +43,14 @@ const steps = [
   ['team_players', `DELETE FROM team_players WHERE team_id IN (SELECT id FROM teams WHERE ${like('name')}) OR member_id IN (SELECT id FROM members WHERE ${like('name')})`],
   ['teams', `DELETE FROM teams WHERE ${like('name')}`],
   ['payments', `DELETE FROM payments WHERE member_id IN (SELECT id FROM members WHERE ${like('name')})`],
+  // Patungan: setoran kas menempel di baris kehadiran, jadi dibuang lebih dulu.
+  ['attendance_cash', `DELETE FROM transactions WHERE attendance_id IN (
+      SELECT a.id FROM booking_attendance a
+       WHERE a.booking_id IN (SELECT id FROM bookings WHERE ${like('title')})
+          OR a.member_id IN (SELECT id FROM members WHERE ${like('name')}))`],
+  ['attendance', `DELETE FROM booking_attendance
+     WHERE booking_id IN (SELECT id FROM bookings WHERE ${like('title')})
+        OR member_id IN (SELECT id FROM members WHERE ${like('name')})`],
   ['members', `DELETE FROM members WHERE ${like('name')}`],
   ['bookings', `DELETE FROM bookings WHERE ${like('title')}`],
   ['transactions', `DELETE FROM transactions WHERE ${like('note')}`],

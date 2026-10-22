@@ -239,14 +239,20 @@ async function main() {
   await fillInput(1, adminPass);
   await clickText('Masuk', { role: 'button' });
   await sleep(4000);
-  // Sapaan berisi username sesi: satu-satunya teks di layar yang membuktikan
-  // login benar-benar diterima, dan tetap ada di layout HP maupun desktop.
-  // Jangan memakai tombol yang hanya muncul saat data kosong ("Buat turnamen")
-  // atau bagian yang bisa tergulir keluar layar ("Aksi cepat"): di database
-  // berisi keduanya memang tidak terlihat dan pemeriksaan gagal palsu.
-  const greet = new RegExp(`halo,\\s*${adminUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
-  check('login admin', greet.test(await pageText()),
-    (await pageText()).slice(0, 60).replace(/\n/g, ' '));
+  // Navigasi utama (Beranda/Tanding/Tim/Iuran/Lainnya) hanya ada setelah sesi
+  // aktif: layar masuk tidak punya rail maupun bar bawah. Ini penanda yang
+  // tidak bergantung isi database, tidak seperti "Buat turnamen" (hanya saat
+  // turnamen kosong) atau sapaan (tidak terekspos ke pohon aksesibilitas).
+  let after = [];
+  let loggedIn = false;
+  for (let i = 0; i < 12; i++) {
+    after = await nodes();
+    loggedIn = after.some((n) => (n.label || n.text || '').trim() === 'Beranda');
+    if (loggedIn) break;
+    await sleep(1000);
+  }
+  check('login admin', loggedIn,
+    after.map((n) => (n.label || n.text || '').trim()).filter(Boolean).slice(0, 5).join(' | '));
 
   // ---------- setiap tab utama ----------
   const tabs = [
