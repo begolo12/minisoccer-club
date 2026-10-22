@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'core/db.dart';
@@ -31,17 +32,35 @@ class _AppState extends State<App> {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeController.mode,
-      builder: (context, mode, _) => ShadApp(
-        title: 'Minisoccer Club',
-        debugShowCheckedModeBanner: false,
-        theme: AppThemes.light,
-        darkTheme: AppThemes.dark,
-        themeMode: mode,
-        locale: const Locale('id', 'ID'),
-        supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
-        scrollBehavior: const AppScrollBehavior(),
-        home: ShadSonner(child: Bootstrap(initialTab: widget.initialTab)),
-      ),
+      builder: (context, mode, _) {
+        // Sejak Android 15 (targetSdk 36) aplikasi wajib edge-to-edge: isi
+        // jendela digambar sampai bawah bilah sistem. Ikon jam/baterai harus
+        // diset terang atau gelap mengikuti tema, kalau tidak di tema terang
+        // ikonnya putih di atas latar terang dan tidak terbaca.
+        final dark = mode == ThemeMode.dark ||
+            (mode == ThemeMode.system &&
+                MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: Colors.transparent,
+            // Kontras ikon bilah navigasi tetap terjaga di kedua tema.
+            systemNavigationBarIconBrightness:
+                dark ? Brightness.light : Brightness.dark,
+          ),
+          child: ShadApp(
+            title: 'Minisoccer Club',
+            debugShowCheckedModeBanner: false,
+            theme: AppThemes.light,
+            darkTheme: AppThemes.dark,
+            themeMode: mode,
+            locale: const Locale('id', 'ID'),
+            supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
+            scrollBehavior: const AppScrollBehavior(),
+            home: ShadSonner(child: Bootstrap(initialTab: widget.initialTab)),
+          ),
+        );
+      },
     );
   }
 }

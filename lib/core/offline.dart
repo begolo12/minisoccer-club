@@ -83,7 +83,13 @@ class PendingWrite {
 
 /// Hasil satu kali sinkronisasi.
 class SyncResult {
-  const SyncResult({this.sent = 0, this.remaining = 0, this.failed = 0, this.offline = false});
+  const SyncResult({
+    this.sent = 0,
+    this.remaining = 0,
+    this.failed = 0,
+    this.offline = false,
+    this.authExpired = false,
+  });
 
   final int sent;
   final int remaining;
@@ -91,6 +97,11 @@ class SyncResult {
 
   /// True kalau berhenti karena jaringan masih mati.
   final bool offline;
+
+  /// True kalau berhenti karena sesi habis. Berbeda dari [offline]: pengguna
+  /// harus masuk lagi, bukan menunggu sinyal — dan tanpa membedakannya, tombol
+  /// Sinkron tampak "diam" tanpa penjelasan sampai token kedaluwarsa berhari-hari.
+  final bool authExpired;
 
   bool get ok => remaining == 0 && failed == 0;
 }
@@ -112,18 +123,52 @@ class Outbox {
   static bool _flushing = false;
   static bool _loaded = false;
 
+  /// Kegagalan membaca antrean dari disk, kalau ada. Ditampilkan di
+  /// Pengaturan supaya pengguna tahu datanya tidak hilang diam-diam.
+  static String? loadError;
+
+  /// Rantai penulisan disk. Semua `_persist()` berjalan berurutan lewat sini.
+  ///
+  /// Kenapa perlu: `enqueue()` bisa dipanggil saat `flush()` sedang berjalan
+  /// (pengguna menambah data sementara sinkron berlangsung). Dua penulisan
+  /// bersamaan ke berkas yang sama bisa saling menimpa — antrean yang baru
+  /// masuk hilang, atau berkasnya jadi JSON rusak dan SELURUH antrean tidak
+  /// terbaca. Satu rantai Future membuat penulisan selalu berurutan.
+  static Future<void> _writeChain = Future.value();
+
   static List<PendingWrite> get items => List.unmodifiable(_queue);
   static int get failedCount => _queue.where((w) => w.failed).length;
 
   /// Muat antrean dari disk (sekali per proses).
+  ///
+  /// `_loaded` hanya diset setelah pembacaan **berhasil**. Dulu ia diset di
+  /// baris pertama, sehingga satu kegagalan I/O sesaat (folder belum siap, HP
+  /// penuh) membuat antrean dianggap kosong sepanjang sesi: banner tidak
+  /// muncul, sinkron tidak pernah jalan, dan data hanya tersimpan di disk
+  /// sampai app di-restart.
   static Future<void> load() async {
     if (_loaded) return;
-    _loaded = true;
     final raw = await readOutbox();
-    if (raw == null || raw.isEmpty) return;
+
+    // Tidak ada berkas = memang belum ada antrean. Ini bukan kegagalan.
+    if (raw == null) {
+      _loaded = true;
+      return;
+    }
+    if (raw.trim().isEmpty) {
+      _loaded = true;
+      return;
+    }
+
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
+      if (decoded is! Map) {
+        // Isi tidak dikenali: jangan hapus, tapi jangan klaim termuat penuh
+        // supaya percobaan berikutnya masih bisa membaca ulang.
+        loadError = 'Antrean offline tidak terbaca (format tidak dikenali).';
+        _loaded = true;
+        return;
+      }
       final list = (decoded['items'] as List?) ?? const [];
       for (final e in list) {
         if (e is! Map) continue;
@@ -150,8 +195,14 @@ class Outbox {
         if (w.seq >= _seq) _seq = w.seq + 1;
       }
       pending.value = _queue.length;
-    } catch (_) {
-      // Antrean rusak: lebih baik mulai kosong daripada gagal start.
+      loadError = null;
+      _loaded = true;
+    } catch (e) {
+      // JSON rusak (mis. app dimatikan saat menulis). Antrean tidak bisa
+      // dipulihkan otomatis, tapi pengguna harus tahu — bukan diam-diam
+      // dianggap kosong.
+      loadError = 'Antrean offline rusak dan tidak bisa dibaca.';
+      _loaded = true;
     }
   }
 
@@ -190,6 +241,17 @@ class Outbox {
     return changed ? out : params;
   }
 
+  /// Parameter id negatif yang belum punya padanan id asli.
+  ///
+  /// Return nama kolomnya (untuk pesan), atau null kalau semua id sudah aman.
+  static String? _unresolvedIds(Map<String, Object?> params) {
+    for (final e in params.entries) {
+      final v = e.value;
+      if (v is int && v < 0 && !_idMap.containsKey(v)) return e.key;
+    }
+    return null;
+  }
+
   /// Kirim antrean ke server, berurutan.
   ///
   /// [query] dipakai untuk statement `RETURNING` (butuh id balik), [execute]
@@ -199,13 +261,19 @@ class Outbox {
   /// menghentikan proses tanpa membuang antrean; yang kedua menandai satu
   /// tulis gagal lalu lanjut, supaya satu tulis bermasalah tidak memblokir
   /// seluruh antrean.
+  /// [isAuthExpired] menandai kegagalan karena sesi habis. `Unauthorized`
+  /// didefinisikan di `db.dart` yang mengimpor berkas ini, jadi tidak bisa
+  /// dirujuk langsung di sini tanpa impor melingkar — pemanggil yang
+  /// menentukannya.
   static Future<SyncResult> flush({
     required Future<List<Map<String, dynamic>>> Function(String, Map<String, Object?>)
         query,
     required Future<int> Function(String, Map<String, Object?>) execute,
     bool Function(Object)? isRetryable,
+    bool Function(Object)? isAuthExpired,
   }) async {
     final retryable = isRetryable ?? isNetworkFailure;
+    final authExpiredTest = isAuthExpired ?? (_) => false;
     await load();
     if (_flushing || _queue.isEmpty) {
       return SyncResult(remaining: _queue.length, failed: failedCount);
@@ -214,6 +282,7 @@ class Outbox {
     syncing.value = true;
     var sent = 0;
     var offline = false;
+    var authExpired = false;
     final keep = <PendingWrite>[];
 
     try {
@@ -227,6 +296,21 @@ class Outbox {
         }
         final params = _rewrite(w.params);
         final op = parseWrite(w.sql, params);
+
+        // Id negatif yang belum dipetakan berarti induknya tidak pernah
+        // sampai ke server (insert-nya ditolak). Mengirimnya akan ditolak FK
+        // satu per satu dan menumpuk sebagai kegagalan yang membingungkan.
+        // Lebih jujur: tandai gagal dengan sebab yang bisa dimengerti.
+        final orphan = _unresolvedIds(params);
+        if (orphan != null) {
+          keep.add(w.copyWith(
+            failed: true,
+            lastError: 'Data induknya gagal dikirim, jadi perubahan ini tidak '
+                'bisa diterapkan.',
+          ));
+          continue;
+        }
+
         try {
           if (op != null && op.returnsId && w.tempId != null) {
             final rows = await query(w.sql, params);
@@ -238,7 +322,20 @@ class Outbox {
               if (parsed != null) _idMap[w.tempId!] = parsed;
             }
           } else {
-            await execute(w.sql, params);
+            final affected = await execute(w.sql, params);
+            // UPDATE/DELETE yang mengenai 0 baris berarti barisnya sudah tidak
+            // ada di cloud (mis. dihapus admin lain saat kita offline).
+            // Melaporkannya "terkirim" membuat pengguna mengira perubahannya
+            // tersimpan padahal tidak.
+            final isUpdateOrDelete = op != null && (op.isUpdate || op.isDelete);
+            if (isUpdateOrDelete && affected == 0) {
+              keep.add(w.copyWith(
+                failed: true,
+                lastError: 'Data ini sudah tidak ada di server, jadi '
+                    'perubahannya tidak bisa diterapkan.',
+              ));
+              continue;
+            }
           }
           sent++;
         } catch (e) {
@@ -247,6 +344,7 @@ class Outbox {
             keep.add(w);
             keep.addAll(_queue.skip(i + 1));
             offline = isNetworkFailure(e);
+            authExpired = authExpiredTest(e);
             break;
           }
           // Server menolak tulis ini (data induk hilang, nilai tidak sah).
@@ -272,6 +370,7 @@ class Outbox {
       remaining: _queue.length,
       failed: failedCount,
       offline: offline,
+      authExpired: authExpired,
     );
   }
 
@@ -292,13 +391,25 @@ class Outbox {
     await _persist();
   }
 
-  static Future<void> _persist() async {
-    await writeOutbox(jsonEncode({
-      'items': _queue.map((w) => w.toJson()).toList(),
-      'next_temp_id': _nextTempId,
-      'seq': _seq,
-      'id_map': _idMap.map((k, v) => MapEntry('$k', v)),
-    }));
+  /// Tulis antrean ke disk, berurutan lewat [_writeChain].
+  ///
+  /// Snapshot diambil **di dalam** rantai, bukan saat dipanggil: kalau diambil
+  /// lebih awal, penulisan yang mengantre bisa menyimpan keadaan yang sudah
+  /// basi dan menghapus tulis yang baru masuk.
+  static Future<void> _persist() {
+    final next = _writeChain.then((_) async {
+      await writeOutbox(jsonEncode({
+        'items': _queue.map((w) => w.toJson()).toList(),
+        'next_temp_id': _nextTempId,
+        'seq': _seq,
+        'id_map': _idMap.map((k, v) => MapEntry('$k', v)),
+      }));
+    });
+    // Rantai tidak boleh putus karena satu kegagalan: kegagalan tulis sudah
+    // ditangani `writeOutbox` (tidak melempar), dan rantai yang putus akan
+    // membuat semua penulisan berikutnya tidak pernah jalan.
+    _writeChain = next.catchError((_) {});
+    return next;
   }
 
   /// Untuk tes: kosongkan antrean di memori tanpa menyentuh disk.
@@ -310,6 +421,22 @@ class Outbox {
     _seq = 0;
     _flushing = false;
     _loaded = true;
+    pending.value = 0;
+    syncing.value = false;
+  }
+
+  /// Untuk tes: lupakan isi memori DAN paksa [load] membaca ulang dari disk.
+  /// Ini mensimulasikan aplikasi ditutup lalu dibuka lagi — jalur yang dipakai
+  /// pengguna saat HP mati atau app di-swipe, dan satu-satunya cara menguji
+  /// bahwa antrean benar-benar tersimpan di berkas.
+  @visibleForTesting
+  static void reloadFromDiskForTest() {
+    _queue.clear();
+    _idMap.clear();
+    _nextTempId = -1;
+    _seq = 0;
+    _flushing = false;
+    _loaded = false;
     pending.value = 0;
     syncing.value = false;
   }

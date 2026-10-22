@@ -343,6 +343,21 @@ bool _queryTouches(String sql, String table) {
   return re.hasMatch(sql);
 }
 
+/// Query yang hasilnya BUKAN daftar baris tabel, melainkan ringkasan
+/// (count/sum/avg, atau satu baris per grup).
+///
+/// Baris tabel tidak boleh ditambahkan ke hasil seperti ini: `count(*)` akan
+/// tetap 1 baris, tapi baris anggota baru yang ikut disisipkan bisa muncul
+/// sebagai "pencetak gol" palsu di `ScorerRow.top` atau mengacaukan
+/// `Match.stats`. Untuk query begini cache dibiarkan apa adanya — angkanya
+/// baru benar setelah sinkron, dan itu lebih baik daripada angka karangan.
+bool _queryIsAggregate(String sql) {
+  if (RegExp(r'\bGROUP\s+BY\b', caseSensitive: false).hasMatch(sql)) return true;
+  return RegExp(r'\b(?:count|sum|avg|min|max|array_agg|string_agg)\s*\(',
+          caseSensitive: false)
+      .hasMatch(sql);
+}
+
 /// Nilai default kolom yang diisi database saat INSERT tidak menyebutkannya.
 ///
 /// Baris hasil tambalan harus berbentuk sama dengan baris dari server: kalau
@@ -419,6 +434,8 @@ List<Map<String, dynamic>> applyOp(
 }) {
   if (!op.patchable) return rows;
   if (querySql.isNotEmpty && !_queryTouches(querySql, op.table)) return rows;
+  // Hasil ringkasan (count/sum/GROUP BY) tidak bisa ditambal per baris.
+  if (querySql.isNotEmpty && _queryIsAggregate(querySql)) return rows;
 
   if (op.isInsert) {
     // Upsert: kalau kunci konflik sudah ada, perbarui baris itu.

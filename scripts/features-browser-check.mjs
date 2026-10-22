@@ -11,6 +11,12 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
 const adminUser = process.env.ADMIN_USER || 'admin';
 const adminPass = process.env.ADMIN_PASS || 'admin123';
+// Ukuran layar bisa diatur: `VIEWPORT=mobile` menguji layout HP (penting untuk
+// APK — overflow layout hanya muncul di layar sempit).
+const viewport =
+  process.env.VIEWPORT === 'mobile'
+    ? { width: 390, height: 844, mobile: true, label: 'mobile 390x844' }
+    : { width: 1440, height: 900, mobile: false, label: 'desktop 1440x900' };
 const port = 9400 + Math.floor(Math.random() * 200);
 const tag = `_ft_${Date.now().toString(36)}`;
 
@@ -84,6 +90,23 @@ async function clickText(needle, { role = 'button' } = {}) {
   return true;
 }
 
+/**
+ * Klik item navigasi utama.
+ *
+ * Di desktop navigasi berupa rail kiri dengan `role="button"`, di HP berupa bar
+ * bawah dengan `role="tab"`. Keduanya harus dikenali, kalau tidak tes mobile
+ * akan "gagal" hanya karena perbedaan peran aksesibilitas.
+ */
+async function clickNav(label) {
+  const list = await nodes();
+  const hit =
+    list.find((n) => n.role === 'tab' && (n.label || n.text || '').includes(label)) ??
+    list.find((n) => n.role === 'button' && (n.label || n.text || '').includes(label));
+  if (!hit) return false;
+  await clickAt(hit.x, hit.y);
+  return true;
+}
+
 async function textInputs() {
   return (
     (await evaluate(`(() => {
@@ -121,10 +144,18 @@ async function pageText() {
  *
  * Halaman memakai dua bentuk: tombol ikon "+" di kanan atas (Anggota, Booking),
  * atau tombol berteks di header/empty state (Pengumuman: "Buat pengumuman").
- * Keduanya dicoba supaya tes tidak rapuh terhadap perbedaan ini.
+ * Posisi tombol ikon berbeda antara rail kiri (desktop) dan bar bawah (HP),
+ * jadi yang dicari adalah tombol tanpa teks di area atas layar.
  */
 async function openAddForm(textFallback) {
-  const icon = (await nodes()).find((n) => n.role === 'button' && n.y < 130 && n.x > 1200);
+  const icon = (await nodes()).find(
+    (n) =>
+      n.role === 'button' &&
+      n.y < 150 &&
+      n.x > viewport.width * 0.7 &&
+      !n.label &&
+      !(n.text || '').trim(),
+  );
   if (icon) {
     await clickAt(icon.x, icon.y);
     return true;
@@ -183,11 +214,12 @@ async function main() {
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Emulation.setDeviceMetricsOverride', {
-    width: 1440,
-    height: 900,
-    deviceScaleFactor: 1,
-    mobile: false,
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: viewport.mobile ? 2 : 1,
+    mobile: viewport.mobile,
   });
+  console.log(`viewport: ${viewport.label}`);
   await send('Page.navigate', { url: base });
   await sleep(9000);
   await evaluate(`document.querySelector('flt-semantics-placeholder')?.click()`);
@@ -210,7 +242,7 @@ async function main() {
     ['Iuran', ['Iuran']],
   ];
   for (const [tab, expects] of tabs) {
-    await clickText(tab);
+    await clickNav(tab);
     await sleep(2600);
     const text = await pageText();
     check(`tab ${tab} terbuka tanpa error`, !looksBroken(text), text.slice(0, 60).replace(/\n/g, ' '));
@@ -231,7 +263,7 @@ async function main() {
     'Pengaturan',
   ];
   for (const page of pages) {
-    await clickText('Lainnya');
+    await clickNav('Lainnya');
     await sleep(1600);
     const opened = await clickText(page);
     await sleep(2400);
@@ -240,13 +272,13 @@ async function main() {
         text.slice(0, 60).replace(/\n/g, ' '));
     // Kembali ke menu Lainnya untuk halaman berikutnya.
     if (!(await clickText('Kembali'))) {
-      await clickText('Lainnya');
+      await clickNav('Lainnya');
     }
     await sleep(1200);
   }
 
   // ---------- tulis nyata: pengumuman ----------
-  await clickText('Lainnya');
+  await clickNav('Lainnya');
   await sleep(1600);
   await clickText('Pengumuman');
   await sleep(2200);
@@ -303,8 +335,17 @@ async function main() {
   );
   check('tidak ada error JavaScript', realErrors.length === 0, realErrors.slice(0, 2).join(' | '));
 
+  // Overflow layout hanya muncul di layar sempit — inilah yang akan dilihat
+  // pengguna APK. Di desktop, tes ini tidak akan menangkap apa pun.
+  const overflows = realErrors.filter((e) => /overflowed|RenderFlex|overflow/i.test(e));
+  check(
+    `tidak ada layout meluber (${viewport.label})`,
+    overflows.length === 0,
+    overflows.slice(0, 2).join(' | '),
+  );
+
   const bad = results.filter((r) => !r.ok).length;
-  console.log(`\nTarget: ${base}`);
+  console.log(`\nTarget: ${base}  •  ${viewport.label}`);
   console.log(`${results.length - bad}/${results.length} lulus.`);
   process.exit(bad ? 1 : 0);
 }

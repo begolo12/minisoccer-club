@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/models.dart';
 import 'fmt.dart';
+import 'money_input.dart';
 import 'widgets.dart';
 
 /// Kumpulan form (bottom-sheet style dialog) yang dipakai lintas halaman.
@@ -68,7 +69,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadInput(controller: name, placeholder: const Text('Nama lengkap'), textCapitalization: TextCapitalization.words),
+              ShadInput(controller: name, placeholder: const Text('Nama lengkap'), autofocus: true, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next),
               const SizedBox(height: 10),
               ShadInput(controller: phone, placeholder: const Text('No. HP (opsional)'), keyboardType: TextInputType.phone),
               const SizedBox(height: 10),
@@ -198,7 +199,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
               : 'Pilih dua tim klub yang akan bertemu.'),
           actions: [
             ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
-            ShadButton(onPressed: saving ? null : save, child: const Text('Simpan')),
+            SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -232,7 +233,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
                 ],
               ),
               const SizedBox(height: 10),
-              ShadInput(controller: venue, placeholder: const Text('Lokasi (opsional)')),
+              ShadInput(controller: venue, placeholder: const Text('Lokasi (opsional)'), textInputAction: TextInputAction.done),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -473,8 +474,8 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
           // menyala setelah cek duplikat, jadi dua ketukan cepat pada Simpan
           // menjalankan dua alur simpan dan bisa menghasilkan iuran ganda.
           setLocal(() => saving = true);
-          final amt = parseMoney(amount.text);
-          if (amt == null || amt <= 0) {
+          final amt = parseFormattedMoney(amount.text);
+          if (amt <= 0) {
             setLocal(() => saving = false);
             toast(ctx, 'Nominal harus diisi angka lebih dari 0');
             return;
@@ -506,7 +507,7 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
           description: Text('Periode ${periodLabel(per)}'),
           actions: [
             ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
-            ShadButton(onPressed: saving ? null : save, child: const Text('Simpan')),
+            SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -519,7 +520,11 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
                 onChanged: (v) => setLocal(() => selected = v ?? selected),
               ),
               const SizedBox(height: 10),
-              ShadInput(controller: amount, placeholder: const Text('Nominal, misal 100000'), keyboardType: TextInputType.number),
+              MoneyField(
+                controller: amount,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
+              ),
               const SizedBox(height: 10),
               ShadSelect<String>(
                 placeholder: const Text('Periode'),
@@ -529,7 +534,7 @@ Future<bool> showPaymentForm(BuildContext context, {String? period, int? memberI
                 onChanged: (v) => setLocal(() => per = v ?? per),
               ),
               const SizedBox(height: 10),
-              ShadInput(controller: note, placeholder: const Text('Catatan (opsional)')),
+              ShadInput(controller: note, placeholder: const Text('Catatan (opsional)'), textInputAction: TextInputAction.done),
             ],
           ),
         );
@@ -564,8 +569,8 @@ Future<bool> showTransactionForm(
           // `saving` diset lebih dulu supaya dua ketukan cepat tidak
           // menyimpan dua baris kas.
           setLocal(() => saving = true);
-          final amt = parseMoney(amount.text);
-          if (amt == null || amt <= 0) {
+          final amt = parseFormattedMoney(amount.text);
+          if (amt <= 0) {
             setLocal(() => saving = false);
             toast(ctx, 'Nominal harus diisi angka lebih dari 0');
             return;
@@ -606,10 +611,7 @@ Future<bool> showTransactionForm(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
               child: const Text('Batal'),
             ),
-            ShadButton(
-              onPressed: saving ? null : save,
-              child: const Text('Simpan'),
-            ),
+            SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -640,10 +642,10 @@ Future<bool> showTransactionForm(
                 onChanged: (v) => setLocal(() => category = v ?? category),
               ),
               const SizedBox(height: 10),
-              ShadInput(
+              MoneyField(
                 controller: amount,
-                placeholder: const Text('Nominal, misal 350000'),
-                keyboardType: TextInputType.number,
+                autofocus: true,
+                textInputAction: TextInputAction.done,
               ),
               const SizedBox(height: 10),
               Row(
@@ -715,16 +717,48 @@ Future<bool> showBookingForm(BuildContext context) async {
           // tidak terbaca atau negatif harus ditolak. Sebelumnya nilai negatif
           // tersimpan apa adanya dan input tak terbaca jadi 0 diam-diam.
           final raw = cost.text.trim();
-          final parsed = raw.isEmpty ? 0.0 : parseMoney(raw);
-          if (parsed == null || parsed < 0) {
+          final parsed = parseFormattedMoney(raw);
+          if (parsed < 0) {
             setLocal(() => saving = false);
             toast(ctx, 'Biaya harus angka 0 atau lebih');
             return;
           }
+          final start = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+          // Form ini menjanjikan "biar nggak bentrok", jadi bentroknya harus
+          // diperiksa. Tanpa ini dua sewa di jam yang sama tetap tersimpan —
+          // justru masalah yang ingin dicegah.
+          try {
+            final clashes = await Booking.overlapping(
+              startsAt: start,
+              durationMin: duration,
+            );
+            if (clashes.isNotEmpty) {
+              if (!ctx.mounted) return;
+              final first = clashes.first;
+              final firstEnd = first.startsAt.add(Duration(minutes: first.durationMin));
+              final ok = await confirm(
+                ctx,
+                'Jadwal bertabrakan',
+                'Sudah ada "${first.title}" pada ${fmtTime(first.startsAt)}–'
+                    '${fmtTime(firstEnd)}. Tetap simpan?',
+                confirmLabel: 'Tetap simpan',
+              );
+              if (!ok) {
+                if (ctx.mounted) setLocal(() => saving = false);
+                return;
+              }
+            }
+          } catch (_) {
+            // Gagal memeriksa (mis. offline) tidak boleh memblokir pencatatan:
+            // jadwal yang tidak tercatat lebih berbahaya daripada jadwal yang
+            // mungkin bertabrakan.
+          }
+
           try {
             await Booking.insert(
               title: title.text.trim().isEmpty ? 'Sewa lapangan' : title.text.trim(),
-              startsAt: DateTime(date.year, date.month, date.day, time.hour, time.minute),
+              startsAt: start,
               durationMin: duration,
               cost: parsed,
               postToCash: postToCash,
@@ -742,12 +776,12 @@ Future<bool> showBookingForm(BuildContext context) async {
           description: const Text('Catat jadwal sewa biar nggak bentrok.'),
           actions: [
             ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
-            ShadButton(onPressed: saving ? null : save, child: const Text('Simpan')),
+            SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadInput(controller: title, placeholder: const Text('Judul, misal Sewa lapangan A')),
+              ShadInput(controller: title, placeholder: const Text('Judul, misal Sewa lapangan A'), autofocus: true, textInputAction: TextInputAction.next),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -786,7 +820,10 @@ Future<bool> showBookingForm(BuildContext context) async {
                 onChanged: (v) => setLocal(() => duration = v ?? duration),
               ),
               const SizedBox(height: 10),
-              ShadInput(controller: cost, placeholder: const Text('Biaya (opsional)'), keyboardType: TextInputType.number),
+              MoneyField(
+                controller: cost,
+                placeholder: const Text('Biaya (opsional)'),
+              ),
               const SizedBox(height: 12),
               ShadCheckbox(
                 value: postToCash,
@@ -846,15 +883,14 @@ Future<bool> showAnnouncementForm(
               : 'Info singkat untuk semua anggota.'),
           actions: [
             ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
-            ShadButton(
-              onPressed: saving ? null : save,
-              child: Text(editing ? 'Simpan' : 'Kirim'),
-            ),
+            // Label seragam "Simpan": "Kirim" menyiratkan data dikirim ke
+            // orang lain, padahal hanya disimpan di klub.
+            SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadInput(controller: title, placeholder: const Text('Judul'), textCapitalization: TextCapitalization.sentences),
+              ShadInput(controller: title, placeholder: const Text('Judul'), autofocus: true, textCapitalization: TextCapitalization.sentences, textInputAction: TextInputAction.next),
               const SizedBox(height: 10),
               ShadInput(controller: body, placeholder: const Text('Isi pengumuman'), maxLines: 4, minLines: 4),
             ],

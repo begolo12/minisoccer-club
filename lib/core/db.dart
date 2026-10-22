@@ -205,15 +205,29 @@ class Db {
       // tinggal masuk lagi, lalu antrean dikirim. Hanya penolakan server
       // yang menandai tulis gagal permanen.
       isRetryable: (e) => e is Unauthorized || net.isNetworkFailure(e),
+      isAuthExpired: (e) => e is Unauthorized,
     );
 
     if (result.sent > 0) {
       _markOnline();
-      // Cache sekarang tidak lagi menggambarkan server; buang supaya
-      // pembacaan berikutnya mengambil keadaan sebenarnya. Halaman yang
-      // terbuka akan memuat ulang lewat `writes`.
-      await activeCacheStore.clear();
+      // Cache hanya dibuang kalau antrean benar-benar habis.
+      //
+      // Dulu cache selalu dibuang asal ada yang terkirim. Akibatnya: kalau
+      // masih ada tulisan yang gagal atau belum terkirim, baris hasil
+      // tambalannya ikut terhapus — data yang baru diisi lenyap dari layar dan
+      // hanya tersisa sebagai entri gagal. Dan kalau koneksi putus lagi setelah
+      // sinkron, tidak ada cache sama sekali sehingga semua halaman jadi layar
+      // error, padahal sebelumnya bisa dibaca.
+      if (result.remaining == 0 && result.failed == 0) {
+        await activeCacheStore.clear();
+      }
       writes.value++;
+    } else if (result.authExpired) {
+      // Sesi habis (token berlaku 12 jam, jadi antrean sore hari bisa kena
+      // besok pagi). Beri tahu lewat jalur yang sama dengan permintaan lain
+      // yang ditolak server: kembali ke layar masuk. Antrean tetap utuh dan
+      // dikirim lagi setelah pengguna masuk.
+      await _expire();
     } else if (result.offline) {
       _markOffline();
     }

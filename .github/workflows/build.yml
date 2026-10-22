@@ -28,11 +28,46 @@ jobs:
         with:
           node-version: "22"
 
+      # Kunci rilis dipasang dari secrets. Tanpa langkah ini, build rilis
+      # memakai kunci debug yang dibuat ulang di setiap runner — APK-nya
+      # bersertifikat berbeda dari rilis sebelumnya sehingga update ditolak
+      # Android ("Aplikasi tidak terpasang") dan pengguna harus uninstall,
+      # yang ikut menghapus data offline yang belum tersinkron.
+      - name: Siapkan kunci rilis
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 belum diset — APK rilis akan ditandatangani kunci debug dan tidak bisa memperbarui aplikasi yang sudah terpasang."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release-keystore.p12
+          cat > android/key.properties <<EOF
+          storeFile=release-keystore.p12
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          # Pastikan berkasnya ada dan tidak kosong sebelum build.
+          test -s android/app/release-keystore.p12
+          test -s android/key.properties
+
       - run: node --test "api/*.test.mjs"
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
       - run: flutter build apk --release --dart-define=API_BASE=https://minisoccer-club.vercel.app
+
+      # Bukti sertifikat tertanam di log build: kalau kuncinya berubah,
+      # langsung terlihat di sini, bukan setelah pengguna gagal update.
+      - name: Verifikasi sertifikat APK
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs build/app/outputs/flutter-apk/app-release.apk \
+            | grep -E "Signer #1 certificate (DN|SHA-256 digest)"
 
       - name: Upload artifact (setiap push)
         uses: actions/upload-artifact@v4

@@ -1,7 +1,7 @@
 name: minisoccer_club
 description: "Aplikasi manajemen klub mini soccer."
 publish_to: 'none'
-version: 1.7.4+21
+version: 1.8.0+23
 
 environment:
   sdk: ^3.13.5
@@ -23,6 +23,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Untuk menguji jalur berkas Android (cache_io / outbox_store_io) di mesin
+  # pengembang: `getApplicationSupportDirectory` dipalsukan ke direktori
+  # sementara, sehingga kode yang dipakai di HP benar-benar dijalankan.
+  path_provider_platform_interface: ^2.1.3
+  plugin_platform_interface: ^2.1.8
 
 flutter:
   uses-material-design: true

@@ -214,7 +214,7 @@ class Match {
     return rows.map(Match.fromMap).toList();
   }
 
-  static Future<void> insert({
+  static Future<int?> insert({
     required int homeTeamId,
     required int awayTeamId,
     required DateTime playedAt,
@@ -223,9 +223,9 @@ class Match {
     if (homeTeamId == awayTeamId) {
       throw Exception('Tim tidak boleh bertemu dirinya sendiri');
     }
-    return Db.execute(
+    return Db.insertId(
       '''INSERT INTO matches (home_team_id, away_team_id, played_at, venue)
-         VALUES (@h, @a, @t, @v)''',
+         VALUES (@h, @a, @t, @v) RETURNING id''',
       params: {'h': homeTeamId, 'a': awayTeamId, 't': playedAt, 'v': venue},
     );
   }
@@ -398,15 +398,18 @@ class MatchEvent {
     return rows.map(MatchEvent.fromMap).toList();
   }
 
-  static Future<void> insert({
+  /// Catat kejadian laga. Id dikembalikan supaya baris baru bisa langsung
+  /// dihapus/dikoreksi — dan supaya mode offline bisa memetakan id sementara
+  /// ke id asli saat sinkron.
+  static Future<int?> insert({
     required int matchId,
     int? memberId,
     int? minute,
     required String type,
   }) =>
-      Db.execute(
+      Db.insertId(
         '''INSERT INTO match_events (match_id, member_id, minute, type)
-           VALUES (@mid, @mem, @min, @type)''',
+           VALUES (@mid, @mem, @min, @type) RETURNING id''',
         params: {'mid': matchId, 'mem': memberId, 'min': minute, 'type': type},
       );
 
@@ -477,9 +480,9 @@ class Payment {
       throw Exception('Iuran periode ini sudah dicatat. Hapus catatan lama dulu '
           'kalau nominalnya salah.');
     }
-    await Db.execute(
+    await Db.insertId(
       '''INSERT INTO payments (member_id, amount, period, note)
-         VALUES (@mid, @amt, @period, @note)''',
+         VALUES (@mid, @amt, @period, @note) RETURNING id''',
       params: {'mid': memberId, 'amt': amount, 'period': period, 'note': note},
     );
   }
@@ -575,16 +578,16 @@ class Transaction {
     return rows.map(Transaction.fromMap).toList();
   }
 
-  static Future<void> insert({
+  static Future<int?> insert({
     required String kind,
     required String category,
     required double amount,
     required DateTime occurredAt,
     String? note,
   }) =>
-      Db.execute(
+      Db.insertId(
         '''INSERT INTO transactions (kind, category, amount, occurred_at, note)
-           VALUES (@kind, @category, @amount, @date, @note)''',
+           VALUES (@kind, @category, @amount, @date, @note) RETURNING id''',
         params: {
           'kind': kind,
           'category': category,
@@ -760,6 +763,37 @@ class Booking {
     return rows.map(Booking.fromMap).toList();
   }
 
+  /// Booking lain yang waktunya beririsan dengan rentang ini.
+  ///
+  /// Form booking menjanjikan "biar nggak bentrok", jadi janji itu harus
+  /// benar-benar diperiksa — dua sewa lapangan di jam yang sama adalah justru
+  /// masalah yang ingin dicegah. Rentang dihitung setengah terbuka
+  /// `[mulai, selesai)`: sewa 20.00–21.30 dan 21.30–23.00 tidak dianggap
+  /// bentrok.
+  ///
+  /// Hanya booking berstatus `booked` yang dihitung; yang dibatalkan atau
+  /// selesai tidak menghalangi jadwal baru.
+  static Future<List<Booking>> overlapping({
+    required DateTime startsAt,
+    required int durationMin,
+    int? excludeId,
+  }) async {
+    final rows = await Db.query(
+      '''SELECT * FROM bookings
+         WHERE status = 'booked'
+           AND starts_at < @end
+           AND starts_at + (duration_min * interval '1 minute') > @start
+           AND (@exclude::int IS NULL OR id <> @exclude)
+         ORDER BY starts_at ASC''',
+      params: {
+        'start': startsAt,
+        'end': startsAt.add(Duration(minutes: durationMin)),
+        'exclude': excludeId,
+      },
+    );
+    return rows.map(Booking.fromMap).toList();
+  }
+
   /// Simpan booking. [postToCash] mencatat biayanya sebagai pengeluaran
   /// "Sewa lapangan" di kas dengan `booking_id` — satu pengeluaran, satu
   /// catatan. Tanpa tautan ini "Total sewa" di halaman Booking dan saldo di
@@ -842,7 +876,7 @@ class Announcement {
   }
 
   static Future<void> insert({required String title, required String body}) => Db.execute(
-        'INSERT INTO announcements (title, body) VALUES (@t, @b)',
+        'INSERT INTO announcements (title, body) VALUES (@t, @b) RETURNING id',
         params: {'t': title, 'b': body},
       );
 

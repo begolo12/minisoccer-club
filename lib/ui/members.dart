@@ -60,7 +60,10 @@ class _MembersPageState extends State<MembersPage> {
                   child: ShadInput(
                     controller: _search,
                     placeholder: const Text('Cari nama…'),
-                    onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                    // `trim` penting: spasi di awal/akhir (sering ikut terketik
+                    // atau ter-tempel) membuat pencarian gagal padahal datanya
+                    // ada, dan pengguna melihat "Tidak ditemukan".
+                    onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
                     leading: const Padding(
                       padding: EdgeInsets.only(right: 8),
                       child: Icon(Icons.search, size: 16),

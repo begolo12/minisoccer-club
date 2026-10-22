@@ -4,10 +4,23 @@
          Android tetap menampilkan layar "Pasang"; izin ini hanya membolehkan
          intent-nya dibuka. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- allowBackup="false": data kanonik ada di server. Auto Backup akan
+         mengunggah cache keuangan (query_cache/) dan antrean tulis
+         (outbox.json) ke Google Drive, lalu memulihkannya di HP baru —
+         antrean lama bisa terkirim ulang sebagai duplikat, sementara token
+         tidak ikut ter-backup (kunci Keystore tidak di-backup) sehingga
+         pengguna dipaksa login ulang.
+
+         enableOnBackInvokedCallback="true": predictive back (Android 13+),
+         gestur Back menampilkan pratinjau halaman sebelumnya seperti aplikasi
+         native. Dipadukan dengan PopScope di HomeShell. -->
     <application
         android:label="Minisoccer Club"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

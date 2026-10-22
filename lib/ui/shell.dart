@@ -235,12 +235,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
 
-    return Scaffold(
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [strip, Expanded(child: body)],
-      ),
-      bottomNavigationBar: DecoratedBox(
+    return PopScope(
+      // Kebiasaan Android: tombol Back dari tab mana pun kembali ke Beranda
+      // dulu, baru keluar. Tanpa ini, menekan Back di tab "Iuran" langsung
+      // menutup aplikasi — terasa seperti app yang tidak native.
+      canPop: _index == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        _select(0);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          // Edge-to-edge dipaksa sejak Android 15 (targetSdk 36): tanpa
+          // SafeArea, bilah status offline dan tombol "Masuk" tergambar di
+          // bawah jam/notch sehingga sulit dibaca dan ditekan.
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [strip, Expanded(child: body)],
+          ),
+        ),
+        bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
           border: Border(top: BorderSide(color: t.colorScheme.border)),
         ),
@@ -280,6 +295,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 NavigationDestination(icon: Icon(d.$1), selectedIcon: Icon(d.$2), label: d.$3),
             ],
           ),
+        ),
         ),
       ),
     );

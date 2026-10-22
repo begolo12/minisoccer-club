@@ -51,6 +51,10 @@ node_modules/
 .env.local
 .env.production
 .env.development
+# Semua varian env lain (.env.staging, .env.test, .env.preview, …) juga
+# rahasia. `.env.example` tetap terlacak lewat pengecualian di bawah.
+.env.*
+!.env.example
 
 # ---------- Kredensial ----------
 # Jangan pernah commit nilai rahasia. `.env.example` sengaja dikecualikan di

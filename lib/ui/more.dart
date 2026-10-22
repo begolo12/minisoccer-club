@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/db.dart';
 import '../core/soft.dart';
 import '../core/update.dart';
 import '../core/version.dart';
@@ -108,10 +109,32 @@ class MorePage extends StatefulWidget {
 class _MorePageState extends State<MorePage> {
   late Future<_Counts> _future;
 
+  /// Nilai `Db.writes` saat angka terakhir dimuat.
+  int _seenWrites = Db.writes.value;
+
   @override
   void initState() {
     super.initState();
     _future = _Counts.load();
+    Db.writes.addListener(_onWrites);
+  }
+
+  @override
+  void dispose() {
+    Db.writes.removeListener(_onWrites);
+    super.dispose();
+  }
+
+  /// Angka di halaman ini harus ikut berubah setelah ada tulis.
+  ///
+  /// Dulu `_Counts` hanya dimuat di `initState`, jadi setelah menambah anggota
+  /// lewat Lainnya → Anggota (halaman yang di-push, bukan tab lain), subjudul
+  /// tetap menampilkan angka lama — "1 aktif" padahal daftarnya sudah kosong.
+  /// Pengguna melihat dua halaman yang saling bertentangan.
+  void _onWrites() {
+    if (!mounted || Db.writes.value == _seenWrites) return;
+    _seenWrites = Db.writes.value;
+    _reload();
   }
 
   Future<void> _reload() async {

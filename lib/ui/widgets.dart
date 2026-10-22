@@ -888,11 +888,18 @@ class PeriodChips extends StatelessWidget {
   }
 }
 
-/// Enam periode terakhir (bulan ini dan sebelumnya), terbaru dulu.
-List<String> recentPeriods({int count = 6}) => [
-      for (var i = 0; i < count; i++)
+/// Periode iuran untuk pemilih: bulan depan, bulan ini, lalu beberapa bulan ke
+/// belakang — terbaru dulu.
+///
+/// Bulan depan ikut disertakan karena iuran sering dibayar di muka; tanpa itu
+/// pembayaran bulan depan tidak bisa dicatat dan pengguna mencatatnya di bulan
+/// yang salah. [monthsBack] menentukan seberapa jauh tunggakan bisa dicatat.
+List<String> recentPeriods({int monthsBack = 12}) => [
+      // Bulan depan (i = -1) → bulan ini (0) → bulan-bulan sebelumnya.
+      for (var i = -1; i < monthsBack; i++)
         () {
-          final d = DateTime(DateTime.now().year, DateTime.now().month - i);
+          final now = DateTime.now();
+          final d = DateTime(now.year, now.month - i);
           return '${d.year}-${d.month.toString().padLeft(2, '0')}';
         }(),
     ];
@@ -1120,7 +1127,11 @@ class _OfflineStripState extends State<OfflineStrip> {
     try {
       final r = await Db.sync();
       if (!mounted) return;
-      if (r.sent > 0) {
+      if (r.authExpired) {
+        // Tanpa pesan ini tombol Sinkron tampak "diam": pengguna menekannya,
+        // tidak terjadi apa-apa, dan tidak tahu harus masuk lagi.
+        toast(context, 'Masuk lagi untuk mengirim ${r.remaining} perubahan');
+      } else if (r.sent > 0) {
         toast(context, '${r.sent} perubahan terkirim');
       } else if (r.offline) {
         toast(context, 'Masih offline — coba lagi nanti');

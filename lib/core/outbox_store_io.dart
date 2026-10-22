@@ -31,13 +31,14 @@ Future<String?> readOutbox() async {
 Future<void> writeOutbox(String json) async {
   try {
     final f = await _outboxFile();
-    // Tulis ke berkas sementara lalu rename: kalau app mati di tengah tulis,
-    // antrean lama tetap utuh (bukan berkas setengah jadi yang tidak terbaca).
-    final tmp = File('${f.path}.tmp');
+    // Nama sementara unik per penulisan, lalu rename atomik. Nama tetap
+    // (`outbox.json.tmp`) akan saling menimpa kalau dua penulisan terjadi
+    // berdekatan; rename tetap atomik di sistem berkas yang sama.
+    final tmp = File('${f.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
     await tmp.writeAsString(json, flush: true);
     await tmp.rename(f.path);
   } catch (_) {
     // Gagal menyimpan antrean = kehilangan data offline. Tidak bisa
-    // dilempar ke UI di sini; pemanggil mencatat lewat `Outbox.lastError`.
+    // dilempar ke UI di sini; pemanggil mencatat lewat `Outbox.loadError`.
   }
 }

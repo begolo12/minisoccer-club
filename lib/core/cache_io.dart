@@ -23,18 +23,27 @@ class FileCacheStore implements CacheStore {
 
   /// Simpan satu entri. `sql` dan `params` ikut ditulis: penambal offline butuh
   /// tahu query asalnya untuk menentukan baris mana yang harus diubah.
+  ///
+  /// Ditulis ke berkas sementara lalu di-rename: kalau app dimatikan di tengah
+  /// penulisan, berkas lama (atau tidak ada berkas) tetap utuh. Tanpa ini,
+  /// JSON bisa terpotong dan entri itu dianggap tidak ada — padahal itu
+  /// satu-satunya salinan untuk dibaca offline.
   @override
   Future<void> writeEntry(CacheEntry entry) async {
     try {
       final dir = await _cacheDir();
-      await File('${dir.path}/${entry.key}.json').writeAsString(
+      final target = File('${dir.path}/${entry.key}.json');
+      final tmp = File('${target.path}.tmp');
+      await tmp.writeAsString(
         jsonEncode({
           'sql': entry.sql,
           'params': entry.params,
           'saved_at': entry.savedAt.toIso8601String(),
           'rows': entry.rows,
         }),
+        flush: true,
       );
+      await tmp.rename(target.path);
     } catch (_) {
       // Cache adalah optimasi: gagal menulis tidak boleh menggagalkan query.
     }
@@ -49,6 +58,9 @@ class FileCacheStore implements CacheStore {
       final dir = await _cacheDir();
       await for (final e in dir.list()) {
         if (e is! File) continue;
+        // Berkas sementara (`.tmp`) adalah penulisan yang belum selesai;
+        // jangan dibaca sebagai entri sah.
+        if (e.path.endsWith('.tmp')) continue;
         try {
           final raw = jsonDecode(await e.readAsString());
           if (raw is! Map) continue;
@@ -56,7 +68,7 @@ class FileCacheStore implements CacheStore {
           if (sql is! String || sql.isEmpty) continue;
           final rows = (raw['rows'] as List?) ?? const [];
           out.add(CacheEntry(
-            key: e.uri.pathSegments.last.replaceAll('.json', ''),
+            key: e.uri.pathSegments.last.replaceAll(RegExp(r'\.json$'), ''),
             sql: sql,
             params: (raw['params'] as Map?)?.cast<String, Object?>() ?? const {},
             rows: rows.map((r) => Map<String, dynamic>.from(r as Map)).toList(),

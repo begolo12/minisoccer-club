@@ -127,10 +127,36 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 91 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi |
+| `flutter test` | 167 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
+| `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
-| `npm run check:features` | 23 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan di database |
+| `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
+| `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
+
+`test/android_offline_io_test.dart` menjalankan kode Android yang sesungguhnya
+(berkas JSON, bukan localStorage) dengan `getApplicationSupportDirectory`
+dipalsukan ke direktori sementara — termasuk skenario "app ditutup lalu dibuka
+lagi", yang tidak bisa diuji lewat cache memori.
+
+> **Satu batasan yang perlu diketahui:** baris tidak ditambal ke query
+> **ringkasan** (`count`, `sum`, `GROUP BY`). Angka ringkasan tidak ikut berubah
+> saat baris ditambah, jadi menambal hanya akan menyisipkan baris sampah — mis.
+> anggota baru muncul sebagai "pencetak gol" palsu. Untuk query seperti itu
+> angkanya baru benar setelah sinkron.
+
+### Yang terjadi saat sinkron gagal
+
+| Kejadian | Perilaku |
+|---|---|
+| Jaringan mati di tengah sinkron | Berhenti, antrean utuh, dicoba lagi nanti |
+| Sesi habis (token 12 jam) | Berhenti, antrean utuh, app minta masuk lagi — bukan diam |
+| Server menolak satu tulis | Tulis itu ditandai gagal, sisanya tetap dikirim |
+| Baris sudah dihapus di cloud (`UPDATE`/`DELETE` mengenai 0 baris) | Ditandai gagal dengan pesan jelas, **bukan** dilaporkan "terkirim" |
+| Induk gagal dikirim (id sementara tanpa id asli) | Anaknya ditandai gagal di klien, tidak pernah dikirim dengan id negatif |
+| Sebagian gagal | Cache **tidak** dibuang, supaya data yang baru diisi tidak lenyap dari layar |
+
+Antrean yang gagal bisa dilihat dan dibuang di Pengaturan → Data offline.
 
 ## Setup database Neon (Vercel)
 
@@ -306,8 +332,29 @@ kapan saja dan tidak menyentuh data klub asli.
 - Push ke `main` → APK jadi artifact di tab **Actions**.
 - Push tag `v*` → APK otomatis masuk **Releases**:
   ```bash
-  git tag v1.0.3 && git push origin v1.0.3
+  git tag v1.8.0 && git push origin v1.8.0
   ```
+
+### Kunci penandatangan APK — jangan sampai hilang
+
+APK rilis ditandatangani kunci tetap yang disimpan di GitHub Secrets
+(`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`).
+Workflow memasangnya ke `android/app/release-keystore.p12` + `android/key.properties`
+sebelum build, lalu memverifikasi sertifikatnya di log build.
+
+**Kenapa ini penting:** Android hanya mau memperbarui aplikasi kalau kunci
+penandatangannya sama persis. Sebelumnya build memakai kunci *debug* yang dibuat
+ulang di setiap runner, jadi setiap APK dari GitHub bersertifikat berbeda —
+update selalu ditolak ("Aplikasi tidak terpasang") dan satu-satunya jalan keluar
+adalah uninstall, yang **ikut menghapus antrean offline yang belum tersinkron**.
+
+**Kalau kunci hilang:** aplikasi tidak akan pernah bisa di-update lagi. Simpan
+salinan `release-keystore.p12` + `key.properties` di minimal dua tempat
+terpisah. Keduanya sudah masuk `.gitignore` dan tidak boleh di-commit.
+
+Build lokal tanpa `android/key.properties` tetap jalan, tapi jatuh ke kunci
+debug dengan peringatan di log — cukup untuk `flutter run --release`, **tidak**
+untuk rilis.
 
 ## Keamanan
 

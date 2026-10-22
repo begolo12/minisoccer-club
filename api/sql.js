@@ -18,12 +18,20 @@ import { MissingParam, rejectSql, toPositional } from './_guard.js';
 // Fallback ke DATABASE_URL hanya untuk pengembangan lokal: kalau variabel
 // terbatas lupa dipasang di produksi, app tetap jalan tapi dengan hak owner
 // dan lapis pengaman pertama (izin Postgres) hilang tanpa suara.
-const webUrl = process.env.DATABASE_URL_WEB || process.env.DATABASE_URL;
-if (!process.env.DATABASE_URL_WEB) {
-  console.warn('[sql] DATABASE_URL_WEB belum diset — memakai koneksi owner. Jalankan scripts/harden-db.mjs.');
+//
+// Di produksi (Vercel) fallback itu GAGAL KERAS: lebih baik endpoint SQL mati
+// dengan pesan jelas daripada seluruh aplikasi berjalan tanpa lapis pengaman
+// hanya karena satu variabel env terlewat.
+const isProd = Boolean(process.env.VERCEL);
+if (!process.env.DATABASE_URL_WEB && isProd) {
+  console.error('[sql] DATABASE_URL_WEB belum diset di produksi — endpoint SQL dimatikan.');
+}
+const webUrl = process.env.DATABASE_URL_WEB || (isProd ? null : process.env.DATABASE_URL);
+if (!process.env.DATABASE_URL_WEB && !isProd) {
+  console.warn('[sql] DATABASE_URL_WEB belum diset — memakai koneksi owner (mode lokal). Jalankan scripts/harden-db.mjs.');
 }
 
-const sql = neon(webUrl);
+const sql = webUrl ? neon(webUrl) : null;
 
 // /api/auth membatasi 8 KB; jalur SQL lebih longgar (satu INSERT jadwal
 // turnamen bisa panjang) tapi tetap dibatasi supaya body raksasa tidak
@@ -33,6 +41,11 @@ const MAX_BODY = 128 * 1024;
 export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  if (!sql) {
+    return res.status(500).json({
+      error: 'Server belum dikonfigurasi. Hubungi admin klub.',
+    });
+  }
 
   // Tanpa token = tamu. Aplikasi memang menampilkan data klub tanpa login
   // (mode publik read-only); tulis tetap ditolak di `_guard.js` karena role

@@ -23,6 +23,11 @@ const adminUser = process.env.ADMIN_USER || 'admin';
 const adminPass = process.env.ADMIN_PASS || 'admin123';
 const port = 9600 + Math.floor(Math.random() * 300);
 const tag = `_ob_${Date.now().toString(36)}`;
+// Layout HP diuji juga: itulah yang dipakai APK. `VIEWPORT=mobile`.
+const viewport =
+  process.env.VIEWPORT === 'mobile'
+    ? { width: 390, height: 844, mobile: true, label: 'mobile 390x844' }
+    : { width: 1440, height: 900, mobile: false, label: 'desktop 1440x900' };
 
 const results = [];
 const check = (name, ok, detail = '') => {
@@ -157,9 +162,35 @@ async function clickText(needle, { role = 'button' } = {}) {
   return true;
 }
 
-/** Isi kolom input ke-[index] (0 = pertama) dengan teks. */
+/**
+ * Klik item navigasi utama.
+ *
+ * Desktop: rail kiri `role=button`. HP: bar bawah `role=tab`. Keduanya harus
+ * dikenali supaya alur offline bisa diuji di layout HP juga — dan layout HP
+ * itulah yang dipakai APK.
+ */
+async function clickNav(label) {
+  const list = await nodes();
+  const hit =
+    list.find((n) => n.role === 'tab' && (n.label || n.text || '').includes(label)) ??
+    list.find((n) => n.role === 'button' && (n.label || n.text || '').includes(label));
+  if (!hit) return false;
+  await clickAt(hit.x, hit.y);
+  return true;
+}
+
+/**
+ * Isi kolom input ke-[index] (0 = pertama) dengan teks.
+ *
+ * Saat dialog terbuka, kolom pencarian di belakangnya masih ada di DOM. Di HP
+ * kolom itu berada di dekat header (y kecil), sedangkan kolom dialog ada di
+ * tengah. Karena itu yang dipilih adalah kolom di bawah header — kalau tidak,
+ * teks akan masuk ke kolom pencarian dan dialognya tetap kosong.
+ */
 async function fillInput(index, text) {
-  const inputs = await textInputs();
+  const inputs = (await textInputs())
+    .filter((el) => el.y > 150)
+    .sort((a, b) => a.y - b.y);
   const target = inputs[index];
   if (!target) return false;
   await clickAt(target.x, target.y);
@@ -203,11 +234,12 @@ async function main() {
   await send('Runtime.enable');
   await send('Network.enable');
   await send('Emulation.setDeviceMetricsOverride', {
-    width: 1440,
-    height: 900,
-    deviceScaleFactor: 1,
-    mobile: false,
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: viewport.mobile ? 2 : 1,
+    mobile: viewport.mobile,
   });
+  console.log(`viewport: ${viewport.label}`);
 
   await send('Page.navigate', { url: base });
   await sleep(9000);
@@ -232,7 +264,7 @@ async function main() {
   );
 
   // ---------- 2. buka halaman Anggota ----------
-  await clickText('Lainnya');
+  await clickNav('Lainnya');
   await sleep(2000);
   await clickText('Anggota');
   await sleep(2500);
@@ -381,14 +413,22 @@ async function main() {
 
 /** Buka form tambah anggota dan isi namanya. */
 async function addMember(name) {
-  const before = await nodes();
-  // Tombol "+" (tambah anggota) adalah ikon tanpa teks; cari tombol kecil di
-  // kanan atas area konten.
-  const addBtn = before.find((n) => n.role === 'button' && n.y < 120 && n.x > 1200);
-  if (addBtn) {
-    await clickAt(addBtn.x, addBtn.y);
-  } else if (!(await clickText('Tambah anggota'))) {
-    return false;
+  // Cara paling andal: tombolnya punya teks "Tambah anggota" (tooltip) di
+  // desktop maupun HP.
+  if (!(await clickText('Tambah anggota'))) {
+    // Cadangan: tombol ikon tanpa teks di kanan atas. Aksi shell seperti
+    // "Muat ulang" juga berada di area itu — kalau salah pilih, halaman
+    // ter-reload dan form tidak pernah terbuka.
+    const icon = (await nodes()).find(
+      (n) =>
+        n.role === 'button' &&
+        n.y < 150 &&
+        n.x > viewport.width * 0.6 &&
+        !/Muat ulang|Kembali|Masuk|Keluar/i.test(`${n.label} ${n.text}`) &&
+        !(n.text || '').trim(),
+    );
+    if (!icon) return false;
+    await clickAt(icon.x, icon.y);
   }
   await sleep(2200);
 

@@ -207,6 +207,98 @@ void main() {
       expect(identical(out, members), isTrue);
     });
 
+    group('query ringkasan (agregat) tidak ditambal', () {
+      // Baris tabel tidak boleh disisipkan ke hasil count/sum/GROUP BY: angka
+      // ringkasannya tidak ikut berubah, jadi yang muncul hanyalah baris
+      // sampah — mis. anggota baru tampil sebagai "pencetak gol" palsu.
+      test('count(*) dibiarkan apa adanya', () {
+        final op = parseWrite(
+          'INSERT INTO members (name) VALUES (@name)',
+          {'name': 'Baru'},
+        )!;
+        final rows = [
+          {'c': 2},
+        ];
+        final out = applyOp(
+          rows,
+          op,
+          querySql: 'SELECT count(*)::int AS c FROM members WHERE active',
+          tempId: -1,
+        );
+        expect(identical(out, rows), isTrue);
+        expect(out, hasLength(1));
+        expect(out.single['c'], 2);
+      });
+
+      test('GROUP BY dibiarkan apa adanya', () {
+        final op = parseWrite(
+          'INSERT INTO payments (member_id, amount, period, note) '
+          'VALUES (@mid, @amt, @period, @note)',
+          {'mid': 1, 'amt': 150000, 'period': '2026-10', 'note': null},
+        )!;
+        final rows = [
+          {'amount': 150000, 'n': 3},
+        ];
+        final out = applyOp(
+          rows,
+          op,
+          querySql: 'SELECT amount, count(*)::int AS n FROM payments '
+              'GROUP BY amount ORDER BY n DESC, amount DESC LIMIT 1',
+          tempId: -1,
+        );
+        expect(identical(out, rows), isTrue);
+      });
+
+      test('daftar pencetak gol (count FILTER) tidak ketambahan baris', () {
+        final op = parseWrite(
+          'INSERT INTO members (name) VALUES (@name)',
+          {'name': 'Baru'},
+        )!;
+        final rows = [
+          {'name': 'Ani', 'goals': 4},
+        ];
+        final out = applyOp(
+          rows,
+          op,
+          querySql: "SELECT coalesce(m.name, '(mantan anggota)') AS name, "
+              "count(*) FILTER (WHERE e.type='goal')::int AS goals "
+              'FROM match_events e LEFT JOIN members m ON m.id = e.member_id '
+              'GROUP BY m.name ORDER BY goals DESC',
+          tempId: -1,
+        );
+        expect(identical(out, rows), isTrue);
+        expect(out, hasLength(1), reason: 'tidak boleh ada pencetak gol palsu');
+      });
+
+      test('DELETE pada query agregat juga tidak mengubah baris', () {
+        final op = parseWrite('DELETE FROM members WHERE id=@id', {'id': 1})!;
+        final rows = [
+          {'c': 5},
+        ];
+        final out = applyOp(
+          rows,
+          op,
+          querySql: 'SELECT count(*)::int AS c FROM members WHERE active',
+        );
+        expect(identical(out, rows), isTrue);
+      });
+
+      test('query daftar biasa tetap ditambal', () {
+        // Kontrol: penjagaan agregat tidak boleh mematikan penambalan normal.
+        final op = parseWrite(
+          'INSERT INTO members (name) VALUES (@name)',
+          {'name': 'Baru'},
+        )!;
+        final out = applyOp(
+          const [],
+          op,
+          querySql: 'SELECT * FROM members WHERE active ORDER BY name',
+          tempId: -1,
+        );
+        expect(out, hasLength(1));
+      });
+    });
+
     test('id dari JSON (String) cocok dengan parameter int', () {
       // Neon mengirim integer besar sebagai String; WHERE harus tetap cocok.
       final op = parseWrite('DELETE FROM members WHERE id=@id', {'id': 1})!;

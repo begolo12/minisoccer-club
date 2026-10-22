@@ -504,6 +504,22 @@ class _OfflinePanelState extends State<_OfflinePanel> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _clearCache() async {
+    if (!await confirm(
+      context,
+      'Kosongkan cache offline?',
+      'Data tersimpan untuk dibaca tanpa internet akan dihapus. Perubahan yang '
+          'belum terkirim TIDAK terpengaruh. Halaman akan memuat ulang dari server.',
+    )) {
+      return;
+    }
+    final removed = await Db.clearOfflineCache();
+    if (mounted) {
+      setState(() {});
+      toast(context, '$removed data cache dihapus');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
@@ -566,6 +582,14 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                           onPressed: _busy ? null : _discardAll,
                           child: const Text('Buang semua'),
                         ),
+                      // Cache dibaca saat offline. Kalau isinya sudah tidak
+                      // relevan (mis. setelah membuang antrean), pengguna harus
+                      // punya cara membersihkannya tanpa menunggu restart.
+                      ShadButton.outline(
+                        onPressed: _busy ? null : _clearCache,
+                        leading: const Icon(Icons.cleaning_services_outlined, size: 15),
+                        child: const Text('Kosongkan cache'),
+                      ),
                     ],
                   ),
                   if (Outbox.failedCount > 0) ...[
