@@ -18,7 +18,7 @@ const base = (process.env.API_BASE || 'https://minisoccer-club.vercel.app').repl
 // berarti menambah baris di sini, dan itu yang membuat drift ketahuan lebih
 // awal daripada lewat layar error di HP pengguna.
 const EXPECTED = {
-  members: ['id', 'name', 'phone', 'position', 'jersey', 'active', 'joined_at'],
+  members: ['id', 'name', 'phone', 'address', 'position', 'jersey', 'active', 'joined_at'],
   // `users` hanya bisa dibaca admin, jadi tanpa token endpoint menjawab 403
   // ("Hanya admin yang bisa melihat pengguna"). Itu jawaban yang benar, bukan
   // schema yang kurang — kolomnya diperiksa lewat e2e-check yang punya token.

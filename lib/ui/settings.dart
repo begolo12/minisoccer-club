@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/api.dart';
@@ -174,6 +175,19 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 if (!Auth.isGuest) ...[
                   const SizedBox(height: 12),
+                  // Password awal dari pendaftaran adalah nomor HP, jadi
+                  // pemilik akun harus bisa menggantinya sendiri.
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.outline(
+                      onPressed: () => showShadDialog<bool>(
+                        context: context,
+                        builder: (_) => const _PasswordDialog(),
+                      ),
+                      child: const Text('Ganti password'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   ShadButton.outline(
                     onPressed: () async {
                       if (!await confirm(context, 'Keluar?',
@@ -188,6 +202,43 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: const Text('Keluar'),
                   ),
                 ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+          const SectionTitle('Pendaftaran anggota'),
+          Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Tautan pendaftaran', style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(
+                  'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
+                  'alamat, dan posisi sendiri. Nama depan menjadi username, dan akun '
+                  'langsung dibuat tanpa perlu ditambah manual di menu Anggota.',
+                  style: t.textTheme.small,
+                ),
+                const SizedBox(height: 10),
+                SelectableText(
+                  _registrationLink(),
+                  style: t.textTheme.small.copyWith(
+                    fontFamily: AppThemes.display,
+                    fontSize: 13,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ShadButton.outline(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: _registrationLink()));
+                      if (context.mounted) toast(context, 'Tautan disalin');
+                    },
+                    child: const Text('Salin tautan'),
+                  ),
+                ),
               ],
             ),
           ),
@@ -631,4 +682,132 @@ String _screenLine(BuildContext context) {
   if (hz <= 0) return 'Layar: $dims';
   final note = hz < 90 ? ' · dibatasi setelan perangkat' : '';
   return 'Layar: $dims · $hz Hz$note';
+}
+
+/// Alamat formulir pendaftaran untuk dibagikan.
+///
+/// Di web dipakai origin halaman yang sedang dibuka (termasuk prefiks portal,
+/// mis. `/minisoccer`), supaya tautannya tidak menunjuk ke domain lain. Di APK
+/// tidak ada halaman, jadi dipakai alamat server API — di sanalah aplikasi web
+/// dipasang.
+String _registrationLink() {
+  if (kIsWeb) {
+    final base = Uri.base;
+    final segs = base.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segs.isNotEmpty && segs.last == 'daftar') segs.removeLast();
+    final prefix = segs.isEmpty ? '' : '/${segs.join('/')}';
+    return '${base.origin}$prefix/daftar';
+  }
+  return kApiBase.startsWith('http') ? '$kApiBase/daftar' : '';
+}
+
+/// Dialog ganti password akun sendiri.
+class _PasswordDialog extends StatefulWidget {
+  const _PasswordDialog();
+
+  @override
+  State<_PasswordDialog> createState() => _PasswordDialogState();
+}
+
+class _PasswordDialogState extends State<_PasswordDialog> {
+  final _current = TextEditingController();
+  final _next = TextEditingController();
+  final _again = TextEditingController();
+  bool _saving = false;
+  String? _err;
+
+  @override
+  void dispose() {
+    _current.dispose();
+    _next.dispose();
+    _again.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _err = null);
+    if (_next.text.length < 6) {
+      setState(() => _err = 'Password baru minimal 6 karakter');
+      return;
+    }
+    if (_next.text != _again.text) {
+      setState(() => _err = 'Ulangi password baru dengan sama');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await Auth.changePassword(current: _current.text, next: _next.text);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) setState(() => _err = e.toString().replaceFirst('ApiException: ', ''));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return ShadDialog(
+      title: const Text('Ganti password'),
+      description: const Text('Masukkan password lama, lalu password baru.'),
+      actions: [
+        ShadButton.outline(
+          onPressed: _saving ? null : () => Navigator.pop(context, false),
+          child: const Text('Batal'),
+        ),
+        ShadButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Simpan'),
+        ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ShadInput(
+            controller: _current,
+            obscureText: true,
+            enabled: !_saving,
+            autofocus: true,
+            placeholder: const Text('Password lama'),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 10),
+          ShadInput(
+            controller: _next,
+            obscureText: true,
+            enabled: !_saving,
+            placeholder: const Text('Password baru (minimal 6 karakter)'),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 10),
+          ShadInput(
+            controller: _again,
+            obscureText: true,
+            enabled: !_saving,
+            placeholder: const Text('Ulangi password baru'),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _save(),
+          ),
+          if (_err != null) ...[
+            const SizedBox(height: 12),
+            ShadAlert.destructive(
+              icon: const Icon(Icons.error_outline, size: 16),
+              description: Text(_err!, style: const TextStyle(fontSize: 12.5, height: 1.45)),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'Sesi lain yang sedang masuk tidak ikut keluar; tokennya berlaku '
+            'sampai kedaluwarsa (12 jam).',
+            style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/auth.dart';
+import 'register.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -112,6 +113,14 @@ class _LoginPageState extends State<LoginPage> {
                         userFocus: _userFocus,
                         onTogglePass: () => setState(() => _showPass = !_showPass),
                         onSubmit: _submit,
+                        onRegister: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (ctx) => RegisterPage(
+                              onDone: () => Navigator.pop(ctx),
+                            ),
+                          ),
+                        ),
                       );
 
                       if (!wide) {
@@ -283,6 +292,7 @@ class _FormPanel extends StatelessWidget {
     required this.userFocus,
     required this.onTogglePass,
     required this.onSubmit,
+    required this.onRegister,
   });
 
   final bool firstRun;
@@ -294,6 +304,7 @@ class _FormPanel extends StatelessWidget {
   final FocusNode userFocus;
   final VoidCallback onTogglePass;
   final VoidCallback onSubmit;
+  final VoidCallback onRegister;
 
   @override
   Widget build(BuildContext context) {
@@ -401,6 +412,23 @@ class _FormPanel extends StatelessWidget {
             textAlign: TextAlign.start,
             style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.5),
           ),
+          if (!firstRun) ...[
+            const SizedBox(height: 6),
+            // Pendaftaran lewat tautan publik: anggota baru mengisi sendiri
+            // namanya, nomor HP, alamat, dan posisi, lalu langsung dapat akun.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: busy ? null : onRegister,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Belum punya akun? Daftar di sini'),
+              ),
+            ),
+          ],
         ],
       ),
     );

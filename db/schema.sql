@@ -6,11 +6,15 @@ CREATE TABLE IF NOT EXISTS members (
   id          SERIAL PRIMARY KEY,
   name        TEXT NOT NULL,
   phone       TEXT,
+  address     TEXT, -- alamat tinggal; diisi lewat formulir pendaftaran
   position    TEXT NOT NULL DEFAULT 'Bebas', -- Kiper, Bek, Gelandang, Penyerang, Bebas
   jersey      INT,
   active      BOOLEAN NOT NULL DEFAULT TRUE,
   joined_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Untuk DB lama: formulir pendaftaran menanyakan alamat, jadi kolomnya harus
+-- ada. NULL diperbolehkan karena anggota lama belum mengisinya.
+ALTER TABLE members ADD COLUMN IF NOT EXISTS address TEXT;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 

@@ -56,6 +56,9 @@ const adminOf = (req) => {
   return s && s.r === 'admin' ? s : null;
 };
 
+/// Sesi siapa pun yang sudah masuk (admin, bendahara, anggota).
+const sessionOf = (req) => verifyToken(bearer(req));
+
 export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -133,6 +136,34 @@ export default async function handler(req, res) {
       );
       if (!rows.length) return res.status(404).json({ error: 'User tidak ditemukan' });
       return res.status(200).json({ ok: true, username: rows[0].username });
+    }
+
+    // ---- ganti password sendiri ----
+    //
+    // Pendaftaran anggota membuat akun dengan password awal = nomor HP, jadi
+    // harus ada jalan bagi pemiliknya untuk menggantinya tanpa menunggu admin.
+    // Password lama tetap diperiksa supaya token yang bocor tidak langsung
+    // bisa dipakai mengunci pemilik akun.
+    if (action === 'change') {
+      const session = sessionOf(req);
+      if (!session) return res.status(401).json({ error: 'Sesi habis, silakan login ulang' });
+      const current = String(bodyOf(req).current || '');
+      const next = String(bodyOf(req).next || '');
+      if (next.length < MIN_PASS || next.length > MAX_PASS) {
+        return res.status(400).json({ error: `Password ${MIN_PASS}-${MAX_PASS} karakter` });
+      }
+      const rows = await sql(
+        `UPDATE users
+            SET password_hash = crypt($2, gen_salt('bf', 10)),
+                failed_attempts = 0,
+                locked_until = NULL
+          WHERE id = $1 AND active
+            AND password_hash = crypt($3, password_hash)
+          RETURNING id`,
+        [session.id, next, current],
+      );
+      if (!rows.length) return res.status(403).json({ error: 'Password lama salah' });
+      return res.status(200).json({ ok: true });
     }
 
     // ---- publik: register admin pertama ----

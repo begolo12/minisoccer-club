@@ -12,6 +12,7 @@ import 'widgets.dart';
 Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
   final name = TextEditingController(text: member?.name ?? '');
   final phone = TextEditingController(text: member?.phone ?? '');
+  final address = TextEditingController(text: member?.address ?? '');
   final jersey = TextEditingController(text: member?.jersey?.toString() ?? '');
   var position = member?.position ?? 'Bebas';
   var active = member?.active ?? true;
@@ -32,6 +33,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
               await Member.insert(
                 name: name.text.trim(),
                 phone: _nullIfEmpty(phone.text),
+                address: _nullIfEmpty(address.text),
                 position: position,
                 jersey: int.tryParse(jersey.text),
               );
@@ -39,6 +41,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
               await member.update(
                 name: name.text.trim(),
                 phone: _nullIfEmpty(phone.text),
+                address: _nullIfEmpty(address.text),
                 position: position,
                 jersey: int.tryParse(jersey.text),
                 active: active,
@@ -72,6 +75,8 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
               ShadInput(controller: name, placeholder: const Text('Nama lengkap'), autofocus: true, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next),
               const SizedBox(height: 10),
               ShadInput(controller: phone, placeholder: const Text('No. HP (opsional)'), keyboardType: TextInputType.phone),
+              const SizedBox(height: 10),
+              ShadInput(controller: address, placeholder: const Text('Alamat (opsional)'), textCapitalization: TextCapitalization.words),
               const SizedBox(height: 10),
               Row(
                 children: [

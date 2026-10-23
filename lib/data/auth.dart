@@ -133,6 +133,69 @@ class Auth {
     return map;
   }
 
+  // ---------- Pendaftaran anggota (publik) ----------
+
+  /// Kirim formulir pendaftaran ke `/api/register`.
+  ///
+  /// Server membuat anggota DAN akunnya (nama depan jadi username), lalu
+  /// mengembalikan username beserta password awalnya untuk ditampilkan sekali
+  /// di layar berhasil.
+  static Future<RegistrationResult> registerMember({
+    required String name,
+    required String phone,
+    required String address,
+    required String position,
+  }) async {
+    late final http.Response res;
+    try {
+      res = await http
+          .post(
+            Uri.parse('$kApiBase/api/register'),
+            headers: {'content-type': 'application/json'},
+            body: jsonEncode({
+              'name': name,
+              'phone': phone,
+              'address': address,
+              'position': position,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+    } on TimeoutException {
+      throw ApiException('Server tidak merespons. Periksa koneksi lalu coba lagi.');
+    } on http.ClientException {
+      throw ApiException('Tidak bisa menghubungi server. Periksa koneksi internet.');
+    }
+
+    dynamic data;
+    try {
+      data = jsonDecode(res.body);
+    } catch (_) {
+      data = null;
+    }
+    final map = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    if (res.statusCode != 200) {
+      final message = map['error'];
+      throw ApiException(
+        message is String && message.isNotEmpty
+            ? message
+            : 'Pendaftaran gagal (${res.statusCode})',
+      );
+    }
+    return RegistrationResult(
+      username: (map['username'] as String?) ?? '',
+      password: (map['password'] as String?) ?? '',
+      name: (map['name'] as String?) ?? name,
+    );
+  }
+
+  /// Ganti password akun sendiri. Password lama diminta supaya token yang
+  /// bocor tidak bisa dipakai mengunci pemilik akun.
+  static Future<void> changePassword({
+    required String current,
+    required String next,
+  }) =>
+      _post({'action': 'change', 'current': current, 'next': next});
+
   // ---------- Kelola pengguna (admin) ----------
 
   static Future<void> createUser(String username, String role, String password) =>
@@ -142,4 +205,19 @@ class Auth {
       _post({'action': 'reset', 'id': id, 'password': password});
 
   static Future<void> deleteUser(int id) => _post({'action': 'delete', 'id': id});
+}
+
+
+/// Hasil pendaftaran: username dan password awal yang harus ditunjukkan ke
+/// pendaftar SEKALI, karena password tidak disimpan dalam bentuk terbaca.
+class RegistrationResult {
+  const RegistrationResult({
+    required this.name,
+    required this.username,
+    required this.password,
+  });
+
+  final String name;
+  final String username;
+  final String password;
 }

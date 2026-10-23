@@ -45,7 +45,8 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Beranda** | Sapaan akun, papan skor laga berjalan (kalau ada) atau hero turnamen berikutnya, turnamen terakhir dengan progres laga — hasil per pertandingan dibuka dengan diketuk, ringkasan anggota/main/iuran, kas bulan ini, aksi cepat, pengumuman; di layar lebar ditambah klasemen, top skor, dan sewa lapangan |
 | **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol, umpan gol, dan kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
 | **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
-| **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif. Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
+| **Anggota** | CRUD pemain (nama, HP, alamat, posisi, nomor punggung), cari, filter aktif/nonaktif. Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
+| **Pendaftaran mandiri** | Tautan publik `/daftar` (juga bisa dari layar Masuk) untuk calon anggota: nama, nomor HP, alamat, dan posisi, semuanya wajib. Nama depan jadi username, akun langsung dibuat dengan password awal = nomor HP, dan tautannya bisa disalin dari Pengaturan |
 | **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal otomatis per grup (semua tim saling bertemu sekali), klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga. **Iuran per anggota** diisi per turnamen dan bisa diubah kapan saja |
 | **Iuran** | Iuran **per turnamen** (bukan per bulan): pilih turnamen, lihat siapa yang belum bayar (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat. Peserta = anggota dari tim yang ikut turnamen itu, jadi orang yang tidak bermain di turnamen tersebut tidak ikut ditagih |
 | **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan) |
@@ -127,13 +128,14 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 225 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
+| `flutter test` | 235 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
 | `npm run check:attendance` | Di **Chrome sungguhan**: booking 300.000 → tandai 3 orang hadir → bagian terbagi tepat 300.000 → tandai setor → muncul di buku kas sebagai pemasukan `patungan` → **putus jaringan** → tulis lagi (antrean) → online → terkirim |
+| `npm run check:register` | Di **Chrome sungguhan**: tautan `/daftar` tanpa login → kirim kosong ditolak per isian → isi lengkap → anggota + akun dibuat (nama depan jadi username) → akun itu bisa masuk → nomor HP ganda ditolak |
 | `npm run check:member-dues` | Di **Chrome sungguhan**: anggota dengan 2 turnamen (1 lunas) → halaman riwayat menampilkan total, tunggakan, dan nominal keduanya |
 | `npm run check:dues` | Di **Chrome sungguhan**: tagihan hanya memuat anggota yang ikut turnamen → catat iuran online → **putus jaringan** → catat lagi (masuk antrean, langsung tampak lunas) → online → terkirim ke database |
 | `npm run check:match-offline` | Di **Chrome sungguhan**: laga berjalan → **putus jaringan** → tombol Selesai membuka dialog → simpan → antrean → online → laga berstatus `finished` di database |

@@ -145,9 +145,9 @@ export const reads = {
 
 export const writes = {
   insertMember:
-    'INSERT INTO members (name, phone, position, jersey) VALUES (@name, @phone, @position, @jersey)',
-  updateMember: `UPDATE members SET name=@name, phone=@phone, position=@position,
-           jersey=@jersey, active=@active WHERE id=@id`,
+    'INSERT INTO members (name, phone, address, position, jersey) VALUES (@name, @phone, @address, @position, @jersey)',
+  updateMember: `UPDATE members SET name=@name, phone=@phone, address=@address,
+           position=@position, jersey=@jersey, active=@active WHERE id=@id`,
   deleteMember: 'DELETE FROM members WHERE id=@id',
   insertMatch: `INSERT INTO matches (home_team_id, away_team_id, played_at, venue)
            VALUES (@h, @a, @t, @v)`,

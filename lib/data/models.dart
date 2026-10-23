@@ -12,6 +12,10 @@ class Member {
   final int id;
   final String name;
   final String? phone;
+
+  /// Alamat tinggal. Diisi lewat formulir pendaftaran; anggota lama boleh
+  /// kosong karena kolomnya ditambahkan belakangan.
+  final String? address;
   final String position;
   final int? jersey;
   final bool active;
@@ -21,6 +25,7 @@ class Member {
     required this.id,
     required this.name,
     this.phone,
+    this.address,
     required this.position,
     this.jersey,
     required this.active,
@@ -31,6 +36,7 @@ class Member {
         id: m['id'] as int,
         name: m['name'] as String,
         phone: m['phone'] as String?,
+        address: m['address'] as String?,
         position: (m['position'] as String?) ?? 'Bebas',
         jersey: m['jersey'] as int?,
         active: (m['active'] as bool?) ?? true,
@@ -50,27 +56,35 @@ class Member {
   static Future<int?> insert({
     required String name,
     String? phone,
+    String? address,
     required String position,
     int? jersey,
   }) =>
       Db.insertId(
-        'INSERT INTO members (name, phone, position, jersey) '
-        'VALUES (@name, @phone, @position, @jersey) RETURNING id',
-        params: {'name': name, 'phone': phone, 'position': position, 'jersey': jersey},
+        'INSERT INTO members (name, phone, address, position, jersey) '
+        'VALUES (@name, @phone, @address, @position, @jersey) RETURNING id',
+        params: {
+          'name': name,
+          'phone': phone,
+          'address': address,
+          'position': position,
+          'jersey': jersey,
+        },
       );
 
   Future<void> update({
     required String name,
     String? phone,
+    String? address,
     required String position,
     int? jersey,
     required bool active,
   }) =>
       Db.execute(
-        '''UPDATE members SET name=@name, phone=@phone, position=@position,
-           jersey=@jersey, active=@active WHERE id=@id''',
+        '''UPDATE members SET name=@name, phone=@phone, address=@address,
+           position=@position, jersey=@jersey, active=@active WHERE id=@id''',
         params: {
-          'id': id, 'name': name, 'phone': phone,
+          'id': id, 'name': name, 'phone': phone, 'address': address,
           'position': position, 'jersey': jersey, 'active': active,
         },
       );

@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'core/db.dart';
+import 'core/registration.dart';
 import 'core/update.dart';
 import 'data/auth.dart';
+import 'ui/register.dart';
 import 'ui/theme.dart';
 import 'ui/shell.dart';
 import 'ui/widgets.dart';
@@ -80,6 +83,12 @@ class _BootstrapState extends State<Bootstrap> {
   bool _signedIn = false;
   String? _error;
 
+  /// Tautan publik `/daftar` membuka formulir pendaftaran, bukan aplikasi.
+  ///
+  /// Hanya di web: APK tidak punya URL, dan pendaftaran di sana dilakukan
+  /// admin lewat menu Anggota.
+  bool _register = false;
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +109,9 @@ class _BootstrapState extends State<Bootstrap> {
 
   Future<void> _check() async {
     if (mounted) setState(() => _checking = true);
+    if (kIsWeb && isRegisterLocation(Uri.base)) {
+      _register = true;
+    }
     await Auth.restore();
     // Antrean tulis offline dibaca dari disk sebelum layar apa pun tampil,
     // supaya banner "N perubahan menunggu" langsung benar.
@@ -181,6 +193,11 @@ class _BootstrapState extends State<Bootstrap> {
             ),
           ),
         ),
+      );
+    }
+    if (_register) {
+      return RegisterPage(
+        onDone: () => setState(() => _register = false),
       );
     }
     // Shell selalu tampil; tamu melihat data tanpa tombol tulis, dan
