@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -96,4 +97,21 @@ class _HashSink implements Sink<Digest> {
 
   @override
   void close() {}
+}
+
+
+/// Arsitektur CPU perangkat, dipakai memilih APK terkecil yang cocok.
+///
+/// `Abi.current()` berasal dari `dart:ffi` dan membaca arsitektur proses yang
+/// sedang berjalan — persis yang menentukan APK mana yang bisa dipasang.
+String? deviceAbi() {
+  if (!Platform.isAndroid) return null;
+  final name = Abi.current().toString(); // Abi.androidArm64, Abi.androidArm, …
+  return switch (name) {
+    'androidArm64' => 'arm64-v8a',
+    'androidArm' => 'armeabi-v7a',
+    'androidX64' => 'x86_64',
+    'androidIA32' => 'x86',
+    _ => null,
+  };
 }

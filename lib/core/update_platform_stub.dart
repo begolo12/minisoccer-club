@@ -14,3 +14,7 @@ Future<String> downloadApk(
 }
 
 Future<InstallOutcome> installApk(String path) async => InstallOutcome.failed;
+
+
+/// Di web tidak ada pembaruan mandiri, jadi arsitektur perangkat tidak berarti.
+String? deviceAbi() => null;

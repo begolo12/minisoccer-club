@@ -25,9 +25,25 @@ const types = {
   '.css': 'text/css; charset=utf-8',
 };
 
+// Aplikasi dipasang di sub-jalur (`/minisoccer/`), jadi uji ini juga harus
+// menyajikannya di sana: `<base href>` menentukan tempat service worker
+// mencari aset, dan menyajikan di akar akan menguji konfigurasi yang tidak
+// pernah dipakai pengguna.
+const PREFIX = '/minisoccer';
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
-  let p = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
+  if (url.pathname === PREFIX) {
+    res.writeHead(302, { location: `${PREFIX}/` });
+    return res.end();
+  }
+  // Prefiks dibuang SEBELUM `normalize`: di Windows, `normalize` mengubah
+  // garis miring menjadi backslash sehingga pencocokan prefiks tidak pernah
+  // kena — berkas selalu dianggap tidak ada dan server mengembalikan
+  // index.html. Service worker lalu ditolak browser karena MIME-nya HTML.
+  let p = decodeURIComponent(url.pathname);
+  if (p.startsWith(PREFIX + '/')) p = p.slice(PREFIX.length);
+  p = normalize(p).replace(/^([/\\])+/, '');
   if (p === '' || !existsSync(join(root, p))) p = 'index.html';
   try {
     const body = await readFile(join(root, p));
@@ -44,7 +60,7 @@ const server = createServer(async (req, res) => {
 });
 
 await new Promise((r) => server.listen(port, r));
-const base = `http://localhost:${port}`;
+const base = `http://localhost:${port}${PREFIX}/`;
 console.log(`server: ${base}`);
 
 const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', [

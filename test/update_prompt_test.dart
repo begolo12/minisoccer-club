@@ -95,6 +95,36 @@ void main() {
       expect(parseRelease(json())!.sha256, isNull);
     });
 
+    test('memilih APK sesuai arsitektur perangkat', () {
+      // Rilis memuat tiga berkas. HP lama (32-bit) harus mendapat berkas
+      // terkecil yang bisa dipasang, bukan APK universal dua kali lipat.
+      final release = {
+        'tag_name': 'v1.13.0',
+        'published_at': '2026-10-23T00:00:00Z',
+        'assets': [
+          {'name': 'app-release.apk', 'browser_download_url': 'https://e/universal.apk', 'size': 38000000},
+          {'name': 'app-arm64-v8a-release.apk', 'browser_download_url': 'https://e/arm64.apk', 'size': 21000000},
+          {'name': 'app-armeabi-v7a-release.apk', 'browser_download_url': 'https://e/armv7.apk', 'size': 19000000},
+        ],
+      };
+      expect(parseRelease(release, abi: 'armeabi-v7a')!.apkUrl, 'https://e/armv7.apk');
+      expect(parseRelease(release, abi: 'arm64-v8a')!.apkUrl, 'https://e/arm64.apk');
+      // Arsitektur tak dikenal / web: jatuh ke universal, bukan gagal.
+      expect(parseRelease(release, abi: 'mips')!.apkUrl, 'https://e/universal.apk');
+      expect(parseRelease(release)!.apkUrl, 'https://e/universal.apk');
+    });
+
+    test('rilis hanya berisi APK per-arsitektur tetap bisa dipakai', () {
+      final release = {
+        'tag_name': 'v1.13.0',
+        'published_at': '2026-10-23T00:00:00Z',
+        'assets': [
+          {'name': 'app-armeabi-v7a-release.apk', 'browser_download_url': 'https://e/armv7.apk', 'size': 19000000},
+        ],
+      };
+      expect(parseRelease(release, abi: 'arm64-v8a')!.apkUrl, 'https://e/armv7.apk');
+    });
+
     test('rilis tanpa aset APK diabaikan', () {
       // Lebih baik "tidak ada pembaruan" daripada tombol unduh yang menunjuk
       // berkas yang salah.

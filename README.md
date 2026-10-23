@@ -11,6 +11,10 @@ bottom nav di HP. Detail token dan tooling preview: [`design/README.md`](design/
 
 **[Download APK terbaru](https://github.com/begolo12/minisoccer-club/releases/latest/download/app-release.apk)**
 
+Rilis juga menyertakan APK per-arsitektur, dan aplikasi memilih sendiri yang
+sesuai HP: `app-armeabi-v7a-release.apk` (HP lama 32-bit, ~19 MB),
+`app-arm64-v8a-release.apk` (~21 MB), atau `app-release.apk` universal (~38 MB).
+
 Versi web: **https://minisoccer-club.vercel.app**
 
 1. Buka link di HP → download.
@@ -131,7 +135,7 @@ di web).
 | `flutter test` | 235 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
-| `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache |
+| `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
 | `npm run check:attendance` | Di **Chrome sungguhan**: booking 300.000 → tandai 3 orang hadir → bagian terbagi tepat 300.000 → tandai setor → muncul di buku kas sebagai pemasukan `patungan` → **putus jaringan** → tulis lagi (antrean) → online → terkirim |
@@ -300,6 +304,7 @@ scripts/rotate-db-password.mjs  Ganti password role DB (npm run db:rotate)
 scripts/fix-data.mjs        Rapikan data lama (npm run db:fix; idempoten)
 scripts/clean-test-data.mjs Hapus sisa data uji (`_uji_`, `_at_`, `_ft_`, …) termasuk booking + patungan (npm run db:clean)
 scripts/dev-api.mjs         API lokal tanpa `vercel dev` (npm run dev:api)
+scripts/subset-fonts.mjs    Kecilkan font ke glif yang dipakai (2,0 MB → 0,5 MB)
 scripts/check-schema.mjs    Deteksi schema produksi ketinggalan (npm run check:schema)
 scripts/e2e-check.mjs       Semua query app untuk tiap role (npm run check:e2e)
 scripts/flow-check.mjs      Alur admin ujung ke ujung (npm run check:flow)
@@ -424,7 +429,7 @@ Yang **tidak** pernah masuk git (lihat `.gitignore`):
 | Kategori | Contoh | Alasan |
 |---|---|---|
 | Hasil build | `build/`, `.dart_tool/`, `node_modules/` | dibuat ulang tiap build |
-| Artefak rilis | `*.apk`, `*.aab` | 60 MB/file; didistribusikan lewat GitHub Releases |
+| Artefak rilis | `*.apk`, `*.aab` | didistribusikan lewat GitHub Releases |
 | Kredensial | `.env`, `.env.local`, `*.jks`, `*.keystore`, `*.pem` | rahasia; `.env.example` tetap di-commit sebagai template |
 | Artefak kerja | `.audit/`, `.shots/`, `*.tmp` | hasil generate lokal, bisa dibuat ulang |
 | Konfigurasi mesin | `.vercel/`, `.idea/`, `.vscode/`, `local.properties` | spesifik tiap developer |

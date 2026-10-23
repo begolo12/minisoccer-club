@@ -37,6 +37,44 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INT NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 
+-- Menghapus anggota harus ikut menonaktifkan akunnya.
+--
+-- Tanpa ini, akun tetap aktif setelah anggota dihapus: orang yang sudah
+-- dikeluarkan masih bisa masuk, dan kalau dulu dia bendahara, hak tulisnya
+-- TIDAK ikut hilang — persis kebalikan dari yang diharapkan saat menekan
+-- "Hapus" di daftar anggota. `member_id` hanya di-set NULL oleh FK, jadi
+-- tautannya hilang tanpa mencabut aksesnya.
+--
+-- Dijalankan sebagai SECURITY DEFINER karena `app_web` (koneksi aplikasi)
+-- sengaja tidak punya izin menulis ke `users`. Trigger ini juga menutup jalur
+-- offline: hapus yang diantrekan tetap mencabut akses begitu sampai ke server.
+--
+-- BEFORE DELETE, bukan AFTER: `users.member_id` punya ON DELETE SET NULL, dan
+-- trigger internal untuk FK itu berjalan lebih dulu. Pada AFTER, `member_id`
+-- sudah NULL sehingga UPDATE di bawah tidak menemukan baris apa pun — akun
+-- tetap aktif dan percabutan aksesnya tidak pernah terjadi.
+--
+-- Admin terakhir dilindungi: kalau anggota yang dihapus tertaut ke satu-satunya
+-- admin aktif, akunnya dibiarkan supaya klub tidak terkunci di luar.
+CREATE OR REPLACE FUNCTION deactivate_member_account() RETURNS trigger AS $$
+BEGIN
+  UPDATE users
+     SET active = FALSE
+   WHERE member_id = OLD.id
+     AND active
+     AND NOT (
+       role = 'admin'
+       AND (SELECT count(*) FROM users WHERE role = 'admin' AND active) <= 1
+     );
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS members_deactivate_account ON members;
+CREATE TRIGGER members_deactivate_account
+  BEFORE DELETE ON members
+  FOR EACH ROW EXECUTE FUNCTION deactivate_member_account();
+
 -- Sesi pertandingan (1 match bisa beberapa sesi / babak; tiap sesi punya pemenang).
 --
 -- Tanding klub ini INTERNAL: dua tim anggota klub saling bertemu, jadi

@@ -32,10 +32,13 @@ const db = () => {
 const MAX_BODY = 4 * 1024;
 
 // Batas percobaan per IP. Formulir publik tanpa batas adalah pintu spam ke
-// tabel anggota; batas longgar supaya satu orang yang salah isi beberapa kali
-// tidak ikut terkunci.
+// tabel anggota, tetapi batasnya tidak boleh menghukum pemakaian wajar:
+// pendaftaran biasanya dilakukan rame-rame di satu lokasi, dan semua orang di
+// sana keluar lewat SATU alamat IP publik yang sama. Dengan batas 10, anggota
+// ke-11 yang mendaftar di pertemuan klub akan ditolak. 30 per 10 menit cukup
+// untuk satu sesi pendaftaran dan masih membatasi penyalahgunaan.
 const WINDOW_MS = 10 * 60_000;
-const MAX_HITS = 10;
+const MAX_HITS = 30;
 const hits = new Map();
 
 function tooMany(ip) {
@@ -86,33 +89,48 @@ export default async function handler(req, res) {
     // Nomor HP adalah penanda orang, bukan sekadar kontak: mendaftar dua kali
     // dengan nomor yang sama akan membuat dua anggota dan dua akun untuk satu
     // orang, lalu iurannya terbelah.
-    const existing = await sql`SELECT id FROM members WHERE phone = ${phone} LIMIT 1`;
-    if (existing.length) {
-      return res.status(409).json({
-        error: 'Nomor HP ini sudah terdaftar. Hubungi admin kalau datanya perlu diperbarui.',
-      });
-    }
-
+    //
+    // Pemeriksaan dan penyimpanan digabung dalam SATU pernyataan. Dengan
+    // SELECT lalu INSERT terpisah, dua kiriman bersamaan dengan nomor yang
+    // sama sama-sama lolos pemeriksaan dan menghasilkan anggota ganda —
+    // persis yang ingin dicegah.
     const base = usernameBase(name);
     for (let n = 1; n <= 99; n++) {
       const username = usernameCandidate(base, n);
-      const [member] = await sql`
+      const inserted = await sql`
         INSERT INTO members (name, phone, address, position)
-        VALUES (${name}, ${phone}, ${address}, ${position})
+        SELECT ${name}, ${phone}, ${address}, ${position}
+         WHERE NOT EXISTS (SELECT 1 FROM members WHERE phone = ${phone})
         RETURNING id`;
-      const [user] = await sql`
-        INSERT INTO users (username, role, member_id, password_hash)
-        VALUES (${username}, 'member', ${member.id}, crypt(${phone}, gen_salt('bf', 10)))
-        ON CONFLICT (username) DO NOTHING
-        RETURNING id, username`;
-      if (user) {
-        return res.status(200).json({
-          memberId: member.id,
-          name,
-          username: user.username,
-          password: phone,
+      if (!inserted.length) {
+        return res.status(409).json({
+          error: 'Nomor HP ini sudah terdaftar. Hubungi admin kalau datanya perlu diperbarui.',
         });
       }
+      const member = inserted[0];
+
+      // Anggota sudah masuk. Kalau pembuatan akun gagal karena sebab lain,
+      // baris anggota itu harus dibuang lagi — kalau tidak, daftar anggota
+      // berisi orang tanpa akun yang tidak pernah bisa masuk.
+      try {
+        const [user] = await sql`
+          INSERT INTO users (username, role, member_id, password_hash)
+          VALUES (${username}, 'member', ${member.id}, crypt(${phone}, gen_salt('bf', 10)))
+          ON CONFLICT (username) DO NOTHING
+          RETURNING id, username`;
+        if (user) {
+          return res.status(200).json({
+            memberId: member.id,
+            name,
+            username: user.username,
+            password: phone,
+          });
+        }
+      } catch (e) {
+        await sql`DELETE FROM members WHERE id = ${member.id}`;
+        throw e;
+      }
+
       // Username sudah dipakai orang lain: batalkan anggota yang barusan
       // dibuat, lalu coba nomor berikutnya (irvan → irvan2 → irvan3).
       await sql`DELETE FROM members WHERE id = ${member.id}`;

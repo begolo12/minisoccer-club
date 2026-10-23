@@ -39,6 +39,69 @@ class _MembersPageState extends State<MembersPage> {
     super.dispose();
   }
 
+  /// Satu baris anggota. Dipisah dari `build` supaya bisa dipanggil
+  /// `ListView.builder` per baris.
+  Widget _memberRow(Member m, ShadThemeData t) {
+    return RowItem(
+      // Ketuk baris = lihat, ikon = ubah. Aturan ini sama untuk semua role;
+      // sebelumnya baris membuka form edit untuk admin tetapi riwayat iuran
+      // untuk anggota, jadi satu ketukan berarti dua hal berbeda.
+      onTap: () async {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => MemberDuesPage(member: m),
+        ));
+      },
+      leading: Container(
+        width: 38,
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: m.active
+                ? t.colorScheme.primary.withValues(alpha: 0.5)
+                : t.colorScheme.border,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          '${m.jersey ?? '-'}',
+          style: t.textTheme.h2.copyWith(
+            fontSize: 20,
+            color: m.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+          ),
+        ),
+      ),
+      title: m.name,
+      subtitle: '${m.position}${m.phone != null ? " • ${m.phone}" : ""}'
+          '${m.active ? '' : ' • nonaktif'}',
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (Auth.canWrite) ...[
+            iconAction(context, Icons.edit_outlined, () async {
+              if (await showMemberForm(context, member: m)) _reload();
+            }, tooltip: 'Ubah anggota'),
+            const SizedBox(width: 6),
+            iconAction(context, Icons.delete_outline, () async {
+              // Pesan harus jujur: iuran ikut terhapus (kas bulan lalu
+              // berubah), catatan gol tetap ada tanpa nama. Menonaktifkan
+              // lebih aman.
+              if (await confirm(context, 'Hapus anggota?',
+                  'Riwayat iuran ${m.name} ikut terhapus dan saldo kas '
+                  'bulan lalu berubah. Catatan gol tetap ada tanpa nama. '
+                  'Kalau hanya ingin menyembunyikan, matikan "Aktif" di form edit.')) {
+                if (!mounted) return;
+                if (await attempt(context, () => Member.delete(m.id), fail: 'Gagal menghapus')) {
+                  _reload();
+                }
+              }
+            }, tooltip: 'Hapus'),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
@@ -113,70 +176,14 @@ class _MembersPageState extends State<MembersPage> {
                     ],
                   );
                 }
-                return ListView(
+                // `ListView.builder`, bukan `children: [...]`: daftar anggota
+                // klub bisa puluhan baris, dan membangun semuanya sekaligus
+                // membuat layar pertama terasa berat di HP lama. Dengan builder
+                // hanya baris yang terlihat yang dibuat.
+                return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                  children: [
-                    for (final m in filtered)
-                      RowItem(
-                        // Ketuk baris = lihat, ikon = ubah. Aturan ini sama
-                        // untuk semua role; sebelumnya baris membuka form edit
-                        // untuk admin tetapi riwayat iuran untuk anggota, jadi
-                        // satu ketukan berarti dua hal berbeda.
-                        onTap: () async {
-                          await Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => MemberDuesPage(member: m),
-                          ));
-                        },
-                        leading: Container(
-                          width: 38,
-                          height: 38,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: m.active
-                                  ? t.colorScheme.primary.withValues(alpha: 0.5)
-                                  : t.colorScheme.border,
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${m.jersey ?? '-'}',
-                            style: t.textTheme.h2.copyWith(
-                              fontSize: 20,
-                              color: m.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
-                            ),
-                          ),
-                        ),
-                        title: m.name,
-                        subtitle: '${m.position}${m.phone != null ? " • ${m.phone}" : ""}'
-                            '${m.active ? '' : ' • nonaktif'}',
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (Auth.canWrite) ...[
-                              iconAction(context, Icons.edit_outlined, () async {
-                                if (await showMemberForm(context, member: m)) _reload();
-                              }, tooltip: 'Ubah anggota'),
-                              const SizedBox(width: 6),
-                              iconAction(context, Icons.delete_outline, () async {
-                                // Pesan harus jujur: iuran ikut terhapus (kas
-                                // bulan lalu berubah), catatan gol tetap ada
-                                // tanpa nama. Menonaktifkan lebih aman.
-                                if (await confirm(context, 'Hapus anggota?',
-                                    'Riwayat iuran ${m.name} ikut terhapus dan saldo kas '
-                                    'bulan lalu berubah. Catatan gol tetap ada tanpa nama. '
-                                    'Kalau hanya ingin menyembunyikan, matikan "Aktif" di form edit.')) {
-                                  if (!context.mounted) return;
-                                  if (await attempt(context, () => Member.delete(m.id), fail: 'Gagal menghapus')) {
-                                    _reload();
-                                  }
-                                }
-                              }, tooltip: 'Hapus'),
-                            ],
-                          ],
-                        ),
-                      ),
-                  ],
+                  itemCount: filtered.length,
+                  itemBuilder: (context, i) => _memberRow(filtered[i], t),
                 );
               },
             ),

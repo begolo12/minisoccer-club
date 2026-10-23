@@ -102,20 +102,36 @@ int compareVersions(String a, String b) {
 ///
 /// Return null kalau rilis tidak punya aset `.apk` — lebih baik "tidak ada
 /// pembaruan" daripada tombol unduh yang menunjuk ke file yang salah.
-ReleaseInfo? parseRelease(Map<String, dynamic> json) {
+/// Pilih aset APK yang paling kecil untuk perangkat ini.
+///
+/// Rilis bisa memuat tiga berkas: `app-armeabi-v7a-release.apk` (HP lama
+/// 32-bit, ~19 MB), `app-arm64-v8a-release.apk` (HP sekarang, ~21 MB), dan
+/// `app-release.apk` universal (~38 MB). Memilih yang universal selalu
+/// benar, tetapi di jaringan lambat itu dua kali lipat unduhan tanpa manfaat.
+///
+/// [abi] berisi potongan nama arsitektur (`armeabi-v7a`, `arm64-v8a`,
+/// `x86_64`). Kalau tidak ada aset yang cocok, jatuh ke APK universal — lebih
+/// baik mengunduh berkas besar yang pasti terpasang daripada menawarkan
+/// berkas yang tidak ada.
+ReleaseInfo? parseRelease(Map<String, dynamic> json, {String? abi}) {
   final tag = (json['tag_name'] as String?)?.trim();
   if (tag == null || tag.isEmpty) return null;
 
   final assets = (json['assets'] as List?) ?? const [];
   Map<String, dynamic>? apk;
+  Map<String, dynamic>? universal;
   for (final raw in assets) {
     if (raw is! Map) continue;
     final name = (raw['name'] as String?)?.toLowerCase() ?? '';
-    if (name.endsWith('.apk')) {
-      apk = Map<String, dynamic>.from(raw);
+    if (!name.endsWith('.apk')) continue;
+    final asset = Map<String, dynamic>.from(raw);
+    if (abi != null && abi.isNotEmpty && name.contains(abi.toLowerCase())) {
+      apk = asset;
       break;
     }
+    universal ??= asset;
   }
+  apk ??= universal;
   if (apk == null) return null;
 
   final url = (apk['browser_download_url'] as String?) ?? '';

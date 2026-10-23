@@ -239,13 +239,48 @@ async function main() {
   check('nomor HP ganda ditolak', /sudah terdaftar/.test(dup),
     dup.slice(0, 100).replace(/\n/g, ' '));
 
+  // --- hapus anggota mencabut akses akunnya ---
+  //
+  // Menghapus anggota hanya melepas tautan `users.member_id` (FK ON DELETE SET
+  // NULL), jadi tanpa trigger akunnya tetap aktif dan bisa masuk — termasuk
+  // hak tulis kalau dulu dia bendahara. Trigger `members_deactivate_account`
+  // yang menutup celah itu; diuji di sini lewat pernyataan yang sama dengan
+  // yang dikirim aplikasi saat menekan Hapus.
+  const delRes = await api('DELETE FROM members WHERE id=@id', { id: row.id }, token);
+  const afterDel = await api('SELECT username, active FROM users WHERE username = @u',
+    { u: expectedUser }, token);
+  const relogin = await fetch(`${apiBase}/api/auth`, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'login', username: expectedUser, password: phone }) }).then((r) => r.json());
+  check('hapus anggota menonaktifkan akunnya',
+    delRes.rowCount === 1 && afterDel.rows?.[0]?.active === false && !relogin.token,
+    `aktif=${afterDel.rows?.[0]?.active}, login=${relogin.token ? 'masih bisa' : 'ditolak'}`);
+
   check('tidak ada error JavaScript', errors.length === 0, errors.slice(0, 2).join(' | '));
 
   // --- bersihkan ---
-  await api('DELETE FROM users WHERE username = @u', { u: expectedUser }, token);
+  //
+  // `users` TIDAK bisa dihapus lewat /api/sql (guard menolaknya, dan itu
+  // memang aturannya); jalurnya /api/auth. Dulu skrip ini mencoba lewat SQL,
+  // gagal tanpa suara, dan setiap kali dijalankan meninggalkan satu akun uji
+  // yang menumpuk di daftar Pengguna.
+  const usersLeft = await api('SELECT id, username FROM users WHERE username LIKE @p',
+    { p: `${tag.toLowerCase()}%` }, token);
+  for (const u of usersLeft.rows ?? []) {
+    await fetch(`${apiBase}/api/auth`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ action: 'delete', id: u.id }),
+    });
+  }
   await api('DELETE FROM members WHERE name LIKE @p', { p: `${tag}%` }, token);
-  const left = await api('SELECT count(*)::int AS n FROM members WHERE name LIKE @p', { p: `${tag}%` }, token);
-  check('data uji dibersihkan', (left.rows?.[0]?.n ?? 0) === 0, JSON.stringify(left.rows));
+
+  const leftMembers = await api('SELECT count(*)::int AS n FROM members WHERE name LIKE @p',
+    { p: `${tag}%` }, token);
+  const leftUsers = await api('SELECT count(*)::int AS n FROM users WHERE username LIKE @p',
+    { p: `${tag.toLowerCase()}%` }, token);
+  check('data uji dibersihkan (anggota + akun)',
+    (leftMembers.rows?.[0]?.n ?? 0) === 0 && (leftUsers.rows?.[0]?.n ?? 0) === 0,
+    `anggota ${leftMembers.rows?.[0]?.n}, akun ${leftUsers.rows?.[0]?.n}`);
 
   const bad = results.filter((r) => !r.ok).length;
   console.log(`\nTarget: ${base}`);

@@ -29,7 +29,6 @@ class _DashboardData {
   final int members;
   final double income;
   final CashSummary cash;
-  final List<ScorerRow> scorers;
   final List<Announcement> news;
   final List<Member> unpaid;
   final double? dues;
@@ -40,8 +39,6 @@ class _DashboardData {
   final Tournament? activeTournament;
   final List<Team> teams;
   final Map<int, String> teamNames;
-  final List<Booking> bookings;
-  final List<Standing> standings;
 
   /// Sumber yang gagal dimuat; beranda tetap tampil dengan data lain.
   final List<String> failures;
@@ -66,15 +63,12 @@ class _DashboardData {
     required this.members,
     required this.income,
     required this.cash,
-    required this.scorers,
     required this.news,
     required this.unpaid,
     required this.dues,
     this.activeTournament,
     required this.teams,
     required this.teamNames,
-    required this.bookings,
-    required this.standings,
     this.failures = const [],
     this.paymentsKnown = true,
     this.membersKnown = true,
@@ -131,13 +125,10 @@ class _DashboardData {
       soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
       soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
       soft('Jumlah anggota', Member.countActive, fallback: 0),
-      soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]),
       soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]),
       soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
       soft('Daftar tim', Team.all, fallback: const <Team>[]),
-      soft('Sewa lapangan', Booking.upcoming, fallback: const <Booking>[]),
-      soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
     ]);
     // Semua sumber gagal = server/jaringan mati, bukan satu tabel: layar error
     // penuh dengan tombol coba lagi lebih jelas daripada beranda kosong.
@@ -147,13 +138,10 @@ class _DashboardData {
     final tournaments = r[1].value! as List<Tournament>;
     final stats = r[2].value! as List<int>;
     final memberCount = r[3].value! as int;
-    final scorers = r[4].value! as List<ScorerRow>;
-    final news = r[5].value! as List<Announcement>;
-    final payments = r[6].value! as List<Payment>;
-    final transactions = r[7].value! as List<Transaction>;
-    final teams = r[8].value! as List<Team>;
-    final bookings = r[9].value! as List<Booking>;
-    final standings = r[10].value! as List<Standing>;
+    final news = r[4].value! as List<Announcement>;
+    final payments = r[5].value! as List<Payment>;
+    final transactions = r[6].value! as List<Transaction>;
+    final teams = r[7].value! as List<Team>;
 
     // Tagihan "belum bayar" mengikuti TURNAMEN AKTIF, bukan bulan: iuran
     // ditarik per turnamen dan pesertanya berbeda-beda tiap turnamen.
@@ -197,25 +185,22 @@ class _DashboardData {
       members: memberCount,
       income: cash.dues,
       cash: cash,
-      scorers: scorers,
       news: news,
       unpaid: bill.where((r) => !r.paid).map((r) => r.member).toList(),
       dues: active?.entryFee,
       activeTournament: active,
       teams: teams,
       teamNames: {for (final t in teams) t.id: t.name},
-      bookings: bookings,
-      standings: standings,
       failures: failures,
-      // `r[6]` = iuran bulan ini. Kalau gagal, daftar kosongnya BUKAN fakta:
+      // `r[5]` = iuran bulan ini. Kalau gagal, daftar kosongnya BUKAN fakta:
       // jangan menuduh semua orang menunggak, dan jangan menulis "semua lunas".
-      paymentsKnown: r[6].ok,
+      paymentsKnown: r[5].ok,
       // Daftar tagihan turnamen juga bisa gagal sendiri (mis. tabel peserta
       // kosong); tanpa flag ini semua anggota akan tampak menunggak.
       membersKnown: billKnown,
       // Kas = iuran + transaksi; kalau salah satu gagal, angkanya bukan nol
       // yang sebenarnya melainkan nol yang tidak diketahui.
-      cashKnown: r[6].ok && r[7].ok,
+      cashKnown: r[5].ok && r[6].ok,
     );
   }
 }
@@ -292,7 +277,15 @@ class _DashboardPageState extends State<DashboardPage> with SingleTickerProvider
                     const SizedBox(width: 28),
                     Expanded(
                       flex: 2,
-                      child: _RailColumn(data: d, anim: _in, onChanged: _reload),
+                      // `key` mengikuti `_gen`: tanpa itu, "Muat ulang"
+                      // memperbarui kolom utama tetapi klasemen/pencetak gol
+                      // tetap angka lama karena future-nya sudah selesai.
+                      child: _RailColumn(
+                        key: ValueKey('rail-$_gen'),
+                        data: d,
+                        anim: _in,
+                        onChanged: _reload,
+                      ),
                     ),
                   ],
                 ),
@@ -315,6 +308,12 @@ class _In extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Animasi masuk dilewati kalau sistem meminta animasi dikurangi, dan di
+    // perangkat yang melaporkan animasi dimatikan (mode pengembang / hemat
+    // baterai ekstrem). Fade + slide per bagian berarti beberapa layer
+    // compositing sekaligus; di HP lama itu justru yang membuat gulir pertama
+    // terasa tersendat, padahal isinya sudah siap ditampilkan.
+    if (MediaQuery.disableAnimationsOf(context)) return child;
     final a = CurvedAnimation(
       parent: anim,
       curve: Interval(begin.clamp(0, 0.7), (begin + 0.3).clamp(0.3, 1), curve: Curves.easeOutCubic),
@@ -1126,17 +1125,70 @@ class _CashBlock extends StatelessWidget {
 }
 
 /// Kolom kanan di layar lebar: uang dan top skor. Di HP ikut alur utama.
-class _RailColumn extends StatelessWidget {
-  const _RailColumn({required this.data, required this.anim, required this.onChanged});
+/// Data yang HANYA tampil di kolom samping (layar lebar): klasemen, pencetak
+/// gol, dan sewa lapangan berikutnya.
+///
+/// Dimuat terpisah dari data utama karena di HP kolom ini tidak dirender sama
+/// sekali. Sebelumnya ketiga query itu tetap dijalankan di setiap muat
+/// beranda — tiga perjalanan ke server untuk data yang tidak pernah dilihat.
+class _RailData {
+  const _RailData({required this.scorers, required this.standings, required this.bookings});
 
+  final List<ScorerRow> scorers;
+  final List<Standing> standings;
+  final List<Booking> bookings;
+
+  static Future<_RailData> load() async {
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]),
+      soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
+      soft('Sewa lapangan', Booking.upcoming, fallback: const <Booking>[]),
+    ]);
+    settle(r);
+    return _RailData(
+      scorers: r[0].value! as List<ScorerRow>,
+      standings: r[1].value! as List<Standing>,
+      bookings: r[2].value! as List<Booking>,
+    );
+  }
+}
+
+class _RailColumn extends StatefulWidget {
+  const _RailColumn({super.key, required this.data, required this.anim, required this.onChanged});
+
+  /// Data utama beranda: dipakai kolom ini untuk bagian "belum bayar", yang
+  /// memang sudah dimuat untuk kartu ringkasan di kolom utama.
   final _DashboardData data;
   final Animation<double> anim;
   final Future<void> Function() onChanged;
 
   @override
+  State<_RailColumn> createState() => _RailColumnState();
+}
+
+class _RailColumnState extends State<_RailColumn> {
+  late final Future<_RailData> _future = _RailData.load();
+
+  @override
   Widget build(BuildContext context) {
+    return FutureBuilder<_RailData>(
+      future: _future,
+      builder: (context, snap) {
+        final d = snap.data;
+        // Selama memuat, kolom samping dibiarkan kosong: kerangka palsu di sini
+        // hanya menambah pekerjaan render tanpa menambah informasi.
+        if (d == null) return const SizedBox.shrink();
+        return _rail(context, d);
+      },
+    );
+  }
+
+  Widget _rail(BuildContext context, _RailData d) {
     final t = ShadTheme.of(context);
-    final d = data;
+    final anim = widget.anim;
+    final onChanged = widget.onChanged;
+    // `main` = data beranda yang sudah dimuat; `d` = data khusus kolom ini.
+    final main = widget.data;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1147,34 +1199,34 @@ class _RailColumn extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SectionTitle(
-                d.activeTournament == null
+                main.activeTournament == null
                     ? 'Belum bayar'
-                    : 'Belum bayar — ${d.activeTournament!.name}',
+                    : 'Belum bayar — ${main.activeTournament!.name}',
                 top: 0,
               ),
               // Tanpa daftar peserta yang terbaca, daftar kosong BUKAN berarti
               // "semua lunas".
-              if (!d.paymentsKnown || !d.membersKnown)
+              if (!main.paymentsKnown || !main.membersKnown)
                 Text('Data iuran belum bisa dimuat.', style: t.textTheme.muted)
-              else if (d.activeTournament == null)
+              else if (main.activeTournament == null)
                 Text(
                   'Belum ada turnamen. Iuran ditarik per turnamen.',
                   style: t.textTheme.muted,
                 )
-              else if (d.unpaid.isEmpty)
+              else if (main.unpaid.isEmpty)
                 Text(
-                  d.dues != null && d.dues! > 0
+                  main.dues != null && main.dues! > 0
                       ? 'Semua peserta sudah lunas untuk turnamen ini.'
                       : 'Belum ada peserta yang perlu ditagih.',
                   style: t.textTheme.muted,
                 )
               else
-                for (final m in d.unpaid.take(6))
+                for (final m in main.unpaid.take(6))
                   RowItem(
                     title: m.name,
                     subtitle: m.position,
                     trailing: Text(
-                      (d.dues ?? 0) > 0 ? fmtMoney(d.dues!) : 'Belum bayar',
+                      (main.dues ?? 0) > 0 ? fmtMoney(main.dues!) : 'Belum bayar',
                       style: t.textTheme.table.copyWith(color: AppThemes.bad(context)),
                     ),
                   ),

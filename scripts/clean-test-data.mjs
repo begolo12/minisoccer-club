@@ -43,6 +43,15 @@ const steps = [
   ['team_players', `DELETE FROM team_players WHERE team_id IN (SELECT id FROM teams WHERE ${like('name')}) OR member_id IN (SELECT id FROM members WHERE ${like('name')})`],
   ['teams', `DELETE FROM teams WHERE ${like('name')}`],
   ['payments', `DELETE FROM payments WHERE member_id IN (SELECT id FROM members WHERE ${like('name')})`],
+  // Akun milik anggota uji. Tidak lewat /api/sql karena guard menolaknya;
+  // skrip ini memakai koneksi owner, jadi aman.
+  //
+  // Pola `^rg[a-z]{6}$` adalah bentuk username yang dibuat skrip uji
+  // pendaftaran (tag `Rg` + 6 huruf). Sengaja sempit: `LIKE 'rg%'` akan ikut
+  // menghapus akun asli yang kebetulan berawalan itu.
+  ['users', `DELETE FROM users
+      WHERE member_id IN (SELECT id FROM members WHERE ${like('name')})
+         OR (username ~ '^rg[a-z]{6}$' AND member_id IS NULL)`],
   // Patungan: setoran kas menempel di baris kehadiran, jadi dibuang lebih dulu.
   ['attendance_cash', `DELETE FROM transactions WHERE attendance_id IN (
       SELECT a.id FROM booking_attendance a

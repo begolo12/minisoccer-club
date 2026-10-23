@@ -16,11 +16,14 @@ import 'errors.dart';
 
 import 'db.dart';
 import 'update_models.dart';
+import 'update_platform_stub.dart'
+    if (dart.library.io) 'update_platform_io.dart' show deviceAbi;
 import 'version.dart';
 
 export 'update_models.dart';
 export 'update_platform_stub.dart'
-    if (dart.library.io) 'update_platform_io.dart' show canSelfUpdate, downloadApk, installApk;
+    if (dart.library.io) 'update_platform_io.dart'
+    show canSelfUpdate, downloadApk, installApk, deviceAbi;
 
 const kRepoSlug = 'begolo12/minisoccer-club';
 const kLatestReleaseApi = 'https://api.github.com/repos/$kRepoSlug/releases/latest';
@@ -73,7 +76,10 @@ class UpdateChecker {
       if (decoded is! Map<String, dynamic>) {
         return UpdateCheck(current: current, error: 'Balasan GitHub tidak dikenali.');
       }
-      final release = parseRelease(decoded);
+      // Arsitektur perangkat menentukan APK mana yang diunduh. Di web
+      // (tidak ada pembaruan mandiri) nilainya null, dan parseRelease jatuh
+      // ke APK universal.
+      final release = parseRelease(decoded, abi: deviceAbi());
       if (release == null) {
         return UpdateCheck(current: current, error: 'Rilis terbaru tanpa berkas APK.');
       }
