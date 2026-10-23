@@ -7,7 +7,7 @@ import {
   usernameBase,
   usernameCandidate,
   validateRegistration,
-} from './register.js';
+} from './_register-rules.js';
 
 // Aturan formulir pendaftaran. Yang diuji di sini adalah bagian yang menentukan
 // apakah data masuk ke database, jadi kasus tepinya harus dijaga: nomor HP
