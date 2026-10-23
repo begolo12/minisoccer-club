@@ -151,7 +151,7 @@ class _RegisterPageState extends State<RegisterPage> {
             onChanged: (_) => setState(() {}),
           ),
           ),
-          _Hint('Nama depan jadi username kamu: "irvan".'),
+          _Hint('Nama depan jadi nama pengguna kamu: "irvan".'),
           if (_touched && _nameErr != null) _ErrorText(_nameErr!),
           const SizedBox(height: 18),
 

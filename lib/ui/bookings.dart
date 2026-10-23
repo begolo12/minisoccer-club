@@ -154,7 +154,7 @@ class _BookingRow extends StatelessWidget {
       ),
       title: b.title,
       subtitle: '${b.durationMin} menit • ${Booking.statusLabels[b.status] ?? b.status}'
-          '${b.cost <= 0 ? '' : (b.inCash ? ' • sudah di kas' : ' • belum di kas')}',
+          '${b.cost <= 0 ? '' : (b.inCash ? ' • sudah masuk Kas' : ' • belum masuk Kas')}',
       // Ketuk baris untuk membuka kehadiran & patungan. Ini alur yang paling
       // sering dipakai setelah main: "siapa datang, siapa sudah setor".
       onTap: canceled
@@ -375,7 +375,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                   StatTile(
                     label: 'Biaya sewa',
                     value: fmtMoney(b.cost),
-                    hint: b.inCash ? 'sudah di kas' : 'belum di kas',
+                    hint: b.inCash ? 'sudah masuk Kas' : 'belum masuk Kas',
                     color: AppThemes.money(context),
                   ),
                   StatTile(
@@ -471,7 +471,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     ? 'Biaya sewa ${fmtMoney(b.cost)} dibagi rata ke semua yang hadir. '
                         'Setoran yang dicatat di sini masuk ke Kas sebagai pemasukan '
                         '"Patungan lapangan".'
-                    : 'Booking ini tanpa biaya, jadi tidak ada yang perlu dibagi.',
+                    : 'Sewa ini tanpa biaya, jadi tidak ada yang perlu dibagi.',
                 style: t.textTheme.small,
               ),
             ],

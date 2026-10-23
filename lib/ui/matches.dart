@@ -5,6 +5,7 @@ import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
+import 'tournament.dart';
 import 'forms.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -76,25 +77,48 @@ class _MatchesPageState extends State<MatchesPage> {
           final stats = data.$2;
           final standings = data.$3;
           final failures = data.$4;
-          if (matches.isEmpty && standings.isEmpty) {
+          // Kosong = belum ada laga SAMA SEKALI. Klasemen yang masih nol tidak
+          // dihitung "ada isi": sebelumnya tabel empat tim dengan angka 0
+          // membuat halaman tampak terisi, padahal tidak ada satu laga pun dan
+          // tidak ada petunjuk apa yang harus dilakukan.
+          if (matches.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
               children: [
-                const SizedBox(height: 80),
                 if (failures.isNotEmpty)
                   DegradedNotice(failures: failures, onRetry: _reload)
-                else
+                else ...[
+                  const SizedBox(height: 40),
                   EmptyState(
                     icon: Icons.sports_soccer_outlined,
-                    title: 'Belum ada tanding',
-                    message: 'Buat tim dulu, lalu jadwalkan laga antar tim klub.',
-                    actionLabel: Auth.canWrite ? 'Buat jadwal' : null,
+                    title: 'Belum ada laga',
+                    message: 'Laga bisa dibuat dua cara: jadwalkan satu per satu di '
+                        'sini, atau buat turnamen internal supaya jadwalnya dibuat '
+                        'otomatis untuk semua tim.',
+                    actionLabel: Auth.canWrite ? 'Jadwalkan laga' : null,
                     onAction: Auth.canWrite
                         ? () async {
                             if (await showMatchForm(context)) _reload();
                           }
                         : null,
                   ),
+                  if (Auth.canWrite) ...[
+                    const SizedBox(height: 10),
+                    Center(
+                      child: TextButton(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const TournamentsPage()),
+                          );
+                          _reload();
+                        },
+                        child: const Text('Buat turnamen (jadwal otomatis)'),
+                      ),
+                    ),
+                  ],
+                ],
               ],
             );
           }
@@ -116,7 +140,10 @@ class _MatchesPageState extends State<MatchesPage> {
                 const SectionTitle('Jadwal berikutnya'),
                 for (final m in scheduled) _MatchTile(match: m, onChanged: _reload),
               ],
-              if (standings.isNotEmpty) ...[
+              // Klasemen yang seluruhnya nol tidak menambah informasi: semua
+              // tim 0 poin karena belum ada laga. Tabel kosong hanya membuat
+              // halaman terlihat "terisi" padahal tidak ada hasil apa pun.
+              if (standings.any((s) => s.played > 0)) ...[
                 const SectionTitle('Klasemen tim'),
                 StandingsTable(standings: standings, top: 1),
               ],
@@ -261,7 +288,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
           }, tooltip: 'Ubah jadwal'),
         if (Auth.canWrite)
           iconAction(context, Icons.delete_outline, () async {
-            if (await confirm(context, 'Hapus pertandingan?', 'Semua catatan gol ikut terhapus.')) {
+            if (await confirm(context, 'Hapus laga?', 'Semua catatan gol ikut terhapus.')) {
               if (!context.mounted) return;
               if (await attempt(context, () => Match.delete(m.id), fail: 'Gagal menghapus')) {
                 if (context.mounted) Navigator.pop(context, true);

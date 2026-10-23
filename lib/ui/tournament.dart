@@ -5,7 +5,10 @@ import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
+import 'members.dart';
 import 'money_input.dart';
+import 'teams.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 /// Turnamen internal: 4 tim, round-robin, semua laga dalam satu blok waktu
@@ -33,7 +36,19 @@ class _TournamentsPageState extends State<TournamentsPage> {
   }
 
   Future<void> _create() async {
-    if (await showTournamentForm(context)) _reload();
+    final id = await showTournamentForm(context);
+    await _reload();
+    if (id == null || !mounted) return;
+    // Buka turnamen yang BARU dibuat (bukan draft pertama): jadwalnya sudah
+    // ada di sana, dan tanpa ini pengguna hanya melihat daftar bertambah tanpa
+    // tanda bahwa jadwalnya sudah terbentuk.
+    final created = await Tournament.byId(id);
+    if (created == null || !mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TournamentDetailPage(tournament: created)),
+    );
+    await _reload();
   }
 
   @override
@@ -275,7 +290,7 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
           : '',
     );
     var saving = false;
-    final ok = await showShadDialog<bool>(
+  final ok = await showShadDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
@@ -590,12 +605,46 @@ class _TeamCard extends StatelessWidget {
   final Future<void> Function() onChanged;
 
   Future<void> _addPlayer(BuildContext context) async {
-    final all = await Member.all(activeOnly: true);
+    // Tanpa try/catch, tombol ini diam total saat jaringan bermasalah — dan
+    // justru di halaman inilah orang melengkapi pemain.
+    final List<Member> all;
+    try {
+      all = await Member.all(activeOnly: true);
+    } catch (e) {
+      if (context.mounted) toast(context, 'Gagal memuat anggota: ${errText(e)}');
+      return;
+    }
     if (!context.mounted) return;
     final taken = players.map((p) => p.id).toSet();
     final free = all.where((m) => !taken.contains(m.id)).toList();
     if (free.isEmpty) {
-      toast(context, 'Semua pemain aktif sudah masuk tim ini');
+      // Dua sebab berbeda, dan keduanya butuh jalan keluar yang bisa diketuk.
+      final add = await showShadDialog<bool>(
+        context: context,
+        builder: (ctx) => ShadDialog(
+          title: Text(all.isEmpty ? 'Belum ada anggota' : 'Semua anggota sudah masuk'),
+          description: Text(
+            all.isEmpty
+                ? 'Tim diisi dari daftar anggota klub. Tambah anggota dulu, lalu '
+                    'kembali ke sini untuk memasukkannya ke ${team.name}.'
+                : 'Semua anggota aktif sudah ada di tim ini. Tambah anggota baru '
+                    'kalau ingin mengisi lebih banyak pemain.',
+          ),
+          actions: [
+            ShadButton.outline(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Nanti'),
+            ),
+            ShadButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Buka Anggota'),
+            ),
+          ],
+        ),
+      );
+      if (add == true && context.mounted) {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const MembersPage()));
+      }
       return;
     }
     final picked = await showShadDialog<Member>(
@@ -702,14 +751,60 @@ class _TeamCard extends StatelessWidget {
 /// bisa 1 grup — grup berisi 1 tim tidak akan pernah mendapat laga.
 int groupCap(int teams) => teams < 4 ? 1 : (teams ~/ 2).clamp(1, 4);
 
-/// Form buat turnamen. Return true kalau berhasil dibuat.
-Future<bool> showTournamentForm(BuildContext context) async {
-  final teams = await Team.all();
-  if (!context.mounted) return false;
-  if (teams.length < 2) {
-    toast(context, 'Buat minimal 2 tim dulu di menu Tim');
-    return false;
+/// Form buat turnamen. Return id turnamen yang baru dibuat, atau null kalau
+/// dibatalkan.
+///
+/// Id (bukan `true`) supaya pemanggil bisa langsung membuka turnamen itu:
+/// sebelumnya `_create` menebak lewat "draft pertama", sehingga klub yang sudah
+/// punya draft lama mendarat di turnamen yang salah.
+Future<int?> showTournamentForm(BuildContext context) async {
+  final List<Team> teams;
+  try {
+    teams = await Team.all();
+  } catch (e) {
+    // Tanpa ini tombol "Buat turnamen" diam total saat jaringan bermasalah.
+    if (context.mounted) toast(context, 'Gagal memuat tim: ${errText(e)}');
+    return null;
   }
+  if (!context.mounted) return null;
+  if (teams.length < 2) {
+    // Toast hilang sendiri dan tidak bisa diklik. Klub baru justru berhenti di
+    // sini, jadi tawarkan jalan ke halaman yang menyelesaikannya.
+    final go = await showShadDialog<bool>(
+      context: context,
+      builder: (ctx) => ShadDialog(
+        title: const Text('Butuh minimal 2 tim'),
+        description: Text(
+          'Turnamen mempertemukan tim satu sama lain, jadi butuh minimal dua tim. '
+          'Saat ini klub punya ${teams.length} tim.',
+        ),
+        actions: [
+          ShadButton.outline(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nanti'),
+          ),
+          ShadButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Buat tim'),
+          ),
+        ],
+      ),
+    );
+    if (go == true && context.mounted) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamsPage()));
+    }
+    return null;
+  }
+
+  // Jumlah pemain per tim: prasyarat penagihan iuran, tetapi tidak pernah
+  // terlihat di form ini sebelumnya.
+  Map<int, int> counts = const {};
+  try {
+    counts = await Team.playerCounts();
+  } catch (_) {
+    // Tidak menghalangi pembuatan turnamen; baris tim tampil tanpa angka.
+  }
+  if (!context.mounted) return null;
   final name = TextEditingController(
     text: 'Turnamen Internal ${fmtDate(DateTime.now())}',
   );
@@ -722,6 +817,7 @@ Future<bool> showTournamentForm(BuildContext context) async {
   var date = DateTime.now().add(const Duration(days: 1));
   var time = const TimeOfDay(hour: 20, minute: 0);
   var saving = false;
+  int? createdId;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -766,7 +862,7 @@ Future<bool> showTournamentForm(BuildContext context) async {
           setLocal(() => saving = true);
           try {
             final start = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-            await Tournament.create(
+            createdId = await Tournament.create(
               name: name.text.trim(),
               venue: venue.text.trim().isEmpty ? null : venue.text.trim(),
               startsAt: start,
@@ -926,11 +1022,29 @@ Future<bool> showTournamentForm(BuildContext context) async {
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
-                                    child: Text(
-                                      team.name,
-                                      style: const TextStyle(fontSize: 13.5),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            team.name,
+                                            style: const TextStyle(fontSize: 13.5),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        // Tim tanpa pemain tidak bisa ditagih
+                                        // iurannya; sebutkan di sini, bukan
+                                        // setelah turnamen dibuat.
+                                        Text(
+                                          '${counts[team.id] ?? 0} pemain',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            color: (counts[team.id] ?? 0) == 0
+                                                ? AppThemes.bad(ctx)
+                                                : ShadTheme.of(ctx).colorScheme.mutedForeground,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -954,7 +1068,7 @@ Future<bool> showTournamentForm(BuildContext context) async {
       },
     ),
   );
-  return ok ?? false;
+  return (ok ?? false) ? createdId : null;
 }
 
 /// Dialog skor. Return `(home, away)`, string `'reset'`, atau null kalau batal.
@@ -1184,7 +1298,7 @@ Future<bool> showTournamentTeamsForm(
               const SizedBox(height: 4),
               Text(
                 'Laga yang sudah punya skor tidak bisa dijadwalkan ulang. '
-                'Reset skornya dulu di daftar jadwal.',
+                'Atur ulang skornya dulu di daftar jadwal.',
                 style: t.textTheme.small,
               ),
             ],

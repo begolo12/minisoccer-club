@@ -11,7 +11,7 @@ import 'row_patch.dart';
 /// Dilempar driver saat token ditolak server (sesi habis).
 class Unauthorized implements Exception {
   @override
-  String toString() => 'Sesi habis, silakan login ulang';
+  String toString() => 'Sesi berakhir. Masuk lagi untuk melanjutkan — perubahan yang belum terkirim tetap tersimpan.';
 }
 
 /// Akses DB dari UI. Semua platform lewat `/api/sql` (Vercel Function),

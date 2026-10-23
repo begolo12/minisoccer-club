@@ -140,7 +140,9 @@ async function main() {
     text.slice(0, 80).replace(/\n/g, ' '));
   check('formulir menanyakan nama, nomor HP, alamat, dan posisi',
     /Nama lengkap/.test(text) && /Nomor HP/.test(text) && /Alamat/.test(text) && /Posisi bermain/.test(text));
-  check('menjelaskan nama depan jadi username', /username/i.test(text));
+  // Istilah yang dipakai UI sekarang "nama pengguna"; "username" hanya
+  // muncul di kartu hasil (label teknis untuk login).
+  check('menjelaskan nama depan jadi nama pengguna', /nama pengguna/i.test(text));
 
   // --- kirim kosong: semua isian wajib ---
   await clickText('Kirim pendaftaran');

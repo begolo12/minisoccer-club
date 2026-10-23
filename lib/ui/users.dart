@@ -173,7 +173,7 @@ class _UsersPageState extends State<UsersPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Tambah pengguna'),
-          description: const Text('Password dipakai untuk login. Bisa diubah kapan saja.'),
+          description: const Text('Kata sandi dipakai untuk masuk. Bisa diubah kapan saja.'),
           actions: [
             ShadButton.outline(
               onPressed: saving ? null : () => Navigator.pop(ctx, false),
@@ -210,7 +210,7 @@ class _UsersPageState extends State<UsersPage> {
             children: [
               ShadInput(
                 controller: username,
-                placeholder: const Text('Username'),
+                placeholder: const Text('Nama pengguna'),
                 autocorrect: false,
               ),
               const SizedBox(height: 10),
@@ -221,7 +221,7 @@ class _UsersPageState extends State<UsersPage> {
               ),
               const SizedBox(height: 10),
               ShadSelect<String>(
-                placeholder: const Text('Role'),
+                placeholder: const Text('Hak akses'),
                 initialValue: role,
                 options: AppUser.roles
                     .map((r) => ShadOption(value: r, child: Text(roleLabels[r] ?? r)))

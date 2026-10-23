@@ -61,7 +61,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 22),
-          const SectionTitle('Server'),
+          const SectionTitle('Sambungan data'),
           Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -98,7 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 22),
-          const SectionTitle('Data offline'),
+          const SectionTitle('Data tanpa internet'),
           _OfflinePanel(),
           const SizedBox(height: 22),
           const SectionTitle('Akun'),
@@ -565,7 +565,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
   Future<void> _clearCache() async {
     if (!await confirm(
       context,
-      'Kosongkan cache offline?',
+      'Kosongkan data sementara?',
       'Data tersimpan untuk dibaca tanpa internet akan dihapus. Perubahan yang '
           'belum terkirim TIDAK terpengaruh. Halaman akan memuat ulang dari server.',
     )) {
@@ -574,7 +574,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
     final removed = await Db.clearOfflineCache();
     if (mounted) {
       setState(() {});
-      toast(context, '$removed data cache dihapus');
+      toast(context, '$removed data sementara dihapus');
     }
   }
 

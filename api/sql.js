@@ -85,6 +85,6 @@ export default async function handler(req, res) {
     if (e instanceof MissingParam) return res.status(400).json({ error: e.message });
     // Detail hanya ke log server; klien dapat pesan umum.
     console.error('[sql]', e.message);
-    return res.status(400).json({ error: 'Query gagal dijalankan' });
+    return res.status(400).json({ error: 'Data belum bisa dimuat. Coba lagi sebentar lagi.' });
   }
 }

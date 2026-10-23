@@ -407,7 +407,7 @@ class _FormPanel extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             firstRun
-                ? 'Password disimpan sebagai hash bcrypt di database.'
+                ? 'Password disimpan dalam bentuk teracak. Tidak ada yang bisa membacanya.'
                 : 'Lupa password? Minta admin mengatur ulang lewat menu Pengguna.',
             textAlign: TextAlign.start,
             style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.5),

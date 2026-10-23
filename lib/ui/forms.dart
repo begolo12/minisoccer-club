@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'money_input.dart';
+import 'teams.dart';
 import 'widgets.dart';
 
 /// Kumpulan form (bottom-sheet style dialog) yang dipakai lintas halaman.
@@ -130,7 +131,31 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
   }
   if (!context.mounted) return false;
   if (teams.length < 2) {
-    toast(context, 'Buat minimal 2 tim dulu di menu Tim');
+    // Dialog dengan tombol, bukan toast: klub baru berhenti tepat di sini, dan
+    // toast hilang sendiri tanpa jalan keluar.
+    final go = await showShadDialog<bool>(
+      context: context,
+      builder: (ctx) => ShadDialog(
+        title: const Text('Butuh minimal 2 tim'),
+        description: Text(
+          'Laga mempertemukan dua tim, jadi butuh minimal dua tim. '
+          'Saat ini klub punya ${teams.length} tim.',
+        ),
+        actions: [
+          ShadButton.outline(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nanti'),
+          ),
+          ShadButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Buat tim'),
+          ),
+        ],
+      ),
+    );
+    if (go == true && context.mounted) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => const TeamsPage()));
+    }
     return false;
   }
   final editing = match != null;
@@ -475,26 +500,19 @@ Future<bool> showPaymentForm(
   }
   if (!context.mounted) return false;
 
-  List<Member> candidates = bill.map((r) => r.member).toList();
-  if (candidates.isEmpty) {
-    try {
-      candidates = await Member.all(activeOnly: true);
-      failed = false;
-    } catch (_) {
-      candidates = const [];
-      failed = true;
-    }
-  }
+  // Peserta = anggota dari tim yang ikut turnamen. Dulu, kalau daftar itu
+  // kosong, form diam-diam jatuh ke SEMUA anggota aktif. Akibatnya uang bisa
+  // tercatat untuk orang yang tidak ikut: "Terkumpul" bertambah, sedangkan
+  // "Belum bayar" tetap kosong — terlihat seperti data hilang.
+  final candidates = bill.map((r) => r.member).toList();
   if (!context.mounted) return false;
   if (candidates.isEmpty) {
-    // Bedakan "memang belum ada anggota" dari "tidak bisa dimuat": menuduh
-    // pengguna belum menambah anggota padahal daftarnya cuma tidak terbaca
-    // saat offline membuatnya menambah data yang sudah ada.
     toast(
       context,
       failed
-          ? 'Daftar anggota belum tersimpan di perangkat. Buka halaman Anggota sekali saat online.'
-          : 'Tambahkan anggota dulu',
+          ? 'Daftar peserta belum tersimpan di perangkat. Buka halaman Iuran sekali saat online.'
+          : 'Belum ada peserta: tim di turnamen ini belum punya pemain. '
+              'Isi pemain tiap tim dulu di halaman turnamen.',
     );
     return false;
   }

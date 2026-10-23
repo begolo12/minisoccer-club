@@ -279,7 +279,7 @@ class _MorePageState extends State<MorePage> {
                 _Tile(
                   icon: Icons.people_outline,
                   title: 'Pengguna',
-                  subtitle: 'Akun & role admin/bendahara',
+                  subtitle: 'Akun & hak akses admin/bendahara',
                   onTap: () => _open(context, const UsersPage()),
                 ),
               // Baris ini satu-satunya tempat pembaruan terlihat tanpa

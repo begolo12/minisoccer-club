@@ -173,7 +173,7 @@ class _MembersPageState extends State<MembersPage> {
                         icon: Icons.groups_outlined,
                         title: _query.isEmpty ? 'Belum ada anggota' : 'Tidak ditemukan',
                         message: _query.isEmpty
-                            ? 'Tambahkan pemain pertama klub kamu.'
+                            ? 'Tambahkan anggota pertama klub kamu.'
                             : 'Coba kata kunci lain.',
                         actionLabel: _query.isEmpty && Auth.canWrite ? 'Tambah anggota' : null,
                         onAction: _query.isEmpty && Auth.canWrite

@@ -1897,7 +1897,7 @@ class Tournament {
       params: {'t': id},
     );
     if ((done.first['n'] as int) > 0) {
-      throw Exception('Sudah ada laga dengan skor. Reset skornya dulu.');
+      throw Exception('Sudah ada laga dengan skor. Atur ulang skornya dulu.');
     }
     final g = groups.clamp(1, 8);
     await Db.execute(
@@ -2064,6 +2064,21 @@ class Team {
       (out[r['team_id'] as int] ??= []).add(Member.fromMap(r));
     }
     return out;
+  }
+
+  /// Jumlah pemain per tim, satu query untuk semua tim.
+  ///
+  /// Dipakai form turnamen untuk menunjukkan tim mana yang masih kosong.
+  /// Tanpa angka ini, tim berisi 0 pemain tetap bisa dipilih, turnamennya
+  /// dibuat, lalu halaman Iuran berkata "Belum ada peserta" tanpa sebab yang
+  /// jelas — pemain adalah prasyarat penagihan, bukan sekadar pelengkap.
+  static Future<Map<int, int>> playerCounts() async {
+    final rows = await Db.query(
+      'SELECT team_id, count(*)::int AS n FROM team_players GROUP BY team_id',
+    );
+    return {
+      for (final r in rows) _int(r['team_id']): _int(r['n']),
+    };
   }
 
   static Future<int> insert(String name) async {

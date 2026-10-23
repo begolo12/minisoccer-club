@@ -1255,10 +1255,10 @@ class _OfflineStripState extends State<OfflineStrip> {
   String _text(bool offline, int pending, bool syncing) {
     if (syncing) return 'Menyinkronkan $pending perubahan…';
     if (pending > 0 && offline) {
-      return 'Offline — $pending perubahan menunggu, terkirim saat online';
+      return 'Tanpa internet — $pending perubahan menunggu, dikirim saat tersambung';
     }
     if (pending > 0) return '$pending perubahan menunggu dikirim';
-    if (Db.offlineSince == null) return 'Offline — menampilkan data tersimpan';
+    if (Db.offlineSince == null) return 'Tanpa internet — menampilkan data tersimpan';
     return 'Offline — data tersimpan ${fmtDate(Db.offlineSince!)} '
         '${fmtTime(Db.offlineSince!)}';
   }

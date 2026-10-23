@@ -5,6 +5,7 @@ import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
+import 'members.dart';
 import 'matches.dart';
 import 'widgets.dart';
 
@@ -338,7 +339,35 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
     final taken = current.map((p) => p.id).toSet();
     final free = all.where((m) => !taken.contains(m.id)).toList();
     if (free.isEmpty) {
-      toast(context, 'Semua anggota aktif sudah masuk tim ini');
+      // Toast hilang sendiri dan tidak bisa diketuk. Ini ujung rantai dari
+      // "isi pemain tim", jadi tawarkan tombol yang benar-benar menyelesaikan.
+      final add = await showShadDialog<bool>(
+        context: context,
+        builder: (ctx) => ShadDialog(
+          title: Text(all.isEmpty ? 'Belum ada anggota' : 'Semua anggota sudah masuk'),
+          description: Text(
+            all.isEmpty
+                ? 'Tim diisi dari daftar anggota klub. Tambah anggota dulu, lalu '
+                    'kembali ke sini untuk memasukkannya ke ${widget.team.name}.'
+                : 'Semua anggota aktif sudah ada di tim ini. Tambah anggota baru '
+                    'kalau ingin mengisi lebih banyak pemain.',
+          ),
+          actions: [
+            ShadButton.outline(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Nanti'),
+            ),
+            ShadButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Buka Anggota'),
+            ),
+          ],
+        ),
+      );
+      if (add == true && mounted) {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const MembersPage()));
+        if (mounted) await _reload();
+      }
       return;
     }
     final picked = await showShadDialog<Member>(

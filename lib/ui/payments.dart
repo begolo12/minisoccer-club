@@ -6,6 +6,7 @@ import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
+import 'tournament.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -128,7 +129,12 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 // Tombol tetap aktif: menonaktifkannya tanpa alasan membuat
                 // pengguna bingung. Ketuk → beri tahu langkah berikutnya.
                 if (d?.selected == null) {
-                  toast(context, 'Buat turnamen dulu — iuran ditarik per turnamen');
+                  // Toast tidak bisa diklik: arahkan ke layar tempat turnamen
+                  // dibuat, jangan hanya memberi tahu.
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TournamentsPage()),
+                  ).then((_) => _reload());
                   return;
                 }
                 _record(d!);
@@ -154,12 +160,23 @@ class _PaymentsPageState extends State<PaymentsPage> {
         if (d.failures.isNotEmpty) DegradedNotice(failures: d.failures, onRetry: _reload),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 40),
+          // Instruksi "buat turnamen dulu" harus punya tombolnya. Sebelumnya
+          // layar ini menyuruh langkah yang tidak bisa dilakukan di sini.
           child: EmptyState(
             icon: Icons.emoji_events_outlined,
             title: 'Belum ada turnamen',
             message: 'Iuran ditarik per turnamen. Buat turnamen dulu, lalu catat '
                 'iuran anggota yang ikut.',
-            actionLabel: null,
+            // Tamu tetap diberi jalan: melihat turnamen adalah hak baca, dan
+            // tanpa tombol apa pun layar ini terasa rusak ("kok kosong?").
+            actionLabel: Auth.canWrite ? 'Buat turnamen' : 'Lihat turnamen',
+            onAction: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TournamentsPage()),
+              );
+              _reload();
+            },
           ),
         ),
       ],
@@ -251,9 +268,21 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 EmptyState(
                   icon: Icons.group_outlined,
                   title: 'Belum ada peserta',
-                  message: 'Tambahkan tim ke turnamen ini dan isi pemainnya. '
-                      'Anggota dari tim itulah yang muncul di daftar iuran.',
-                  actionLabel: null,
+                  message: 'Tim di turnamen ini belum punya pemain, jadi belum ada '
+                      'yang bisa ditagih. Isi pemain tiap tim, atau tambahkan tim '
+                      'lain ke turnamen ini.',
+                  actionLabel: Auth.canWrite ? 'Isi pemain tim' : null,
+                  onAction: Auth.canWrite
+                      ? () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => TournamentDetailPage(tournament: selected),
+                            ),
+                          );
+                          _reload();
+                        }
+                      : null,
                 ),
               ] else ...[
                 if (unpaid.isNotEmpty) ...[

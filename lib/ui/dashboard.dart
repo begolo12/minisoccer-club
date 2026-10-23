@@ -11,6 +11,7 @@ import 'teams.dart';
 import 'fmt.dart';
 import 'forms.dart';
 import 'matches.dart';
+import 'members.dart';
 import 'theme.dart';
 import 'tournament.dart';
 import 'widgets.dart';
@@ -39,6 +40,11 @@ class _DashboardData {
   final Tournament? activeTournament;
   final List<Team> teams;
   final Map<int, String> teamNames;
+
+  /// Berapa tim yang sudah punya minimal satu pemain. Dipakai beranda untuk
+  /// menuntun ke langkah yang benar, bukan menyuruh membuat turnamen pada klub
+  /// yang timnya masih kosong.
+  final int teamsReady;
 
   /// Sumber yang gagal dimuat; beranda tetap tampil dengan data lain.
   final List<String> failures;
@@ -69,6 +75,7 @@ class _DashboardData {
     this.activeTournament,
     required this.teams,
     required this.teamNames,
+    this.teamsReady = 0,
     this.failures = const [],
     this.paymentsKnown = true,
     this.membersKnown = true,
@@ -129,6 +136,10 @@ class _DashboardData {
       soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
       soft('Daftar tim', Team.all, fallback: const <Team>[]),
+      // Jumlah pemain per tim: menentukan apakah klub sudah siap membuat
+      // turnamen. Tanpa ini beranda menyuruh "Susun turnamen" pada klub yang
+      // timnya masih kosong, dan turnamennya berakhir tanpa peserta tagihan.
+      soft('Pemain per tim', Team.playerCounts, fallback: const <int, int>{}),
     ]);
     // Semua sumber gagal = server/jaringan mati, bukan satu tabel: layar error
     // penuh dengan tombol coba lagi lebih jelas daripada beranda kosong.
@@ -142,6 +153,7 @@ class _DashboardData {
     final payments = r[5].value! as List<Payment>;
     final transactions = r[6].value! as List<Transaction>;
     final teams = r[7].value! as List<Team>;
+    final playerCounts = r[8].value! as Map<int, int>;
 
     // Tagihan "belum bayar" mengikuti TURNAMEN AKTIF, bukan bulan: iuran
     // ditarik per turnamen dan pesertanya berbeda-beda tiap turnamen.
@@ -191,6 +203,7 @@ class _DashboardData {
       activeTournament: active,
       teams: teams,
       teamNames: {for (final t in teams) t.id: t.name},
+      teamsReady: teams.where((t) => (playerCounts[t.id] ?? 0) > 0).length,
       failures: failures,
       // `r[5]` = iuran bulan ini. Kalau gagal, daftar kosongnya BUKAN fakta:
       // jangan menuduh semua orang menunggak, dan jangan menulis "semua lunas".
@@ -365,7 +378,12 @@ class _MainColumn extends StatelessWidget {
               : next != null
                   ? _NextTournamentHero(tournament: next, onChanged: onChanged)
                   : last == null
-                      ? _EmptyHero(onChanged: onChanged)
+                      ? _EmptyHero(
+                          onChanged: onChanged,
+                          members: d.members,
+                          teams: d.teams.length,
+                          teamsReady: d.teamsReady,
+                        )
                       : _LastTournamentHero(tournament: last, onChanged: onChanged),
         ),
         if (live != null && next != null) ...[
@@ -679,29 +697,81 @@ class _LastTournamentHero extends StatelessWidget {
 }
 
 /// Beranda tanpa turnamen sama sekali: satu ajakan, bukan kotak kosong.
+///
+/// Ajakan itu mengikuti kesiapan klub. Klub yang baru punya satu anggota tidak
+/// bisa langsung menyusun turnamen: timnya kosong, jadi turnamennya akan
+/// berjalan tanpa peserta dan iurannya tidak bisa ditagih. Sebelumnya kartu ini
+/// selalu berbunyi "Susun turnamen" — mengarahkan ke langkah yang belum bisa
+/// dijalankan.
 class _EmptyHero extends StatelessWidget {
-  const _EmptyHero({required this.onChanged});
+  const _EmptyHero({
+    required this.onChanged,
+    required this.members,
+    required this.teams,
+    required this.teamsReady,
+  });
 
   final Future<void> Function() onChanged;
+  final int members;
+  final int teams;
+  final int teamsReady;
+
+  /// Langkah yang benar-benar bisa dilakukan sekarang.
+  ({String pill, String title, String body, String action, IconData icon, void Function(BuildContext) run})
+      get _next {
+    if (members == 0) {
+      return (
+        pill: 'Langkah pertama',
+        title: 'Tambah anggota',
+        body: 'Semua bermula dari daftar anggota: mereka yang mengisi tim, '
+            'membayar iuran, dan tercatat di kas.',
+        action: 'Tambah anggota',
+        icon: Icons.person_add_alt_1,
+        run: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const MembersPage())),
+      );
+    }
+    if (teamsReady < 2) {
+      return (
+        pill: 'Belum siap bertanding',
+        title: 'Isi pemain ke tim',
+        body: teams == 0
+            ? 'Buat dua tim dulu, lalu masukkan anggota ke dalamnya. '
+                'Turnamen dan laga dibentuk dari tim.'
+            : '$teamsReady dari $teams tim sudah punya pemain. Turnamen butuh '
+                'minimal dua tim berisi pemain supaya iurannya bisa ditagih.',
+        action: 'Buka Tim',
+        icon: Icons.shield_outlined,
+        run: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const TeamsPage())),
+      );
+    }
+    return (
+      pill: 'Belum ada turnamen',
+      title: 'Susun turnamen',
+      body: 'Pilih tim klub, bagi ke grup, lalu jadwalnya dibuat otomatis: '
+          'semua tim saling bertemu sekali.',
+      action: 'Buat turnamen',
+      icon: Icons.add,
+      run: (ctx) async {
+        if (await showTournamentForm(ctx) != null) await onChanged();
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
+    final n = _next;
     return Panel(
       highlight: true,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Pill('Belum ada turnamen', color: t.colorScheme.primary),
+          Pill(n.pill, color: t.colorScheme.primary),
           const SizedBox(height: 8),
-          Text('Susun turnamen', style: t.textTheme.h1.copyWith(fontSize: 32)),
+          Text(n.title, style: t.textTheme.h1.copyWith(fontSize: 32)),
           const SizedBox(height: 4),
-          Text(
-            'Pilih tim klub, bagi ke grup, lalu jadwalnya dibuat otomatis: '
-            'semua tim saling bertemu sekali.',
-            style: t.textTheme.small,
-          ),
+          Text(n.body, style: t.textTheme.small),
           if (Auth.canWrite) ...[
             const SizedBox(height: 14),
             ShadButton(
@@ -709,11 +779,9 @@ class _EmptyHero extends StatelessWidget {
               backgroundColor: t.colorScheme.primary,
               foregroundColor: t.colorScheme.primaryForeground,
               hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
-              onPressed: () async {
-                if (await showTournamentForm(context)) onChanged();
-              },
-              leading: const Icon(Icons.add, size: 16),
-              child: const Text('Buat turnamen'),
+              onPressed: () => n.run(context),
+              leading: Icon(n.icon, size: 16),
+              child: Text(n.action),
             ),
           ],
         ],
