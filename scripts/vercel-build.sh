@@ -28,6 +28,7 @@ if [ -f "$OUT/index.html" ] && [ -f "$OUT/main.dart.js" ] &&
   echo "build/web sudah ada (deploy dari CLI) — lewati build."
   # Daftar precache service worker harus mengikuti artefak yang benar-benar
   # diunggah, jadi dibuat di sini juga (bukan hanya setelah flutter build).
+  node scripts/disable-flutter-sw.mjs
   node scripts/gen-sw-manifest.mjs
   exit 0
 fi
@@ -68,8 +69,9 @@ echo "== flutter build web =="
 # produksi tidak mengizinkan unpkg/jsdelivr).
 flutter build web --release --no-web-resources-cdn --base-href "$BASE_HREF"
 
-# Daftar berkas untuk precache service worker (web/sw.js). Harus setelah
-# build: isinya mengikuti artefak yang dihasilkan.
+# Matikan service worker bawaan Flutter (stub yang memuat ulang tab dan
+# bertabrakan dengan web/sw.js), lalu susun daftar precache-nya.
+node scripts/disable-flutter-sw.mjs
 node scripts/gen-sw-manifest.mjs
 
 test -f "$OUT/index.html" || { echo "build/web/index.html tidak terbentuk"; exit 1; }

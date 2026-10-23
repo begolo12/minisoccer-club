@@ -13,12 +13,18 @@
 //     precache, canvaskit/potongan main.dart.js tidak pernah masuk cache dan
 //     aplikasi tidak bisa start offline.
 //   * Navigasi & aset → cache-first, lalu perbarui di latar
-//     (stale-while-revalidate).
+//     (stale-while-revalidate). Sengaja tidak network-first: shell dan aset
+//     harus selalu berasal dari rilis yang sama. Kalau `index.html` baru
+//     dipasangkan dengan `main.dart.js` lama, aplikasi bisa gagal start.
+//   * Nama cache diberi cap versi saat build. Setiap rilis menghasilkan `sw.js`
+//     yang berbeda → SW baru dipasang → cache lama dihapus → halaman memuat
+//     ulang sendiri tanpa Ctrl+Shift+R (lihat `web/index.html`).
 //   * `/version.json` → selalu dari jaringan, supaya pemeriksaan pembaruan
 //     tetap melihat versi server sebenarnya.
 //   * `/api/*` → tidak disentuh. Data klub tidak dilayani dari cache HTTP;
 //     cache data ada di localStorage (`qcache:`) dan dikelola aplikasi.
 
+// Cap versi diisi `scripts/gen-sw-manifest.mjs` saat build.
 const CACHE = 'msc-shell-v2';
 
 // Berkas minimum kalau manifest tidak tersedia (mis. dibuka dari file://).
@@ -63,12 +69,40 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const names = await caches.keys();
-      await Promise.all(
-        names
-          .filter((n) => n.startsWith('msc-shell-') && n !== CACHE)
-          .map((n) => caches.delete(n)),
+      const previous = names.filter(
+        (n) => n.startsWith('msc-shell-') && n !== CACHE,
       );
-      await self.clients.claim();
+
+      // Hapus dulu, baru beri tahu halaman. Urutan ini penting: kalau halaman
+      // dimuat ulang sebelum cache lama hilang, permintaan berikutnya bisa
+      // dilayani SW lama dan pengguna tetap melihat versi lama.
+      await Promise.all(previous.map((n) => caches.delete(n)));
+
+      /*
+       * Sengaja TIDAK memanggil `clients.claim()`. Mengambil alih halaman yang
+       * sedang terbuka membuat Chrome memuat ulang halaman sekali lagi karena
+       * service worker yang menangani navigasi berganti di tengah jalan —
+       * hasilnya dua kali muat ulang. Halaman memuat ulang sendiri lewat pesan
+       * di bawah, dan setelah itu SW baru mengontrol navigasi berikutnya
+       * secara alami.
+       */
+      if (previous.length === 0) return;
+
+      /*
+       * Beri tahu halaman bahwa rilis baru sudah aktif, supaya halaman memuat
+       * ulang sekali dengan aset dari cache baru.
+       *
+       * Hanya dikirim saat ada cache lama yang digantikan. Pada pemasangan
+       * pertama tidak ada yang perlu dimuat ulang — halaman memang baru saja
+       * memuat versi ini.
+       */
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      });
+      for (const client of clients) {
+        client.postMessage({ type: 'rilis-baru', versi: CACHE });
+      }
     })(),
   );
 });

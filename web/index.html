@@ -48,13 +48,89 @@
   -->
   <script src="flutter_bootstrap.js" async></script>
   <script>
-    // Daftarkan service worker supaya aplikasi bisa dibuka saat offline
-    // (Flutter 3.47 tidak lagi membuatnya otomatis). Lihat web/sw.js.
-    // Kegagalan registrasi tidak boleh menghalangi app: di mode privat
-    // service worker memang tidak tersedia.
+    // Perbarui aplikasi sendiri tanpa Ctrl+Shift+R.
+    //
+    // Alurnya: setiap build memberi cap versi pada nama cache service worker
+    // (`scripts/gen-sw-manifest.mjs`), sehingga `sw.js` berubah dan browser
+    // memasang SW baru. Saat SW itu mengambil alih, ia mengirim pesan
+    // `rilis-baru`; halaman memuat ulang sekali sehingga shell dan aset selalu
+    // berasal dari rilis yang sama.
+    //
+    // Pengecualian yang disengaja:
+    //   * Pemasangan pertama tidak mengirim pesan — tidak ada versi lama yang
+    //     perlu diganti, dan memuat ulang hanya mengulang pemuatan yang baru
+    //     terjadi.
+    //   * Muat ulang ditunda saat pengguna sedang mengetik atau tab tidak
+    //     terlihat, supaya isian yang belum disimpan tidak hilang.
+    //   * Satu versi hanya memicu satu muat ulang (dicatat di sessionStorage),
+    //     jadi tidak ada muat ulang berulang bila pesan datang dua kali.
     if ('serviceWorker' in navigator) {
+      var KUNCI_MUAT = 'msc-muat-ulang-untuk';
+      var reloading = false;
+      var tertunda = null;
+
+      function sedangMengetik() {
+        var el = document.activeElement;
+        if (!el) return false;
+        var tag = el.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+      }
+
+      function bolehMuatUlang() {
+        return document.visibilityState === 'hidden' || !sedangMengetik();
+      }
+
+      function muatUlang() {
+        if (reloading || !tertunda) return;
+        reloading = true;
+        try {
+          sessionStorage.setItem(KUNCI_MUAT, tertunda);
+        } catch (e) {}
+        window.location.reload();
+      }
+
+      function cobaMuatUlang(versi) {
+        try {
+          if (sessionStorage.getItem(KUNCI_MUAT) === versi) return;
+        } catch (e) {}
+
+        tertunda = versi;
+        if (bolehMuatUlang()) muatUlang();
+      }
+
+      navigator.serviceWorker.addEventListener('message', function (event) {
+        var data = event.data;
+        if (!data || data.type !== 'rilis-baru' || !data.versi) return;
+        cobaMuatUlang(data.versi);
+      });
+
+      // Tunda tadi dilepas: beri jeda singkat agar ketikan terakhir selesai.
+      document.addEventListener('focusout', function () {
+        if (!tertunda) return;
+        setTimeout(function () {
+          if (bolehMuatUlang()) muatUlang();
+        }, 1200);
+      });
+
+      document.addEventListener('visibilitychange', function () {
+        if (tertunda && document.visibilityState === 'hidden') muatUlang();
+      });
+
       window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js').catch(function () {});
+        navigator.serviceWorker
+          .register('sw.js', { updateViaCache: 'none' })
+          .then(function (reg) {
+            // Periksa rilis baru sekarang, saat tab kembali aktif, dan tiap
+            // 10 menit untuk tab yang dibiarkan terbuka lama.
+            reg.update().catch(function () {});
+            setInterval(function () {
+              reg.update().catch(function () {});
+            }, 10 * 60 * 1000);
+            document.addEventListener('visibilitychange', function () {
+              if (document.visibilityState === 'visible') reg.update().catch(function () {});
+            });
+          })
+          .catch(function () {});
       });
     }
   </script>
