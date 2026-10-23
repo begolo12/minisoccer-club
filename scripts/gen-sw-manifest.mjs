@@ -46,16 +46,47 @@ console.log(`sw-manifest.json: ${files.length} berkas`);
 
 /* ------------------------- cap versi service worker ------------------------ */
 
-/** Versi aplikasi dari `version.json` yang dibuat Flutter. */
+/**
+ * Penanda rilis untuk nama cache.
+ *
+ * Nomor versi aplikasi saja tidak cukup: banyak rilis tidak menaikkannya (isi
+ * `version.json` sama), sehingga `sw.js` tetap identik dan browser tidak pernah
+ * memasang service worker baru. Akibatnya pengguna terus melihat versi lama
+ * sampai menekan Ctrl+Shift+R — persis yang ingin dihindari.
+ *
+ * Karena itu cap memuat identitas build: commit Vercel, commit git lokal, atau
+ * waktu build sebagai jalan terakhir. Setiap rilis menghasilkan `sw.js` yang
+ * berbeda.
+ */
 async function buildStamp() {
+  let base = '';
   try {
     const raw = await readFile(join(root, 'version.json'), 'utf8');
     const { version, build_number: build } = JSON.parse(raw);
-    if (version) return `${version}-${build ?? 0}`.replace(/[^a-zA-Z0-9.-]/g, '');
+    if (version) base = `${version}-${build ?? 0}`;
   } catch {
-    // `version.json` tidak ada (mis. build tanpa metadata): pakai waktu build.
+    // `version.json` tidak ada: cap tetap dibuat dari identitas build di bawah.
   }
-  return `t${Date.now()}`;
+
+  const commit =
+    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) ||
+    (await gitCommit()) ||
+    `t${Date.now()}`;
+
+  return `${base || 'build'}-${commit}`.replace(/[^a-zA-Z0-9.-]/g, '');
+}
+
+/** Commit git lokal, kalau skrip dijalankan di mesin pengembang. */
+async function gitCommit() {
+  try {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const run = promisify(execFile);
+    const { stdout } = await run('git', ['rev-parse', '--short=8', 'HEAD']);
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 const stamp = await buildStamp();
