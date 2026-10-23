@@ -6,6 +6,7 @@ import '../data/models.dart';
 import 'fmt.dart';
 import 'forms.dart';
 import 'member_dues.dart';
+import 'register.dart';
 import 'widgets.dart';
 
 class MembersPage extends StatefulWidget {
@@ -107,8 +108,16 @@ class _MembersPageState extends State<MembersPage> {
     final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Anggota',
-      subtitle: '${_activeOnly ? "Aktif" : "Semua"} • ${Auth.canWrite ? "ketuk untuk edit" : "hanya baca"}',
+      // Subjudul harus jujur: baris membuka riwayat iuran, ikon pensil yang
+      // membuka form edit. Dulu tertulis "ketuk untuk edit" padahal ketukan
+      // pada baris membuka halaman lain.
+      subtitle: '${_activeOnly ? "Aktif" : "Semua"} • ketuk untuk riwayat iuran',
       actions: [
+        // Tautan pendaftaran dibuka dari sini karena di halaman inilah admin
+        // biasanya sedang menambah orang — tidak perlu masuk Pengaturan.
+        if (Auth.isAdmin)
+          iconAction(context, Icons.link, () => showRegistrationLinkDialog(context),
+              tooltip: 'Tautan pendaftaran'),
         if (Auth.canWrite)
           iconAction(context, Icons.person_add_alt_1, () async {
             if (await showMemberForm(context)) _reload();

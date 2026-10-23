@@ -1,8 +1,13 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
+
+import '../core/api.dart';
 
 import '../core/registration.dart';
 import '../data/auth.dart';
+import 'fmt.dart';
 import 'theme.dart';
 
 /// Formulir pendaftaran anggota yang bisa dibuka tanpa masuk.
@@ -309,14 +314,42 @@ class _Header extends StatelessWidget {
 /// Ringkasan setelah berhasil. Username dan password awal hanya muncul di
 /// sini, jadi keduanya harus bisa dibaca ulang dengan tenang (bukan toast yang
 /// hilang sendiri).
-class _SuccessCard extends StatelessWidget {
+class _SuccessCard extends StatefulWidget {
   const _SuccessCard({required this.result, this.onDone});
 
   final RegistrationResult result;
   final VoidCallback? onDone;
 
   @override
+  State<_SuccessCard> createState() => _SuccessCardState();
+}
+
+class _SuccessCardState extends State<_SuccessCard> {
+  bool _busy = false;
+
+  /// Masuk langsung memakai kredensial yang barusan dibuat.
+  ///
+  /// Tanpa ini pendaftar harus menyalin username dan nomor HP ke layar masuk
+  /// yang kosong — padahal keduanya sudah ada di tangan dan baru saja
+  /// ditampilkan. Satu ketukan, langsung masuk.
+  Future<void> _signIn() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await Auth.login(widget.result.username, widget.result.password);
+      widget.onDone?.call();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        toast(context, 'Gagal masuk otomatis: ${errText(e)}. Coba masuk manual.');
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final result = widget.result;
+    final onDone = widget.onDone;
     final t = ShadTheme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
@@ -356,9 +389,20 @@ class _SuccessCard extends StatelessWidget {
           if (onDone != null) ...[
             const SizedBox(height: 20),
             ShadButton(
-              height: 42,
-              onPressed: onDone,
-              child: const Text('Buka aplikasi', style: TextStyle(fontWeight: FontWeight.w600)),
+              height: 44,
+              onPressed: _busy ? null : _signIn,
+              child: _busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Masuk sekarang', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _busy ? null : onDone,
+              child: const Text('Lihat dulu tanpa masuk'),
             ),
           ],
         ],
@@ -474,4 +518,68 @@ class _ErrorText extends StatelessWidget {
       ),
     );
   }
+}
+
+
+/// Alamat formulir pendaftaran untuk dibagikan.
+///
+/// Di web dipakai origin halaman yang sedang dibuka (termasuk prefiks portal,
+/// mis. `/minisoccer`), supaya tautannya tidak menunjuk ke domain lain. Di APK
+/// tidak ada halaman, jadi dipakai alamat server API — di sanalah versi web
+/// dipasang.
+String registrationLink() {
+  if (kIsWeb) {
+    final base = Uri.base;
+    final segs = base.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segs.isNotEmpty && segs.last == 'daftar') segs.removeLast();
+    final prefix = segs.isEmpty ? '' : '/${segs.join('/')}';
+    return '${base.origin}$prefix/daftar';
+  }
+  return kApiBase.startsWith('http') ? '$kApiBase/daftar' : '';
+}
+
+/// Dialog berisi tautan pendaftaran + tombol salin.
+///
+/// Ditaruh di sini (bukan di Pengaturan saja) supaya bisa dibuka dari halaman
+/// Anggota, tempat admin biasanya sedang menambah orang.
+Future<void> showRegistrationLinkDialog(BuildContext context) async {
+  final link = registrationLink();
+  final t = ShadTheme.of(context);
+  await showShadDialog<void>(
+    context: context,
+    builder: (ctx) => ShadDialog(
+      title: const Text('Tautan pendaftaran'),
+      description: const Text(
+        'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
+        'alamat, dan posisi sendiri. Nama depan menjadi username, dan akunnya '
+        'langsung dibuat.',
+      ),
+      actions: [
+        ShadButton.outline(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Tutup'),
+        ),
+        ShadButton(
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: link));
+            if (ctx.mounted) Navigator.pop(ctx);
+            if (context.mounted) toast(context, 'Tautan disalin');
+          },
+          child: const Text('Salin tautan'),
+        ),
+      ],
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: t.colorScheme.muted,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: SelectableText(
+          link,
+          style: t.textTheme.small.copyWith(fontSize: 13, height: 1.5),
+        ),
+      ),
+    ),
+  );
 }

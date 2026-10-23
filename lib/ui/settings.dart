@@ -8,6 +8,7 @@ import '../core/db.dart';
 import '../core/offline.dart';
 import '../core/update.dart';
 import 'login.dart';
+import 'register.dart';
 import '../core/version.dart';
 import '../data/auth.dart';
 import 'fmt.dart';
@@ -221,7 +222,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 10),
                 SelectableText(
-                  _registrationLink(),
+                  registrationLink(),
                   style: t.textTheme.small.copyWith(
                     fontFamily: AppThemes.display,
                     fontSize: 13,
@@ -233,7 +234,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   alignment: Alignment.centerLeft,
                   child: ShadButton.outline(
                     onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: _registrationLink()));
+                      await Clipboard.setData(ClipboardData(text: registrationLink()));
                       if (context.mounted) toast(context, 'Tautan disalin');
                     },
                     child: const Text('Salin tautan'),
@@ -682,23 +683,6 @@ String _screenLine(BuildContext context) {
   if (hz <= 0) return 'Layar: $dims';
   final note = hz < 90 ? ' · dibatasi setelan perangkat' : '';
   return 'Layar: $dims · $hz Hz$note';
-}
-
-/// Alamat formulir pendaftaran untuk dibagikan.
-///
-/// Di web dipakai origin halaman yang sedang dibuka (termasuk prefiks portal,
-/// mis. `/minisoccer`), supaya tautannya tidak menunjuk ke domain lain. Di APK
-/// tidak ada halaman, jadi dipakai alamat server API — di sanalah aplikasi web
-/// dipasang.
-String _registrationLink() {
-  if (kIsWeb) {
-    final base = Uri.base;
-    final segs = base.pathSegments.where((s) => s.isNotEmpty).toList();
-    if (segs.isNotEmpty && segs.last == 'daftar') segs.removeLast();
-    final prefix = segs.isEmpty ? '' : '/${segs.join('/')}';
-    return '${base.origin}$prefix/daftar';
-  }
-  return kApiBase.startsWith('http') ? '$kApiBase/daftar' : '';
 }
 
 /// Dialog ganti password akun sendiri.

@@ -828,7 +828,7 @@ class _StepButton extends StatelessWidget {
 }
 
 /// Deret chip periode bulan. [all] menambahkan pilihan "Semua".
-class PeriodChips extends StatelessWidget {
+class PeriodChips extends StatefulWidget {
   const PeriodChips({
     super.key,
     required this.periods,
@@ -846,25 +846,72 @@ class PeriodChips extends StatelessWidget {
   final String Function(String)? label;
 
   @override
+  State<PeriodChips> createState() => _PeriodChipsState();
+}
+
+class _PeriodChipsState extends State<PeriodChips> {
+  final _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Gulirkan chip terpilih ke dalam layar setelah daftar dibangun. Tanpa ini
+    // di HP sempit chip aktif bisa berada di luar layar (terpotong di tepi
+    // kanan), sehingga pengguna tidak tahu periode mana yang sedang dilihat.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealSelected());
+  }
+
+  @override
+  void didUpdateWidget(covariant PeriodChips old) {
+    super.didUpdateWidget(old);
+    if (old.selected != widget.selected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _revealSelected());
+    }
+  }
+
+  void _revealSelected() {
+    if (!mounted || !_controller.hasClients) return;
+    final items = <String?>[if (widget.all) null, ...widget.periods];
+    final index = items.indexOf(widget.selected);
+    if (index < 0) return;
+    // Lebar chip tidak seragam ("Semua" vs "November 2026"), jadi posisinya
+    // diperkirakan dari rata-rata lalu dijepit ke rentang gulir yang sah.
+    const estimate = 96.0;
+    final target = (index * estimate - 40).clamp(0.0, _controller.position.maxScrollExtent);
+    _controller.animateTo(
+      target.toDouble(),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    final items = <String?>[if (all) null, ...periods];
+    final items = <String?>[if (widget.all) null, ...widget.periods];
     return SizedBox(
       height: 38,
       child: ListView.separated(
+        controller: _controller,
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         itemCount: items.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, i) {
           final p = items[i];
-          final isSelected = p == selected;
+          final isSelected = p == widget.selected;
           return Material(
             color: isSelected ? t.colorScheme.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
             child: InkWell(
               borderRadius: BorderRadius.circular(7),
-              onTap: () => onChanged(p),
+              onTap: () => widget.onChanged(p),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 alignment: Alignment.center,
@@ -875,7 +922,7 @@ class PeriodChips extends StatelessWidget {
                   ),
                 ),
                 child: Text(
-                  p == null ? 'Semua' : (label?.call(p) ?? periodLabel(p)),
+                  p == null ? 'Semua' : (widget.label?.call(p) ?? periodLabel(p)),
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
@@ -1233,14 +1280,17 @@ Widget iconAction(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
+        // 40px, bukan 34: pedoman sentuh Android/iOS meminta ~44px, dan
+        // tombol ikon berjajar (ubah/hapus) paling sering salah ketuk di HP
+        // kecil. Tampilannya tetap ringkas karena garis tepinya tipis.
         child: Container(
-          width: 34,
-          height: 34,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             border: Border.all(color: t.colorScheme.border),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 17, color: color),
+          child: Icon(icon, size: 18, color: color),
         ),
       ),
     ),

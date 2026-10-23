@@ -166,6 +166,28 @@ class _PaymentsPageState extends State<PaymentsPage> {
     );
   }
 
+  /// Daftar lengkap yang belum bayar, dengan pencarian.
+  ///
+  /// Muncul hanya kalau pesertanya banyak: di daftar utama delapan nama
+  /// pertama sudah cukup untuk pekerjaan sehari-hari, dan sisanya dibuka di
+  /// sini supaya halaman tidak didominasi satu bagian.
+  Future<void> _showAllUnpaid(_PayData d) async {
+    final selected = d.selected;
+    if (selected == null) return;
+    await showShadDialog<void>(
+      context: context,
+      builder: (ctx) => _AllUnpaidDialog(
+        rows: d.unpaid,
+        entryFee: selected.entryFee,
+        canWrite: Auth.canWrite,
+        onRecord: (memberId) async {
+          Navigator.pop(ctx);
+          await _record(d, memberId: memberId);
+        },
+      ),
+    );
+  }
+
   Widget _content(_PayData d) {
     final t = ShadTheme.of(context);
     final selected = d.selected!;
@@ -235,18 +257,38 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 ),
               ] else ...[
                 if (unpaid.isNotEmpty) ...[
-                  const SectionTitle('Belum bayar'),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final r in unpaid)
-                        _UnpaidChip(
-                          name: r.member.name,
-                          onTap: Auth.canWrite ? () => _record(d, memberId: r.member.id) : null,
-                        ),
-                    ],
+                  SectionTitle(
+                    'Belum bayar',
+                    action: unpaid.length > 8
+                        ? TextButton(
+                            onPressed: () => _showAllUnpaid(d),
+                            child: Text('Lihat semua (${unpaid.length})'),
+                          )
+                        : null,
                   ),
+                  // Daftar baris, bukan kumpulan chip. Dengan 13 anggota
+                  // menunggak, chip membungkus jadi empat baris yang sulit
+                  // dipindai dan tiap chip hanya 32px — di HP itu sering
+                  // salah ketuk. Satu baris per orang: nama terbaca, dan
+                  // tombol "Catat" selalu di tempat yang sama.
+                  for (final r in unpaid.take(8))
+                    RowItem(
+                      title: r.member.name,
+                      subtitle: r.member.position,
+                      trailing: Auth.canWrite
+                          ? ShadButton.outline(
+                              size: ShadButtonSize.sm,
+                              onPressed: () => _record(d, memberId: r.member.id),
+                              leading: const Icon(Icons.add, size: 14),
+                              child: const Text('Catat'),
+                            )
+                          : Text(
+                              selected.entryFee > 0 ? fmtMoney(selected.entryFee) : 'Belum bayar',
+                              style: ShadTheme.of(context).textTheme.table.copyWith(
+                                    color: AppThemes.bad(context),
+                                  ),
+                            ),
+                    ),
                 ],
                 const SectionTitle('Riwayat pembayaran'),
                 if (d.payments.isEmpty)
@@ -358,39 +400,108 @@ class _TournamentChips extends StatelessWidget {
 }
 
 /// Nama anggota yang belum bayar. Bisa diketuk untuk mencatat pembayarannya.
-class _UnpaidChip extends StatelessWidget {
-  const _UnpaidChip({required this.name, this.onTap});
 
-  final String name;
-  final VoidCallback? onTap;
+
+
+/// Daftar seluruh anggota yang belum bayar, dengan pencarian.
+///
+/// Dipakai saat peserta turnamen banyak: menampilkan semuanya di halaman
+/// utama membuat bagian lain terdorong jauh ke bawah.
+class _AllUnpaidDialog extends StatefulWidget {
+  const _AllUnpaidDialog({
+    required this.rows,
+    required this.entryFee,
+    required this.canWrite,
+    required this.onRecord,
+  });
+
+  final List<DuesRow> rows;
+  final double entryFee;
+  final bool canWrite;
+  final Future<void> Function(int memberId) onRecord;
+
+  @override
+  State<_AllUnpaidDialog> createState() => _AllUnpaidDialogState();
+}
+
+class _AllUnpaidDialogState extends State<_AllUnpaidDialog> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bad = AppThemes.bad(context);
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(7),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(7),
-        onTap: onTap,
-        child: Container(
-          height: 32,
-          padding: const EdgeInsets.only(left: 10, right: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(color: bad.withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(name, style: const TextStyle(fontSize: 12.5)),
-              if (onTap != null) ...[
-                const SizedBox(width: 6),
-                Icon(Icons.check, size: 13, color: bad),
-              ],
-            ],
-          ),
+    final t = ShadTheme.of(context);
+    final rows = _query.isEmpty
+        ? widget.rows
+        : widget.rows.where((r) => r.member.name.toLowerCase().contains(_query)).toList();
+
+    return ShadDialog(
+      title: Text('Belum bayar (${widget.rows.length})'),
+      description: Text(
+        widget.entryFee > 0
+            ? 'Iuran ${fmtMoney(widget.entryFee)} per anggota'
+            : 'Ketuk "Catat" untuk mencatat pembayaran',
+      ),
+      actions: [
+        ShadButton.outline(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Tutup'),
         ),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.rows.length > 6) ...[
+            ShadInput(
+              controller: _search,
+              placeholder: const Text('Cari nama…'),
+              onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+              leading: const Padding(
+                padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.search, size: 16),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          // Tinggi dibatasi: dialog yang tumbuh melebihi layar HP membuat
+          // tombol tutup tidak terjangkau.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 380),
+            child: Material(
+              type: MaterialType.transparency,
+              child: rows.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      child: Text('Tidak ada nama yang cocok.', style: t.textTheme.muted),
+                    )
+                  : ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final r in rows)
+                          RowItem(
+                            title: r.member.name,
+                            subtitle: r.member.position,
+                            trailing: widget.canWrite
+                                ? ShadButton.outline(
+                                    size: ShadButtonSize.sm,
+                                    onPressed: () => widget.onRecord(r.member.id),
+                                    leading: const Icon(Icons.add, size: 14),
+                                    child: const Text('Catat'),
+                                  )
+                                : null,
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
