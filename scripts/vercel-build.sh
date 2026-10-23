@@ -18,7 +18,13 @@ set -euo pipefail
 FLUTTER_VERSION="${FLUTTER_VERSION:-3.47.7}"
 OUT="build/web"
 
-if [ -f "$OUT/index.html" ] && [ -f "$OUT/main.dart.js" ]; then
+# Aplikasi disajikan di jalur `/minisoccer/` pada domain portal
+# (airevo-digital.my.id/minisoccer), jadi semua aset harus memakai prefiks itu.
+# Base href salah = index.html memuat, tetapi seluruh aset 404.
+BASE_HREF="/minisoccer/"
+
+if [ -f "$OUT/index.html" ] && [ -f "$OUT/main.dart.js" ] &&
+  grep -q "<base href=\"$BASE_HREF\">" "$OUT/index.html"; then
   echo "build/web sudah ada (deploy dari CLI) — lewati build."
   # Daftar precache service worker harus mengikuti artefak yang benar-benar
   # diunggah, jadi dibuat di sini juga (bukan hanya setelah flutter build).
@@ -60,7 +66,7 @@ flutter pub get
 echo "== flutter build web =="
 # --no-web-resources-cdn: CanvasKit disajikan dari domain sendiri (CSP
 # produksi tidak mengizinkan unpkg/jsdelivr).
-flutter build web --release --no-web-resources-cdn
+flutter build web --release --no-web-resources-cdn --base-href "$BASE_HREF"
 
 # Daftar berkas untuk precache service worker (web/sw.js). Harus setelah
 # build: isinya mengikuti artefak yang dihasilkan.

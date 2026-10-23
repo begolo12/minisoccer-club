@@ -2,7 +2,23 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "bash scripts/vercel-build.sh",
   "outputDirectory": "build/web",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/minisoccer/",
+      "permanent": true
+    },
+    {
+      "source": "/minisoccer",
+      "destination": "/minisoccer/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/minisoccer/:path*",
+      "destination": "/:path*"
+    },
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"

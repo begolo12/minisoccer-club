@@ -80,7 +80,9 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
   // Data klub: lewat aplikasi (localStorage + antrean), bukan cache HTTP.
-  if (url.pathname.startsWith('/api/')) return;
+  // Aplikasi bisa dipasang di akar domain atau di bawah prefiks portal
+  // (`/minisoccer/api/sql`), jadi cukup cari segmen `/api/` di mana pun.
+  if (url.pathname.includes('/api/')) return;
 
   // Versi harus selalu segar: dipakai untuk mendeteksi pembaruan.
   if (url.pathname.endsWith('/version.json')) {
