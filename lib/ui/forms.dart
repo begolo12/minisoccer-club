@@ -826,7 +826,7 @@ Future<bool> showBookingForm(BuildContext context) async {
         }
 
         return ShadDialog(
-          title: const Text('Booking lapangan'),
+          title: const Text('Sewa lapangan'),
           description: const Text('Catat jadwal sewa biar nggak bentrok.'),
           actions: [
             ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),

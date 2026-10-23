@@ -207,6 +207,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   'Data tersimpan langsung di database Neon kamu.',
                   style: t.textTheme.small,
                 ),
+                const SizedBox(height: 10),
+                // Angka nyata dari sistem, bukan klaim: kalau HP 120 Hz masih
+                // tertulis 60 di sini, yang membatasi adalah setelan perangkat
+                // (mode hemat daya / "refresh rate" di Pengaturan Android),
+                // bukan aplikasinya.
+                Text(_screenLine(context), style: t.textTheme.small),
               ],
             ),
           ),
@@ -588,7 +594,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                       ShadButton.outline(
                         onPressed: _busy ? null : _clearCache,
                         leading: const Icon(Icons.cleaning_services_outlined, size: 15),
-                        child: const Text('Kosongkan cache'),
+                        child: const Text('Kosongkan data sementara'),
                       ),
                     ],
                   ),
@@ -608,4 +614,21 @@ class _OfflinePanelState extends State<_OfflinePanel> {
       },
     );
   }
+}
+
+/// Baris diagnostik layar: refresh rate yang benar-benar dipakai sistem.
+///
+/// Ditampilkan supaya klaim "120 Hz" bisa diperiksa langsung di HP, bukan
+/// dipercaya dari deskripsi. Angkanya berasal dari `FlutterView.display`, yaitu
+/// sumber yang sama dengan yang dipakai engine untuk vsync — kalau di sini
+/// tertulis 60 pada HP 120 Hz, yang membatasi adalah setelan perangkat
+/// (mode hemat daya atau "refresh rate" di Pengaturan Android), bukan app.
+String _screenLine(BuildContext context) {
+  final display = View.of(context).display;
+  final size = display.size;
+  final dims = '${size.width.round()}×${size.height.round()}';
+  final hz = display.refreshRate.round();
+  if (hz <= 0) return 'Layar: $dims';
+  final note = hz < 90 ? ' · dibatasi setelan perangkat' : '';
+  return 'Layar: $dims · $hz Hz$note';
 }

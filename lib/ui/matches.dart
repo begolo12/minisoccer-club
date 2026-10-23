@@ -482,7 +482,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
-              'Catatan pemain (gol/assist/kartu). Skor laga tetap dari sesi.',
+              'Catatan pemain (gol/umpan gol/kartu). Skor laga tetap dari sesi.',
               style: t.textTheme.small,
             ),
           ),
@@ -494,7 +494,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Center(
-                    child: Text('Belum ada gol/assist/kartu.', style: t.textTheme.muted),
+                    child: Text('Belum ada gol/umpan gol/kartu.', style: t.textTheme.muted),
                   ),
                 );
               }
@@ -814,7 +814,7 @@ class _EventPadRow extends StatelessWidget {
           _PadButton(
             icon: Icons.handshake_outlined,
             color: t.colorScheme.mutedForeground,
-            label: 'Assist ${member.name}',
+            label: 'Umpan gol ${member.name}',
             onTap: () => onTap('assist'),
           ),
           _PadButton(

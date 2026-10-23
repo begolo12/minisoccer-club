@@ -274,7 +274,7 @@ async function main() {
   // ---------- halaman di menu Lainnya ----------
   const pages = [
     'Anggota',
-    'Booking lapangan',
+    'Sewa lapangan',
     'Kas klub',
     'Turnamen internal',
     'Statistik',

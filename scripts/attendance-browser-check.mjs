@@ -175,9 +175,9 @@ async function main() {
   // --- buka halaman Booking ---
   await clickNav('Lainnya'); await sleep(2500);
   let text = await pageText();
-  check('halaman Lainnya terbuka', text.includes('Booking lapangan'),
+  check('halaman Lainnya terbuka', text.includes('Sewa lapangan'),
     text.slice(0, 70).replace(/\n/g, ' '));
-  const opened = await clickText('Booking lapangan', { role: null });
+  const opened = await clickText('Sewa lapangan', { role: null });
   check('halaman Booking terbuka', opened);
   await sleep(3500);
 

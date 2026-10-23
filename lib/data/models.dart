@@ -408,7 +408,7 @@ class MatchEvent {
 
   static const typeLabels = {
     'goal': 'Gol',
-    'assist': 'Assist',
+    'assist': 'Umpan gol',
     'yellow': 'Kartu Kuning',
     'red': 'Kartu Merah',
   };

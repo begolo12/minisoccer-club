@@ -164,6 +164,11 @@ Object? _eval(String expr, Map<String, Object?> params) {
   return _unresolved;
 }
 
+/// Nilai yang aman disimpan di cache: `DateTime` jadi ISO-8601 UTC, sama
+/// seperti yang dikirim driver ke server dan yang dikembalikan server.
+Object? _cacheValue(Object? v) =>
+    v is DateTime ? v.toUtc().toIso8601String() : v;
+
 /// Urai WHERE menjadi konjungsi kesamaan. Null kalau tidak bisa dievaluasi.
 ///
 /// Kolom boleh berkualifikasi (`p.tournament_id`): query baca memakai alias
@@ -380,6 +385,14 @@ Map<String, Object?>? _queryWhereEq(String sql, Map<String, Object?> params) {
 /// menampilkan baris yang mungkin berlebih daripada menyembunyikan data yang
 /// baru saja diisi pengguna.
 bool _rowFitsQuery(Map<String, dynamic> row, String sql, Map<String, Object?> params) {
+  // `to_char(kolom, 'YYYY-MM') = @p` tidak bisa diurai sebagai kesamaan kolom
+  // biasa karena sisi kirinya fungsi, sehingga tanpa penanganan khusus baris
+  // baru dianggap cocok dengan SEMUA bulan yang pernah dibuka: pengeluaran
+  // Oktober ikut muncul di daftar November. Pola ini dipakai
+  // `Transaction.all(period:)` — sumber halaman Kas.
+  final month = _queryMonthEq(sql, params);
+  if (month != null && !_rowInMonth(row, month)) return false;
+
   final where = _queryWhereEq(sql, params);
   if (where == null || where.isEmpty) return true;
   for (final e in where.entries) {
@@ -387,6 +400,33 @@ bool _rowFitsQuery(Map<String, dynamic> row, String sql, Map<String, Object?> pa
     if (!_looseEquals(row[e.key], e.value)) return false;
   }
   return true;
+}
+
+/// Syarat bulan berbentuk `to_char(<kolom>, 'YYYY-MM') = @nama`, kalau ada.
+({String col, String want})? _queryMonthEq(
+  String sql,
+  Map<String, Object?> params,
+) {
+  final m = RegExp(
+    r"to_char\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*'YYYY-MM'\s*\)\s*=\s*@([a-zA-Z_][a-zA-Z0-9_]*)",
+    caseSensitive: false,
+  ).firstMatch(sql);
+  if (m == null) return null;
+  final want = params[m.group(2)!];
+  if (want is! String || want.isEmpty) return null;
+  return (col: m.group(1)!.toLowerCase(), want: want);
+}
+
+/// Apakah [row] berada di bulan yang diminta? Baris yang tanggalnya tidak
+/// terbaca dianggap cocok: menyembunyikan data yang baru diisi lebih buruk
+/// daripada menampilkannya di bulan yang salah.
+bool _rowInMonth(Map<String, dynamic> row, ({String col, String want}) month) {
+  final raw = row[month.col];
+  final d = raw is DateTime ? raw : DateTime.tryParse('${raw ?? ''}');
+  if (d == null) return true;
+  final ym = '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}';
+  return ym == month.want;
 }
 
 /// Query yang hasilnya BUKAN daftar baris tabel, melainkan ringkasan
@@ -488,18 +528,27 @@ List<Map<String, dynamic>> applyOp(
   if (querySql.isNotEmpty && _queryIsAggregate(querySql)) return rows;
 
   if (op.isInsert) {
+    // Nilai `DateTime` diubah ke ISO-8601 UTC sebelum masuk baris cache.
+    // Tanpa ini, baris hasil tambalan tidak bisa di-JSON-kan dan
+    // penyimpanan cache (berkas di Android, localStorage di web) melempar —
+    // kegagalan itu ditelan pemanggil, sehingga tulis offline "berhasil"
+    // tetapi tidak pernah muncul di layar. Bentuk ISO juga sama dengan yang
+    // dikirim driver ke server, jadi pembacaan berikutnya konsisten.
+    final values = <String, Object?>{
+      for (final e in op.values.entries) e.key: _cacheValue(e.value),
+    };
     // Upsert: kalau kunci konflik sudah ada, perbarui baris itu.
     if (op.conflictCols.isNotEmpty) {
       final idx = rows.indexWhere((r) =>
-          op.conflictCols.every((c) => _looseEquals(r[c], op.values[c])));
+          op.conflictCols.every((c) => _looseEquals(r[c], values[c])));
       if (idx >= 0) {
-        final copy = Map<String, dynamic>.from(rows[idx])..addAll(op.values);
+        final copy = Map<String, dynamic>.from(rows[idx])..addAll(values);
         final out = [...rows];
         out[idx] = copy;
         return out;
       }
     }
-    final row = <String, dynamic>{...op.values};
+    final row = <String, dynamic>{...values};
     if (tempId != null && !row.containsKey('id')) row['id'] = tempId;
 
     // Tiru DEFAULT skema: kolom yang tidak disebut INSERT tetap punya nilai.
@@ -520,10 +569,13 @@ List<Map<String, dynamic>> applyOp(
   }
 
   if (op.isUpdate) {
+    final values = <String, Object?>{
+      for (final e in op.values.entries) e.key: _cacheValue(e.value),
+    };
     return [
       for (final r in rows)
         if (_matchesWhere(r, op.whereEq))
-          (Map<String, dynamic>.from(r)..addAll(op.values))
+          (Map<String, dynamic>.from(r)..addAll(values))
         else
           r,
     ];

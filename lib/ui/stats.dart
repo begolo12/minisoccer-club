@@ -189,7 +189,7 @@ class _ScorerRow extends StatelessWidget {
                     if (row.assists > 0)
                       Padding(
                         padding: const EdgeInsets.only(right: 10),
-                        child: Text('${row.assists} assist', style: t.textTheme.small),
+                        child: Text('${row.assists} umpan gol', style: t.textTheme.small),
                       ),
                     Text(
                       '${row.goals}',

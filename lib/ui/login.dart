@@ -182,7 +182,7 @@ class _Brand extends StatelessWidget {
   static const _points = [
     ('01', 'Jadwal & hasil', 'Sesi per babak, pemenang dihitung dari skor'),
     ('02', 'Kas klub', 'Iuran bulanan, siapa yang belum, total terkumpul'),
-    ('03', 'Turnamen internal', 'Empat tim round-robin, klasemen otomatis'),
+    ('03', 'Turnamen internal', 'Empat tim saling bertemu, klasemen otomatis'),
   ];
 
   @override

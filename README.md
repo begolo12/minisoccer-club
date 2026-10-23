@@ -43,15 +43,15 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | Fitur | Isi |
 |---|---|
 | **Beranda** | Sapaan akun, papan skor laga berjalan (kalau ada) atau hero turnamen berikutnya, turnamen terakhir dengan progres laga — hasil per pertandingan dibuka dengan diketuk, ringkasan anggota/main/iuran, kas bulan ini, aksi cepat, pengumuman; di layar lebar ditambah klasemen, top skor, dan sewa lapangan |
-| **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol/assist/kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
+| **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol, umpan gol, dan kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
 | **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
 | **Anggota** | CRUD pemain (posisi, nomor punggung, HP), cari, filter aktif/nonaktif. Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
-| **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal round-robin otomatis per grup, klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga. **Iuran per anggota** diisi per turnamen dan bisa diubah kapan saja |
+| **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal otomatis per grup (semua tim saling bertemu sekali), klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga. **Iuran per anggota** diisi per turnamen dan bisa diubah kapan saja |
 | **Iuran** | Iuran **per turnamen** (bukan per bulan): pilih turnamen, lihat siapa yang belum bayar (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat. Peserta = anggota dari tim yang ikut turnamen itu, jadi orang yang tidak bermain di turnamen tersebut tidak ikut ditagih |
 | **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan) |
-| **Booking lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu booking = satu catatan kas). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan booking ikut membuang setoran patungannya |
+| **Sewa lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu sewa = satu catatan kas). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan sewa ikut membuang setoran patungannya |
 | **Pengumuman** | Info klub untuk anggota |
-| **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + assist (5 teratas, sisanya bisa dibuka), klasemen tim |
+| **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Pengguna** | Akun + role admin / bendahara / anggota |
 | **Pengaturan** | Tema terang/gelap (langsung), info server, tes koneksi, keluar |
 
@@ -246,6 +246,25 @@ npx vercel --prod
 `--no-web-resources-cdn` wajib: CSP produksi tidak mengizinkan CanvasKit dari
 CDN publik, jadi asetnya harus ikut dibundel.
 
+### Dipasang di jalur portal
+
+Aplikasi ini juga disajikan di `https://airevo-digital.my.id/minisoccer/`.
+Tiga hal yang membuatnya jalan, semuanya sudah ada di repo:
+
+| Bagian | Berkas | Isi |
+| --- | --- | --- |
+| Aset memakai prefiks | `scripts/vercel-build.sh`, `.github/workflows/deploy-web.yml` | `flutter build web --base-href /minisoccer/` |
+| Jalur prefiks dilayani | `vercel.json` | rewrite `/minisoccer/:path*` → `/:path*` |
+| Panggilan API ikut prefiks | `lib/core/api.dart` | `kApiBase` = jalur dokumen saat `API_BASE` kosong |
+| Akar dialihkan | `vercel.json` | `/` → `/minisoccer/` |
+
+APK tidak terpengaruh: `API_BASE` diisi absolut, jadi tetap memanggil
+`https://minisoccer-club.vercel.app/api/*`.
+
+Uji jalur portal tanpa Vercel: bangun dengan `--base-href /minisoccer/`, lalu
+buka `http://localhost:<port>/minisoccer/` dari server statis yang menyajikan
+`build/web` — semua aset dan `/minisoccer/api/sql` harus 200.
+
 Setelah itu, deploy berikutnya cukup lewat GitHub Actions **Deploy Web** (Run workflow).
 Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
@@ -298,7 +317,7 @@ test/queries_audit_test.dart  Merekam SQL asli dari setiap method model
 ```bash
 npm test                 # filter SQL, pengikat parameter, semua query app
 flutter analyze          # wajib bersih
-flutter test             # unit: format, uang, round-robin, klasemen, buku kas, soft()
+flutter test             # unit: format, uang, jadwal semua-tim-saling-bertemu, klasemen, buku kas, soft()
 npm run check:schema     # schema produksi vs db/schema.sql (tanpa kredensial)
 npm run check:e2e        # semua query app untuk tamu/anggota/bendahara/admin
 npm run check:flow       # alur admin: anggota→tim→laga→sesi→klasemen→kas

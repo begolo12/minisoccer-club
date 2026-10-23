@@ -33,13 +33,13 @@ class _BookingsPageState extends State<BookingsPage> {
   @override
   Widget build(BuildContext context) {
     return PageScaffold(
-      title: 'Booking lapangan',
+      title: 'Sewa lapangan',
       subtitle: 'Sewa lapangan & biaya',
       actions: [
         if (Auth.canWrite)
           iconAction(context, Icons.add, () async {
             if (await showBookingForm(context)) _reload();
-          }, tooltip: 'Booking baru'),
+          }, tooltip: 'Sewa baru'),
       ],
       child: AsyncView<List<Booking>>(
         future: _future,
@@ -52,9 +52,9 @@ class _BookingsPageState extends State<BookingsPage> {
                 const SizedBox(height: 80),
                 EmptyState(
                   icon: Icons.stadium_outlined,
-                  title: 'Belum ada booking',
+                  title: 'Belum ada jadwal sewa',
                   message: 'Catat jadwal sewa lapangan supaya tidak bentrok.',
-                  actionLabel: Auth.canWrite ? 'Booking lapangan' : null,
+                  actionLabel: Auth.canWrite ? 'Sewa lapangan' : null,
                   onAction: Auth.canWrite
                       ? () async {
                           if (await showBookingForm(context)) _reload();
@@ -81,7 +81,7 @@ class _BookingsPageState extends State<BookingsPage> {
                   StatTile(
                     label: 'Total sewa',
                     value: fmtMoney(total),
-                    hint: '${active.length} booking',
+                    hint: '${active.length} sewa',
                     color: AppThemes.money(context),
                   ),
                   StatTile(
@@ -99,7 +99,7 @@ class _BookingsPageState extends State<BookingsPage> {
               if (past.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Text('Belum ada booking sebelumnya.', style: ShadTheme.of(context).textTheme.muted),
+                  child: Text('Belum ada sewa sebelumnya.', style: ShadTheme.of(context).textTheme.muted),
                 )
               else
                 for (final b in past) _BookingRow(booking: b, onChanged: _reload),
@@ -196,7 +196,7 @@ class _BookingRow extends StatelessWidget {
                     : 'Setoran patungan yang sudah tercatat untuk sewa ini ikut dihapus.';
                 if (!await confirm(
                   context,
-                  'Batalkan booking?',
+                  'Batalkan sewa?',
                   message,
                   confirmLabel: 'Batalkan',
                 )) {
@@ -212,7 +212,7 @@ class _BookingRow extends StatelessWidget {
           if (Auth.canWrite) ...[
             const SizedBox(width: 6),
             iconAction(context, Icons.delete_outline, () async {
-              if (await confirm(context, 'Hapus booking?', b.title)) {
+              if (await confirm(context, 'Hapus sewa?', b.title)) {
                 if (!context.mounted) return;
                 if (await attempt(context, () => Booking.delete(b.id), fail: 'Gagal menghapus')) {
                   await onChanged();

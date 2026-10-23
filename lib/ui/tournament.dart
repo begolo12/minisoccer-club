@@ -56,8 +56,8 @@ class _TournamentsPageState extends State<TournamentsPage> {
                 EmptyState(
                   icon: Icons.emoji_events_outlined,
                   title: 'Belum ada turnamen',
-                  message: 'Pilih tim klub, bagi ke grup, dan jadwal round-robin '
-                      'dibuat otomatis.',
+                  message: 'Pilih tim klub, bagi ke grup, dan jadwalnya dibuat otomatis: '
+                      'semua tim saling bertemu sekali.',
                   actionLabel: Auth.canWrite ? 'Buat turnamen' : null,
                   onAction: Auth.canWrite ? _create : null,
                 ),
@@ -943,8 +943,8 @@ Future<bool> showTournamentForm(BuildContext context) async {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Jadwal round-robin dibuat otomatis di tiap grup. Pemain tiap tim '
-                  'diatur di menu Tim.',
+                  'Jadwal dibuat otomatis di tiap grup: semua tim saling bertemu '
+                  'sekali. Pemain tiap tim diatur di menu Tim.',
                   style: ShadTheme.of(ctx).textTheme.small,
                 ),
               ],
@@ -989,7 +989,7 @@ Future<Object?> showScoreForm(
             if (canReset)
               ShadButton.ghost(
                 onPressed: () => Navigator.pop(ctx, 'reset'),
-                child: const Text('Reset'),
+                child: const Text('Atur ulang'),
               ),
             ShadButton.outline(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
             ShadButton(

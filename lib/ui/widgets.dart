@@ -487,8 +487,13 @@ class StatStrip extends StatelessWidget {
 
 /// Tabel klasemen. Satu implementasi untuk Tanding, Tim, dan Turnamen.
 ///
-/// Di layar sempit hanya M/SG/POIN yang tampil supaya nama tim tetap terbaca;
-/// kolom W-D-L dan GM/GK muncul saat ada ruang.
+/// Di layar sempit hanya MP/SG/POIN yang tampil supaya nama tim tetap terbaca;
+/// kolom menang/seri/kalah dan GM/GK muncul saat ada ruang.
+///
+/// Singkatan dipilih yang lazim di tabel sepak bola Indonesia: MP = main
+/// (jumlah pertandingan), M = menang, S = seri, K = kalah, GM = gol
+/// memasukkan, GK = gol kemasukan, SG = selisih gol. Versi sebelumnya memakai
+/// W/D/L dari bahasa Inggris, sehingga satu tabel memuat dua bahasa.
 class StandingsTable extends StatelessWidget {
   const StandingsTable({super.key, required this.standings, this.top = 0});
 
@@ -522,11 +527,11 @@ class StandingsTable extends StatelessWidget {
                 children: [
                   const SizedBox(width: 22),
                   Expanded(child: Text('TIM', style: head)),
-                  SizedBox(width: 24, child: Text('M', textAlign: TextAlign.right, style: head)),
+                  SizedBox(width: 24, child: Text('MP', textAlign: TextAlign.right, style: head)),
                   if (wide) ...[
-                    SizedBox(width: 22, child: Text('W', textAlign: TextAlign.right, style: head)),
-                    SizedBox(width: 22, child: Text('D', textAlign: TextAlign.right, style: head)),
-                    SizedBox(width: 22, child: Text('L', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 22, child: Text('M', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 22, child: Text('S', textAlign: TextAlign.right, style: head)),
+                    SizedBox(width: 22, child: Text('K', textAlign: TextAlign.right, style: head)),
                     SizedBox(width: 28, child: Text('GM', textAlign: TextAlign.right, style: head)),
                     SizedBox(width: 28, child: Text('GK', textAlign: TextAlign.right, style: head)),
                   ],

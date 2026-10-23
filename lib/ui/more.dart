@@ -58,7 +58,7 @@ class _Counts {
     final period = periodNow();
     final r = await Future.wait<Soft<Object?>>([
       soft('Anggota', Member.all, fallback: const <Member>[]),
-      soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]),
+      soft('Sewa lapangan', Booking.upcoming, fallback: const <Booking>[]),
       soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
       soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
@@ -230,7 +230,7 @@ class _MorePageState extends State<MorePage> {
               ),
               _Tile(
                 icon: Icons.stadium_outlined,
-                title: 'Booking lapangan',
+                title: 'Sewa lapangan',
                 subtitle: c?.nextBooking == null
                     ? 'Belum ada jadwal sewa'
                     : 'Berikutnya ${fmtShortDate(c!.nextBooking!.startsAt)} '
@@ -251,7 +251,7 @@ class _MorePageState extends State<MorePage> {
                 icon: Icons.emoji_events_outlined,
                 title: 'Turnamen internal',
                 subtitle: c == null
-                    ? 'Round-robin, klasemen grup'
+                    ? 'Semua tim saling bertemu, klasemen per grup'
                     : (c.playing > 0
                         ? '${c.playing} berjalan • ${c.tournaments} tersimpan'
                         : '${c.tournaments} tersimpan • tidak ada yang berjalan'),

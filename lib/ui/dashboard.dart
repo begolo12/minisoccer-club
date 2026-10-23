@@ -136,7 +136,7 @@ class _DashboardData {
       soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
       soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
       soft('Daftar tim', Team.all, fallback: const <Team>[]),
-      soft('Booking lapangan', Booking.upcoming, fallback: const <Booking>[]),
+      soft('Sewa lapangan', Booking.upcoming, fallback: const <Booking>[]),
       soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
     ]);
     // Semua sumber gagal = server/jaringan mati, bukan satu tabel: layar error
@@ -699,7 +699,8 @@ class _EmptyHero extends StatelessWidget {
           Text('Susun turnamen', style: t.textTheme.h1.copyWith(fontSize: 32)),
           const SizedBox(height: 4),
           Text(
-            'Pilih tim klub, bagi ke grup, jadwal round-robin dibuat otomatis.',
+            'Pilih tim klub, bagi ke grup, lalu jadwalnya dibuat otomatis: '
+            'semua tim saling bertemu sekali.',
             style: t.textTheme.small,
           ),
           if (Auth.canWrite) ...[
@@ -1216,7 +1217,7 @@ class _RailColumn extends StatelessWidget {
                     ),
                     title: d.scorers[i].name,
                     subtitle: d.scorers[i].assists > 0
-                        ? '${d.scorers[i].assists} assist'
+                        ? '${d.scorers[i].assists} umpan gol'
                         : 'pencetak gol',
                     trailing: Text('${d.scorers[i].goals}', style: t.textTheme.h2.copyWith(fontSize: 20)),
                   ),
