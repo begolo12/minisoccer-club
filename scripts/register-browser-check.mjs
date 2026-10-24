@@ -12,8 +12,12 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-const base = (process.env.BASE || 'https://minisoccer-club.vercel.app/minisoccer/').replace(/\/$/, '');
-const apiBase = (process.env.API_BASE || base.replace(/\/minisoccer$/, '')).replace(/\/$/, '');
+const base = (process.env.BASE || 'https://airevo-digital.my.id/minisoccer/').replace(/\/$/, '');
+// API dipanggil lewat jalur yang SAMA dengan aplikasi: di portal itu
+// `/minisoccer/api/sql`, di Vercel jalurnya diteruskan rewrite. Dulu prefiks
+// `/minisoccer` dibuang, sehingga uji ini menembak `/api/sql` di akar portal —
+// proyek lain, tanpa fungsi itu.
+const apiBase = (process.env.API_BASE || base).replace(/\/$/, '');
 const adminUser = process.env.ADMIN_USER || 'admin';
 const adminPass = process.env.ADMIN_PASS || 'admin123';
 const port = 9500 + Math.floor(Math.random() * 90);

@@ -4,6 +4,7 @@
 // sebelum dikirim. Kalau keduanya berbeda, pengguna melihat "berhasil" di
 // layar lalu ditolak server — atau sebaliknya, isian yang sah diblokir.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:minisoccer_club/core/api.dart';
 import 'package:minisoccer_club/core/registration.dart';
 
 void main() {
@@ -66,6 +67,19 @@ void main() {
       for (final p in kPositions) {
         expect(positionError(p), isNull, reason: p);
       }
+    });
+  });
+
+  group('tautan pendaftaran', () {
+    test('memakai alamat publik klub, bukan host teknis', () {
+      // Tautan ini yang disalin admin dan dibagikan ke calon anggota. Host
+      // Vercel adalah alamat internal; yang dikenal orang adalah domain klub.
+      expect(kRegistrationUrl, 'https://airevo-digital.my.id/minisoccer/daftar');
+      expect(kRegistrationUrl.contains('vercel.app'), isFalse);
+    });
+
+    test('halaman /daftar di alamat itu dikenali sebagai formulir', () {
+      expect(isRegisterLocation(Uri.parse(kRegistrationUrl)), isTrue);
     });
   });
 

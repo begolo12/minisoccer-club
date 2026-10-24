@@ -31,3 +31,20 @@ String get kApiBase => '$_apiBase$_pathPrefix';
 
 String get kSqlEndpoint => '$kApiBase/api/sql';
 String get kAuthEndpoint => '$kApiBase/api/auth';
+
+/// Alamat publik aplikasi versi web — yang dibagikan ke orang lain.
+///
+/// Bukan `API_BASE`: APK memanggil API langsung ke host Vercel, tetapi alamat
+/// yang dibagikan ke calon anggota harus alamat yang memang dipakai klub.
+/// Selama keduanya disamakan, tautan pendaftaran yang disalin dari APK berbunyi
+/// `minisoccer-club.vercel.app` — host teknis yang tidak dikenal siapa pun.
+///
+/// Bisa diganti saat build (`--dart-define=PUBLIC_WEB_URL=https://…`) untuk
+/// pemasangan di domain lain; nilai bawaan adalah alamat resmi klub.
+const _publicWebOverride = String.fromEnvironment('PUBLIC_WEB_URL', defaultValue: '');
+const kPublicWebUrl = _publicWebOverride != ''
+    ? _publicWebOverride
+    : 'https://airevo-digital.my.id/minisoccer';
+
+/// Tautan pendaftaran yang bisa dibagikan.
+String get kRegistrationUrl => '$kPublicWebUrl/daftar';

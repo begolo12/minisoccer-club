@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
@@ -523,20 +522,13 @@ class _ErrorText extends StatelessWidget {
 
 /// Alamat formulir pendaftaran untuk dibagikan.
 ///
-/// Di web dipakai origin halaman yang sedang dibuka (termasuk prefiks portal,
-/// mis. `/minisoccer`), supaya tautannya tidak menunjuk ke domain lain. Di APK
-/// tidak ada halaman, jadi dipakai alamat server API — di sanalah versi web
-/// dipasang.
-String registrationLink() {
-  if (kIsWeb) {
-    final base = Uri.base;
-    final segs = base.pathSegments.where((s) => s.isNotEmpty).toList();
-    if (segs.isNotEmpty && segs.last == 'daftar') segs.removeLast();
-    final prefix = segs.isEmpty ? '' : '/${segs.join('/')}';
-    return '${base.origin}$prefix/daftar';
-  }
-  return kApiBase.startsWith('http') ? '$kApiBase/daftar' : '';
-}
+/// Selalu alamat publik klub (`kRegistrationUrl`), bukan host tempat aplikasi
+/// kebetulan dibuka. Dulu nilainya diturunkan dari `Uri.base` di web dan dari
+/// `API_BASE` di APK, sehingga admin yang membuka versi Vercel atau memakai APK
+/// membagikan `minisoccer-club.vercel.app/daftar` — host teknis, bukan alamat
+/// klub. Satu sumber kebenaran menghindari dua tautan berbeda untuk hal yang
+/// sama.
+String registrationLink() => kRegistrationUrl;
 
 /// Dialog berisi tautan pendaftaran + tombol salin.
 ///
@@ -577,6 +569,10 @@ Future<void> showRegistrationLinkDialog(BuildContext context) async {
         ),
         child: SelectableText(
           link,
+          // Sama seperti baris kredensial: tanpa ini isinya tidak masuk pohon
+          // aksesibilitas, sehingga pembaca layar (dan uji otomatis) tidak
+          // pernah melihat tautannya.
+          semanticsLabel: link,
           style: t.textTheme.small.copyWith(fontSize: 13, height: 1.5),
         ),
       ),

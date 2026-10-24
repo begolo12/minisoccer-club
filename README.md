@@ -15,7 +15,8 @@ Rilis juga menyertakan APK per-arsitektur, dan aplikasi memilih sendiri yang
 sesuai HP: `app-armeabi-v7a-release.apk` (HP lama 32-bit, ~19 MB),
 `app-arm64-v8a-release.apk` (~21 MB), atau `app-release.apk` universal (~38 MB).
 
-Versi web: **https://minisoccer-club.vercel.app**
+Versi web: **https://airevo-digital.my.id/minisoccer**
+Pendaftaran anggota: **https://airevo-digital.my.id/minisoccer/daftar**
 
 1. Buka link di HP → download.
 2. Buka file → izinkan "Install unknown apps" untuk browser/file manager → **Install**.
@@ -218,7 +219,8 @@ cp .env.example .env              # isi DATABASE_URL, DATABASE_URL_WEB, AUTH_SEC
 npm run dev:api                   # API lokal di :3000 (tanpa `vercel dev`)
 flutter run -d chrome --dart-define=API_BASE=http://localhost:3000
 flutter run                       # Android, lewat API yang sama
-flutter build apk --release --dart-define=API_BASE=https://minisoccer-club.vercel.app
+flutter build apk --release --dart-define=API_BASE=https://minisoccer-club.vercel.app \
+  --dart-define=PUBLIC_WEB_URL=https://airevo-digital.my.id/minisoccer
 flutter build web --release
 ```
 
@@ -265,7 +267,8 @@ Tiga hal yang membuatnya jalan, semuanya sudah ada di repo:
 | Akar dialihkan | `vercel.json` | `/` → `/minisoccer/` |
 
 APK tidak terpengaruh: `API_BASE` diisi absolut, jadi tetap memanggil
-`https://minisoccer-club.vercel.app/api/*`.
+`https://minisoccer-club.vercel.app/api/*` (dan diteruskan portal di
+`https://airevo-digital.my.id/minisoccer/api/*`).
 
 Uji jalur portal tanpa Vercel: bangun dengan `--base-href /minisoccer/`, lalu
 buka `http://localhost:<port>/minisoccer/` dari server statis yang menyajikan

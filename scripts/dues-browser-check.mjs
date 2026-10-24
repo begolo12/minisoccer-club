@@ -8,7 +8,7 @@
 import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
+const base = (process.env.BASE || 'https://airevo-digital.my.id/minisoccer').replace(/\/$/, '');
 const adminUser = process.env.ADMIN_USER || 'admin';
 const adminPass = process.env.ADMIN_PASS || 'admin123';
 const port = 9450 + Math.floor(Math.random() * 150);
