@@ -54,6 +54,11 @@ const EXPECTED = {
 
 const EXPECTED_VIEWS = ['v_team_standings'];
 
+// Kolom yang tidak bisa ditanyakan tanpa token karena privasi (lihat
+// api/_privacy.js). Endpoint menjawab 403 untuk kolom-kolom ini — itu
+// jawaban yang benar, bukan schema yang kurang.
+const PRIVATE_COLUMNS = new Set(['phone', 'address']);
+
 async function ask(sql) {
   const res = await fetch(`${base}/api/sql`, {
     method: 'POST',
@@ -70,7 +75,11 @@ const notes = [];
 async function checkColumn(table, column) {
   // LIMIT 0: tidak butuh baris, tapi Postgres tetap memvalidasi nama kolom.
   const { status, body } = await ask(`SELECT "${column}" FROM "${table}" LIMIT 0`);
-  if (status === 403 && table === 'users') return true; // butuh admin, bukan schema
+  // Kolom yang butuh role khusus dijawab 403 — itu jawaban yang benar,
+  // bukan schema yang kurang. `users` hanya untuk admin; `phone`/`address`
+  // anggota hanya untuk admin/bendahara (lihat api/_privacy.js). Kolomnya
+  // diperiksa lewat e2e-check yang punya token.
+  if (status === 403 && (table === 'users' || PRIVATE_COLUMNS.has(column))) return true;
   if (status !== 200) {
     const msg = body?.error || `HTTP ${status}`;
     // Tabel tidak ada dan kolom tidak ada sama-sama 400 dari /api/sql.
