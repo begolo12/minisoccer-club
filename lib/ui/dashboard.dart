@@ -601,7 +601,7 @@ class _NextTournamentHero extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           ShadButton(
-            height: 38,
+            height: 40,
             backgroundColor: t.colorScheme.primary,
             foregroundColor: t.colorScheme.primaryForeground,
             hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -674,7 +674,7 @@ class _LastTournamentHero extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           ShadButton(
-            height: 38,
+            height: 40,
             backgroundColor: t.colorScheme.primary,
             foregroundColor: t.colorScheme.primaryForeground,
             hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -775,7 +775,7 @@ class _EmptyHero extends StatelessWidget {
           if (Auth.canWrite) ...[
             const SizedBox(height: 14),
             ShadButton(
-              height: 38,
+              height: 40,
               backgroundColor: t.colorScheme.primary,
               foregroundColor: t.colorScheme.primaryForeground,
               hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -1468,7 +1468,7 @@ class _FixtureStrip extends StatelessWidget {
                 if (Auth.canWrite) ...[
                   Expanded(
                     child: ShadButton(
-                      height: 38,
+                      height: 40,
                       backgroundColor: t.colorScheme.primary,
                       foregroundColor: t.colorScheme.primaryForeground,
                       hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -1488,7 +1488,7 @@ class _FixtureStrip extends StatelessWidget {
                 ],
                 Expanded(
                   child: ShadButton.outline(
-                    height: 38,
+                    height: 40,
                     onPressed: () => _open(context),
                     leading: const Icon(Icons.scoreboard, size: 16),
                     child: Text(Auth.canWrite ? 'Detail' : 'Lihat detail'),
@@ -1555,7 +1555,10 @@ class _QuickAction extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          height: 38,
+          // 40px, bukan 38: sweep visual menandai tombol ini di bawah
+          // pedoman sentuh ~40px, dan aksi cepat paling sering ditekan
+          // sambil berdiri/lari — justru yang paling butuh target lega.
+          height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 9),
           decoration: BoxDecoration(
             border: Border.all(color: t.colorScheme.border),

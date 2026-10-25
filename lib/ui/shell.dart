@@ -339,7 +339,9 @@ class _RailItem extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            // Vertikal 10 (bukan 9): item rail diukur sweep dan 38px ada di
+            // bawah pedoman sentuh 40px.
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(
               children: [
                 Icon(
@@ -364,7 +366,6 @@ class _RailItem extends StatelessWidget {
     );
   }
 }
-
 /// Bilah tipis di atas isi: "Mode publik" (dengan tombol Masuk) dan/atau
 /// status offline. Keduanya bisa terjadi bersamaan (tamu membuka app tanpa
 /// jaringan), jadi ditampilkan sebagai dua baris, bukan saling menimpa.

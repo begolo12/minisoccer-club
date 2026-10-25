@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
+import 'export.dart';
 import 'fmt.dart';
 import 'forms.dart';
 import 'tournament.dart';
@@ -36,8 +37,28 @@ class _PayData {
   List<DuesRow> get unpaid => bill.where((r) => !r.paid).toList();
   int get paidCount => bill.where((r) => r.paid).length;
 
-  /// Perkiraan uang yang belum masuk: nominal turnamen × jumlah yang belum bayar.
-  double get missing => (selected?.entryFee ?? 0) * unpaid.length;
+  /// Uang yang benar-benar belum masuk: nominal turnamen dikurangi apa yang
+  /// sudah dibayar tiap orang. Sebelumnya `entryFee × belum bayar` — angka
+  /// itu meleset untuk pembayaran parampahan, yang pada tagihan sudah
+  /// berstatus lunas padahal sisanya tidak tercatat di mana pun.
+  double get missing {
+    final fee = selected?.entryFee ?? 0;
+    if (fee <= 0) return 0;
+    var gap = 0.0;
+    for (final r in bill) {
+      final s = fee - r.paidAmount;
+      if (s > 0) gap += s;
+    }
+    return gap;
+  }
+
+  /// Berapa orang yang masih punya sisa (belum bayar sama sekali, atau
+  /// bayarnya kurang dari nominal).
+  int get shortfallCount {
+    final fee = selected?.entryFee ?? 0;
+    if (fee <= 0) return unpaid.length;
+    return bill.where((r) => fee - r.paidAmount > 0).length;
+  }
 
   static Future<_PayData> load(int? tournamentId) async {
     final r = await Future.wait<Soft<Object?>>([
@@ -112,12 +133,55 @@ class _PaymentsPageState extends State<PaymentsPage> {
     if (saved) _reload();
   }
 
+  /// Pesan tunggakan siap-tempel: daftar yang belum bayar untuk disebar ke
+  /// grup WhatsApp. Kerja bendahara memang berakhir di grup, bukan di app —
+  /// tanpa ini mereka menyalin nama satu per satu dengan tangan.
+  Future<void> _copyUnpaid(_PayData d) async {
+    final t = d.selected;
+    if (t == null || d.unpaid.isEmpty) return;
+    final buf = StringBuffer()
+      ..writeln('⚽ Iuran ${t.name}')
+      ..writeln()
+      ..writeln('Belum bayar (${d.unpaid.length}):');
+    for (var i = 0; i < d.unpaid.length; i++) {
+      buf.writeln('${i + 1}. ${d.unpaid[i].member.name}');
+    }
+    if (t.entryFee > 0) {
+      buf
+        ..writeln()
+        ..writeln('Iuran ${fmtMoney(t.entryFee)} per anggota.');
+    }
+    if (!mounted) return;
+    await showTextShare(
+      context,
+      title: 'Pesan tunggakan',
+      description: 'Tempel ke grup WhatsApp. Pesan berisi nama yang belum bayar '
+          'saat pesan ini dibuat.',
+      text: buf.toString(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PageScaffold(
       title: 'Iuran',
       subtitle: 'Per turnamen',
       actions: [
+        // Pesan tunggakan dipakai bendahara sekaligus anggota (mengingatkan
+        // teman satu timnya), jadi tombolnya tidak digerbangi role.
+        FutureBuilder<_PayData>(
+          future: _future,
+          builder: (context, snap) {
+            final d = snap.data;
+            if (d == null || d.unpaid.isEmpty) return const SizedBox.shrink();
+            return iconAction(
+              context,
+              Icons.copy_all_outlined,
+              () => _copyUnpaid(d),
+              tooltip: 'Salin pesan tunggakan',
+            );
+          },
+        ),
         if (Auth.canWrite)
           FutureBuilder<_PayData>(
             future: _future,
@@ -247,7 +311,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                     StatTile(
                       label: 'Kurang',
                       value: fmtMoney(d.missing),
-                      hint: '${unpaid.length} anggota',
+                      hint: '${d.shortfallCount} anggota',
                       color: AppThemes.bad(context),
                     ),
                 ],

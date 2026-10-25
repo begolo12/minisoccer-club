@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
+import 'export.dart';
 import 'fmt.dart';
 import 'tournament.dart';
 import 'forms.dart';
@@ -268,6 +269,28 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
     });
   }
 
+  /// Salin hasil/jadwal sebagai teks siap-tempel ke grup.
+  ///
+  /// Papan skor yang bagus tetap tidak bisa dikutip: pengumuman hasil di
+  /// grup WhatsApp selalu diketik ulang. Teksnya mengikuti bentuk yang
+  /// biasa dipakai orang — "HASIL", satu baris skor, satu baris waktu.
+  Future<void> _share(Match m) async {
+    final finished = m.status == 'finished';
+    final head = finished ? 'HASIL' : (m.ongoing ? 'SEDANG BERLANGSUNG' : 'JADWAL LAGA');
+    final score = finished || m.ongoing ? '${m.goalsFor}–${m.goalsAgainst}' : 'vs';
+    final text = [
+      '⚽ $head',
+      '${m.homeName} $score ${m.awayName}',
+      '${fmtDateTime(m.playedAt)}${m.venue == null ? '' : ' • ${m.venue}'}',
+    ].join('\n');
+    await showTextShare(
+      context,
+      title: finished ? 'Salin hasil' : 'Salin laga',
+      description: 'Tempel ke grup WhatsApp.',
+      text: text,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
@@ -279,6 +302,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
       // di 320px dua tombol ikon tambahan di kartu membuat baris aksi pecah
       // ke baris kedua sendirian.
       actions: [
+        iconAction(context, Icons.ios_share, () => _share(m), tooltip: 'Salin hasil'),
         if (Auth.canWrite)
           iconAction(context, Icons.edit_outlined, () async {
             if (await showMatchForm(context, match: m)) {
@@ -560,7 +584,10 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
   IconData _icon(String type) => switch (type) {
         'goal' => Icons.sports_soccer,
         'assist' => Icons.handshake_outlined,
-        'yellow' => Icons.square_rounded,
+        // Kuning kotak garis, merah kotak penuh: keduanya dibedakan bentuk,
+        // bukan hanya warna — kartu merah yang salah baca adalah catatan
+        // disiplin yang salah orang.
+        'yellow' => Icons.square_outlined,
         _ => Icons.square_rounded,
       };
 
@@ -594,6 +621,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
 
     final ok = await showShadDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: Text('Sesi $nextNo'),
@@ -677,8 +705,20 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
   /// tetap terbuka supaya rentetan kejadian dalam satu laga tidak perlu
   /// membuka dialog berkali-kali.
   Future<bool> _openEventPad(BuildContext context) async {
-    final players = await Team.players();
-    final all = await Member.all(activeOnly: true);
+    Map<int, List<Member>> players;
+    List<Member> all;
+    // Skenario utama papan catat adalah di lapangan, tepat saat sinyal
+    // paling buruk. Tanpa guard, kegagalan muat pemain matikan tombol ini
+    // tanpa suara — pengguna mengira app rusak. Sesi menit terakhir tetap
+    // bisa dicatat begitu sinyal kembali, jadi cukup beri tahu dan batal.
+    try {
+      players = await Team.players();
+      all = await Member.all(activeOnly: true);
+    } catch (e) {
+      if (!context.mounted) return false;
+      toast(context, 'Daftar pemain belum bisa dimuat: ${errText(e)}');
+      return false;
+    }
     if (!context.mounted) return false;
     if (all.isEmpty) {
       toast(context, 'Tambah anggota dulu');
@@ -695,10 +735,12 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
 
     var minute = '';
     var recorded = 0;
+    var last = '';
     // Satu tim sekaligus: 8 pemain sudah memenuhi tinggi dialog, dan daftar
     // gabungan dua tim menuntut scroll di dalam dialog — di HP itu gesekan
     // yang tidak perlu saat mencatat sambil menonton.
     var group = 0;
+    final minuteCtrl = TextEditingController();
 
     final ok = await showShadDialog<bool>(
       context: context,
@@ -712,7 +754,15 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 minute: int.tryParse(minute),
                 type: type,
               );
-              setLocal(() => recorded++);
+              setLocal(() {
+                recorded++;
+                // Menit dihapus setiap catatan masuk: tanpa itu, gol ke-2
+                // dan ke-3 ikut tercatat di menit gol pertama — kesalahan
+                // yang tidak terlihat sampai riwayat dibuka.
+                minuteCtrl.clear();
+                minute = '';
+                last = '${MatchEvent.typeLabels[type] ?? type} ${member.name}';
+              });
             } catch (e) {
               if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
             }
@@ -739,6 +789,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                     SizedBox(
                       width: 96,
                       child: ShadInput(
+                        controller: minuteCtrl,
                         placeholder: const Text('Menit'),
                         keyboardType: TextInputType.number,
                         onChanged: (v) => minute = v,
@@ -749,7 +800,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       child: Text(
                         recorded == 0
                             ? 'Belum ada catatan baru'
-                            : '$recorded catatan tersimpan',
+                            : '$recorded catatan • terakhir: $last',
                         style: t.textTheme.small.copyWith(
                           color: recorded == 0
                               ? t.colorScheme.mutedForeground
@@ -803,6 +854,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
         },
       ),
     );
+    minuteCtrl.dispose();
     return ok ?? false;
   }
 }
@@ -845,7 +897,7 @@ class _EventPadRow extends StatelessWidget {
             onTap: () => onTap('assist'),
           ),
           _PadButton(
-            icon: Icons.square_rounded,
+            icon: Icons.square_outlined,
             color: const Color(0xFFFACC15),
             label: 'Kartu kuning ${member.name}',
             onTap: () => onTap('yellow'),
@@ -888,9 +940,11 @@ class _PadButton extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(8),
+            // 40px mengikuti pedoman sentuh yang sama dengan iconAction:
+            // tombol ini ditekan cepat sambil menonton, bukan dibaca pelan.
             child: SizedBox(
-              width: 34,
-              height: 34,
+              width: 40,
+              height: 40,
               child: Icon(icon, size: 17, color: color),
             ),
           ),

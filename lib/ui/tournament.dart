@@ -655,8 +655,10 @@ class _TeamCard extends StatelessWidget {
           ShadButton.outline(onPressed: () => Navigator.pop(ctx), child: const Text('Tutup')),
         ],
         child: SizedBox(
+          // Tanpa lebar tetap: 320px + padding dialog meluber di layar 320px.
+          // Dialog mengikuti lebar maksimum bawaan, sama seperti pemilih
+          // pemain di halaman Tim.
           height: 320,
-          width: 320,
           child: Material(
             type: MaterialType.transparency,
             child: ListView(
@@ -821,10 +823,15 @@ Future<int?> showTournamentForm(BuildContext context) async {
 
   final ok = await showShadDialog<bool>(
     context: context,
+    // Form tulis: barrier tidak boleh menutup dialog di tengah simpan.
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
-        final per = int.tryParse(minutes.text) ?? 20;
-        final rest = int.tryParse(breakMin.text) ?? 0;
+        // Durasi dijepit, bukan dipercaya: kolom angka ini bisa diisi 0 atau
+        // negatif, dan jadwal yang lahir dari situ menyusut/k mundur —
+        // semua laga kickoff di menit yang sama. Non-numerik jatuh ke 20.
+        final per = (int.tryParse(minutes.text) ?? 20).clamp(1, 180);
+        final rest = (int.tryParse(breakMin.text) ?? 0).clamp(0, 60);
         final count = selected.length;
         // Tiap grup butuh minimal 2 tim; 3 tim tidak bisa dibagi 2 grup.
         final maxGroups = groupCap(count);

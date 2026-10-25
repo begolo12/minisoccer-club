@@ -58,7 +58,10 @@ Future<void> maybePromptUpdate(BuildContext context) async {
       actions: [
         ShadButton.outline(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: const Text('Nanti'),
+          // Label jujur: menekan ini MEMBATALKAN versi ini selamanya (tidak
+          // ditawarkan lagi), bukan menundanya sampai nanti. "Nanti" menjanjikan
+          // hal yang tidak dilakukan kode.
+          child: const Text('Lewati versi ini'),
         ),
         ShadButton(
           onPressed: () => Navigator.of(ctx).pop(true),
@@ -181,6 +184,18 @@ class _InstallDialogState extends State<_InstallDialog> {
               _progress == 0
                   ? 'Mengunduh…'
                   : '${(_progress * 100).round()}% • jangan tutup aplikasi',
+            ),
+            const SizedBox(height: 4),
+            // Jalan keluar saat unduhan bermasalah. Dialog ini non-dismissable,
+            // jadi tanpa tombol ini koneksi yang macet mengunci pengguna sampai
+            // app dibunuh paksa. Unduhan yang terlanjur berjalan dibiarkan
+            // selesai di latar; hasilnya diabaikan (mounted = false).
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ShadButton.ghost(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Batalkan'),
+              ),
             ),
           ],
         ],

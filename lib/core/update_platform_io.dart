@@ -39,7 +39,11 @@ Future<String> downloadApk(
 
   final client = http.Client();
   try {
-    final res = await client.send(http.Request('GET', Uri.parse(release.apkUrl)));
+    // Timeout pada pengiriman awal: server yang tidak menjawab tanpa ini
+    // membuat dialog pasang (non-dismissable) menunggu selamanya.
+    final res = await client
+        .send(http.Request('GET', Uri.parse(release.apkUrl)))
+        .timeout(const Duration(seconds: 30));
     if (res.statusCode != 200) {
       throw Exception('Unduhan gagal (HTTP ${res.statusCode})');
     }
@@ -49,7 +53,15 @@ Future<String> downloadApk(
     final digestSink = hasher == null ? null : sha256.startChunkedConversion(hasher);
     var received = 0;
     try {
-      await for (final chunk in res.stream) {
+      // `Stream.timeout` mengawasi JEDA antar potongan, bukan durasi total:
+      // sinyal yang hilang di tengah unduhan tidak melempar apa pun tanpa
+      // ini, dan dialog pembaruan macet sampai app dibunuh paksa.
+      await for (final chunk in res.stream.timeout(
+        const Duration(seconds: 30),
+        onTimeout: (sinkOut) => sinkOut.addError(
+          Exception('Unduhan berhenti di tengah — sinyal tidak stabil. Coba lagi.'),
+        ),
+      )) {
         sink.add(chunk);
         digestSink?.add(chunk);
         received += chunk.length;

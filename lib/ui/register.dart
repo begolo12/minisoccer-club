@@ -36,6 +36,11 @@ class _RegisterPageState extends State<RegisterPage> {
   final _address = TextEditingController();
   String? _position;
 
+  final _nameFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _addressFocus = FocusNode();
+  final _positionKey = GlobalKey();
+
   bool _saving = false;
   String? _error;
 
@@ -52,6 +57,9 @@ class _RegisterPageState extends State<RegisterPage> {
     _name.dispose();
     _phone.dispose();
     _address.dispose();
+    _nameFocus.dispose();
+    _phoneFocus.dispose();
+    _addressFocus.dispose();
     super.dispose();
   }
 
@@ -71,7 +79,36 @@ class _RegisterPageState extends State<RegisterPage> {
     });
     if (!_valid) {
       // Fokuskan isian pertama yang bermasalah supaya di HP tidak perlu
-      // menggulir mencari mana yang kurang.
+      // menggulir mencari mana yang kurang. Gulirannya setelah frame berikut:
+      // teks error baru masuk layout pada frame itu, jadi targetnya baru
+      // punya posisi.
+      final focusFirst = <(FocusNode, bool)>[
+        (_nameFocus, _nameErr != null),
+        (_phoneFocus, _phoneErr != null),
+        (_addressFocus, _addressErr != null),
+      ];
+      FocusNode? firstFocus;
+      for (final (node, bad) in focusFirst) {
+        if (bad) {
+          firstFocus = node;
+          break;
+        }
+      }
+      final isPosition = firstFocus == null && _positionErr != null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (firstFocus != null) {
+          firstFocus.requestFocus();
+          final ctx = firstFocus.context;
+          if (ctx != null) {
+            Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250));
+          }
+        } else if (isPosition) {
+          final ctx = _positionKey.currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250));
+          }
+        }
+      });
       return;
     }
     setState(() => _saving = true);
@@ -143,6 +180,7 @@ class _RegisterPageState extends State<RegisterPage> {
             label: 'Nama lengkap',
             child: ShadInput(
             controller: _name,
+            focusNode: _nameFocus,
             enabled: !_saving,
             textCapitalization: TextCapitalization.words,
             textInputAction: TextInputAction.next,
@@ -159,6 +197,7 @@ class _RegisterPageState extends State<RegisterPage> {
             label: 'Nomor HP',
             child: ShadInput(
             controller: _phone,
+            focusNode: _phoneFocus,
             enabled: !_saving,
             keyboardType: TextInputType.phone,
             textInputAction: TextInputAction.next,
@@ -175,6 +214,7 @@ class _RegisterPageState extends State<RegisterPage> {
             label: 'Alamat',
             child: ShadInput(
             controller: _address,
+            focusNode: _addressFocus,
             enabled: !_saving,
             textCapitalization: TextCapitalization.words,
             maxLines: 3,
@@ -191,6 +231,7 @@ class _RegisterPageState extends State<RegisterPage> {
           // cukup satu ketukan. Dropdown menyembunyikan pilihan di balik satu
           // ketukan lagi, dan formulir ini diisi sambil berdiri.
           Material(
+            key: _positionKey,
             type: MaterialType.transparency,
             // RadioGroup mengelola nilai terpilih untuk semua Radio di
             // dalamnya; sejak Flutter 3.32 `groupValue` per-Radio sudah

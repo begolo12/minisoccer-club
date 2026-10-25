@@ -7,6 +7,7 @@ import '../data/models.dart';
 import 'fmt.dart';
 import 'members.dart';
 import 'matches.dart';
+import 'money_input.dart';
 import 'widgets.dart';
 
 /// Data halaman Tim. `standings` dimuat terpisah dari tim & pemain karena
@@ -56,31 +57,43 @@ class _TeamsPageState extends State<TeamsPage> {
     final next = await _teamCount();
     if (!mounted) return;
     final name = TextEditingController(text: 'Tim ${String.fromCharCode(65 + next)}');
+    // Guard dobel-ketuk: dua Team.insert membuat dua "Tim A".
+    var saving = false;
     final ok = await showShadDialog<bool>(
       context: context,
-      builder: (ctx) => ShadDialog(
-        title: const Text('Tim baru'),
-        description: const Text('Satu tim berisi 7-8 pemain. Tambah pemain setelah tim dibuat.'),
-        actions: [
-          ShadButton.outline(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          ShadButton(
-            onPressed: () async {
-              final v = name.text.trim();
-              if (v.isEmpty) {
-                toast(ctx, 'Nama tim wajib diisi');
-                return;
-              }
-              try {
-                await Team.insert(v);
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              } catch (e) {
-                if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-        child: ShadInput(controller: name, placeholder: const Text('Nama tim')),
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => ShadDialog(
+          title: const Text('Tim baru'),
+          description: const Text('Satu tim berisi 7-8 pemain. Tambah pemain setelah tim dibuat.'),
+          actions: [
+            ShadButton.outline(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            SaveButton(
+              saving: saving,
+              onPressed: () async {
+                final v = name.text.trim();
+                if (v.isEmpty) {
+                  toast(ctx, 'Nama tim wajib diisi');
+                  return;
+                }
+                setLocal(() => saving = true);
+                try {
+                  await Team.insert(v);
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                } catch (e) {
+                  if (ctx.mounted) {
+                    setLocal(() => saving = false);
+                    toast(ctx, 'Gagal: ${errText(e)}');
+                  }
+                }
+              },
+            ),
+          ],
+          child: ShadInput(controller: name, placeholder: const Text('Nama tim')),
+        ),
       ),
     );
     if (ok ?? false) await _reload();
@@ -293,27 +306,37 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
 
   Future<void> _rename() async {
     final c = TextEditingController(text: _name);
+    var saving = false;
     final ok = await showShadDialog<bool>(
       context: context,
-      builder: (ctx) => ShadDialog(
-        title: const Text('Nama tim'),
-        actions: [
-          ShadButton.outline(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          ShadButton(
-            onPressed: () async {
-              final v = c.text.trim();
-              if (v.isEmpty) {
-                toast(ctx, 'Nama tim wajib diisi');
-                return;
-              }
-              if (await attempt(ctx, () => Team.rename(widget.team.id, v), fail: 'Gagal mengganti nama')) {
-                if (ctx.mounted) Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Simpan'),
-          ),
-        ],
-        child: ShadInput(controller: c, placeholder: const Text('Nama tim')),
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => ShadDialog(
+          title: const Text('Nama tim'),
+          actions: [
+            ShadButton.outline(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            SaveButton(
+              saving: saving,
+              onPressed: () async {
+                final v = c.text.trim();
+                if (v.isEmpty) {
+                  toast(ctx, 'Nama tim wajib diisi');
+                  return;
+                }
+                setLocal(() => saving = true);
+                if (await attempt(ctx, () => Team.rename(widget.team.id, v), fail: 'Gagal mengganti nama')) {
+                  if (ctx.mounted) Navigator.pop(ctx, true);
+                } else if (ctx.mounted) {
+                  setLocal(() => saving = false);
+                }
+              },
+            ),
+          ],
+          child: ShadInput(controller: c, placeholder: const Text('Nama tim')),
+        ),
       ),
     );
     if (ok ?? false) {
@@ -411,7 +434,18 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
         if (Auth.canWrite) ...[
           iconAction(context, Icons.edit_outlined, _rename, tooltip: 'Ganti nama'),
           iconAction(context, Icons.delete_outline, () async {
-            final (internal, tour) = await Team.deletionImpact(widget.team.id);
+            // Dampak hapus harus dimuat dulu untuk dialog konfirmasi. Offline
+            // tanpa cache, query agregat ini bisa gagal — tanpa guard, tombol
+            // hapus diam total tanpa dialog dan tanpa pesan.
+            final (int, int) impact;
+            try {
+              impact = await Team.deletionImpact(widget.team.id);
+            } catch (e) {
+              if (!context.mounted) return;
+              toast(context, 'Dampak hapus belum bisa diperiksa: ${errText(e)}');
+              return;
+            }
+            final (internal, tour) = impact;
             if (!context.mounted) return;
             final parts = <String>[
               if (internal > 0)

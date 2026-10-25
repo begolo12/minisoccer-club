@@ -32,10 +32,23 @@ class _LoginPageState extends State<LoginPage> {
   void initState() {
     super.initState();
     _check();
+    // Sesi bisa terbuka dari alur lain yang dipush DI ATAS halaman ini
+    // (pendaftaran mandiri: daftar → langsung masuk). Tanpa listener,
+    // kembali dari sana tetap menampilkan form masuk — jalan buntu: app di
+    // belakang sudah masuk, tapi pengguna melihat layar login lagi.
+    Auth.session.addListener(_onSession);
+  }
+
+  void _onSession() {
+    if (!mounted || !Auth.session.value) return;
+    Auth.session.removeListener(_onSession);
+    // onSignedIn mem-pop halaman ini; shell menyesuaikan diri ke mode masuk.
+    widget.onSignedIn();
   }
 
   @override
   void dispose() {
+    Auth.session.removeListener(_onSession);
     _user.dispose();
     _pass.dispose();
     _userFocus.dispose();
@@ -111,6 +124,16 @@ class _LoginPageState extends State<LoginPage> {
                         user: _user,
                         pass: _pass,
                         userFocus: _userFocus,
+                        // Status bootstrap gagal diperiksa (jaringan): tanpa
+                        // tombol ini, klub yang benar-benar baru tidak pernah
+                        // sampai ke form "Admin pertama" — pesannya cuma error
+                        // mentah dan tidak ada yang bisa ditekan.
+                        onRetryCheck: _bootstrap == null
+                            ? () {
+                                setState(() => _err = null);
+                                _check();
+                              }
+                            : null,
                         onTogglePass: () => setState(() => _showPass = !_showPass),
                         onSubmit: _submit,
                         onRegister: () => Navigator.push(
@@ -293,6 +316,7 @@ class _FormPanel extends StatelessWidget {
     required this.onTogglePass,
     required this.onSubmit,
     required this.onRegister,
+    this.onRetryCheck,
   });
 
   final bool firstRun;
@@ -305,6 +329,10 @@ class _FormPanel extends StatelessWidget {
   final VoidCallback onTogglePass;
   final VoidCallback onSubmit;
   final VoidCallback onRegister;
+
+  /// Terisi hanya kalau pemeriksaan "belum ada akun?" gagal — pengguna bisa
+  /// mencoba lagi tanpa menutup layar.
+  final VoidCallback? onRetryCheck;
 
   @override
   Widget build(BuildContext context) {
@@ -381,6 +409,14 @@ class _FormPanel extends StatelessWidget {
               icon: const Icon(Icons.error_outline, size: 16),
               description: Text(error!, style: const TextStyle(fontSize: 12.5, height: 1.45)),
             ),
+            if (onRetryCheck != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: busy ? null : onRetryCheck,
+                  child: const Text('Coba periksa lagi'),
+                ),
+              ),
           ],
           const SizedBox(height: 20),
           ShadButton(

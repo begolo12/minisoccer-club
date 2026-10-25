@@ -4,17 +4,31 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../core/db.dart';
 
 /// Tema aplikasi yang bisa diganti tanpa membuka ulang app.
+///
+/// Tiga pilihan, bukan saklar: "sistem" mengikuti setelan HP (berguna untuk
+/// pengguna yang menjadwalkan gelap otomatis malam hari), sementara "gelap"
+/// dan "terang" mengunci karena tema papan skor ini justru identik dengan
+/// mode gelap — default tetap gelap, bukan sistem, supaya tampilan pertama
+/// sesuai identitas visualnya.
 class ThemeController {
   static final ValueNotifier<ThemeMode> mode = ValueNotifier(ThemeMode.dark);
 
   static Future<void> load() async {
     final v = await SecureStore.read('theme');
-    mode.value = v == 'light' ? ThemeMode.light : ThemeMode.dark;
+    mode.value = switch (v) {
+      'light' => ThemeMode.light,
+      'system' => ThemeMode.system,
+      _ => ThemeMode.dark,
+    };
   }
 
-  static Future<void> setDark(bool dark) async {
-    mode.value = dark ? ThemeMode.dark : ThemeMode.light;
-    await SecureStore.write('theme', dark ? 'dark' : 'light');
+  static Future<void> setMode(ThemeMode m) async {
+    mode.value = m;
+    await SecureStore.write('theme', switch (m) {
+      ThemeMode.light => 'light',
+      ThemeMode.system => 'system',
+      _ => 'dark',
+    });
   }
 }
 

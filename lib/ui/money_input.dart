@@ -210,12 +210,19 @@ class _MoneyFieldState extends State<MoneyField> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 6, 2, 0),
-          child: Text(
-            _value > 0
-                ? 'Terbaca: ${fmtMoney(_value)}'
-                : 'Ketik angka — titik ribuan muncul sendiri',
-            style: t.textTheme.small.copyWith(
-              color: _value > 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+          // liveRegion: baris ini ada untuk menangkap salah baca nominal
+          // ("salah satu nol baru ketahuan setelah buku kas terisi") — pembaca
+          // layar harus mengumumkan perubahannya saat mengetik, bukan hanya
+          // saat fokus pindah.
+          child: Semantics(
+            liveRegion: true,
+            child: Text(
+              _value > 0
+                  ? 'Terbaca: ${fmtMoney(_value)}'
+                  : 'Ketik angka — titik ribuan muncul sendiri',
+              style: t.textTheme.small.copyWith(
+                color: _value > 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+              ),
             ),
           ),
         ),

@@ -9,6 +9,7 @@ import 'core/db.dart';
 import 'core/registration.dart';
 import 'core/update.dart';
 import 'data/auth.dart';
+import 'ui/fmt.dart';
 import 'ui/register.dart';
 import 'ui/theme.dart';
 import 'ui/shell.dart';
@@ -111,13 +112,25 @@ class _BootstrapState extends State<Bootstrap> {
 
   Future<void> _check() async {
     if (mounted) setState(() => _checking = true);
-    if (kIsWeb && isRegisterLocation(Uri.base)) {
-      _register = true;
+    try {
+      if (kIsWeb && isRegisterLocation(Uri.base)) {
+        _register = true;
+      }
+      await Auth.restore();
+      // Antrean tulis offline dibaca dari disk sebelum layar apa pun tampil,
+      // supaya banner "N perubahan menunggu" langsung benar.
+      await Db.loadOffline();
+    } catch (e) {
+      // Jalur start yang gagal (penyimpanan rusak, dsb.) tidak boleh menjadi
+      // spinner abadi: layar error dengan jalan keluar adalah fallback terakhir.
+      if (mounted) {
+        setState(() {
+          _checking = false;
+          _error = errText(e);
+        });
+      }
+      return;
     }
-    await Auth.restore();
-    // Antrean tulis offline dibaca dari disk sebelum layar apa pun tampil,
-    // supaya banner "N perubahan menunggu" langsung benar.
-    await Db.loadOffline();
 
     // Belum ada sesi: mode publik. Aplikasi langsung terbuka dalam mode
     // baca-saja; layar masuk hanya muncul saat tombol "Masuk" ditekan.

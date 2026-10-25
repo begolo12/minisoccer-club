@@ -18,27 +18,29 @@ Future<File> _outboxFile() async {
   return f;
 }
 
+/// Baca isi antrean dari disk.
+///
+/// Kontrak: null HANYA berarti "belum pernah ada antrean". Kegagalan membaca
+/// berkas yang ADA dilempar — kalau diubah jadi null, pemanggil menganggap
+/// antreannya kosong dan penulisan berikutnya menimpa berkas yang belum
+/// terbaca, menghapus seluruh tulisan offline yang belum terkirim.
 Future<String?> readOutbox() async {
-  try {
-    final f = await _outboxFile();
-    if (!f.existsSync()) return null;
-    return await f.readAsString();
-  } catch (_) {
-    return null;
-  }
+  final f = await _outboxFile();
+  if (!f.existsSync()) return null;
+  return f.readAsString();
 }
 
+/// Tulis antrean ke disk (tulis sementara + rename atomik).
+///
+/// Kegagalan DILEMPAR, bukan ditelan: `Outbox._persist` yang mencatatnya ke
+/// `Outbox.loadError` supaya kehilangan penyimpanan tidak terjadi diam-diam
+/// di balik banner "N perubahan menunggu".
 Future<void> writeOutbox(String json) async {
-  try {
-    final f = await _outboxFile();
-    // Nama sementara unik per penulisan, lalu rename atomik. Nama tetap
-    // (`outbox.json.tmp`) akan saling menimpa kalau dua penulisan terjadi
-    // berdekatan; rename tetap atomik di sistem berkas yang sama.
-    final tmp = File('${f.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
-    await tmp.writeAsString(json, flush: true);
-    await tmp.rename(f.path);
-  } catch (_) {
-    // Gagal menyimpan antrean = kehilangan data offline. Tidak bisa
-    // dilempar ke UI di sini; pemanggil mencatat lewat `Outbox.loadError`.
-  }
+  final f = await _outboxFile();
+  // Nama sementara unik per penulisan, lalu rename atomik. Nama tetap
+  // (`outbox.json.tmp`) akan saling menimpa kalau dua penulisan terjadi
+  // berdekatan; rename tetap atomik di sistem berkas yang sama.
+  final tmp = File('${f.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
+  await tmp.writeAsString(json, flush: true);
+  await tmp.rename(f.path);
 }

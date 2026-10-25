@@ -48,27 +48,32 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | Fitur | Isi |
 |---|---|
 | **Beranda** | Sapaan akun, papan skor laga berjalan (kalau ada) atau hero turnamen berikutnya, turnamen terakhir dengan progres laga — hasil per pertandingan dibuka dengan diketuk, ringkasan anggota/main/iuran, kas bulan ini, aksi cepat, pengumuman; di layar lebar ditambah klasemen, top skor, dan sewa lapangan |
-| **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol, umpan gol, dan kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi |
+| **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol, umpan gol, dan kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi, dan hasil/jadwal bisa **disalin sebagai teks** untuk grup WhatsApp |
 | **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
 | **Anggota** | CRUD pemain (nama, HP, alamat, posisi, nomor punggung), cari, filter aktif/nonaktif. Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
 | **Pendaftaran mandiri** | Tautan publik `/daftar` (juga bisa dari layar Masuk) untuk calon anggota: nama, nomor HP, alamat, dan posisi, semuanya wajib. Nama depan jadi username, akun langsung dibuat dengan password awal = nomor HP, dan tautannya bisa disalin dari Pengaturan |
 | **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal otomatis per grup (semua tim saling bertemu sekali), klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga. **Iuran per anggota** diisi per turnamen dan bisa diubah kapan saja |
-| **Iuran** | Iuran **per turnamen** (bukan per bulan): pilih turnamen, lihat siapa yang belum bayar (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat. Peserta = anggota dari tim yang ikut turnamen itu, jadi orang yang tidak bermain di turnamen tersebut tidak ikut ditagih |
-| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan) |
+| **Iuran** | Iuran **per turnamen** (bukan per bulan): pilih turnamen, lihat siapa yang belum bayar (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat, dan **pesan tunggakan siap-tempel** untuk grup WhatsApp. Peserta = anggota dari tim yang ikut turnamen itu, jadi orang yang tidak bermain di turnamen tersebut tidak ikut ditagih |
+| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan), dan **ekspor CSV** (kronologis + saldo berjalan, siap dibuka di Excel/Sheets) |
 | **Sewa lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu sewa = satu catatan kas). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan sewa ikut membuang setoran patungannya |
 | **Pengumuman** | Info klub untuk anggota |
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
-| **Pengguna** | Akun + role admin / bendahara / anggota |
-| **Pengaturan** | Tema terang/gelap (langsung), info server, tes koneksi, keluar |
+| **Pengguna** | Akun + role admin / bendahara / anggota; anggota yang berhenti bisa **dinonaktifkan** tanpa menghapus riwayatnya |
+| **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), info server, tes koneksi, keluar |
 
 Poin klasemen hanya dihitung dari laga berstatus selesai; skor laga yang
 punya sesi selalu sama dengan jumlah sesinya.
 
 QoL: pull-to-refresh (termasuk daftar pendek), empty state yang mengarahkan,
 konfirmasi hapus, error state + retry, skeleton loading, layout menyesuaikan
-lebar layar, tema bisa diganti tanpa membuka ulang app, tab dimuat saat dibuka
-dan disegarkan setelah ada perubahan data, tombol tulis disembunyikan untuk
-role anggota.
+lebar layar, tema bisa diganti (gelap/terang/ikuti sistem) tanpa membuka ulang
+app, tab dimuat saat dibuka dan disegarkan setelah ada perubahan data, tombol
+tulis disembunyikan untuk role anggota.
+
+Keluaran untuk orang luar: buku kas diekspor ke CSV (kronologis + saldo
+berjalan; di web diunduh sebagai berkas, di HP disalin ke clipboard untuk
+ditempel ke Sheets/Excel), daftar tunggakan iuran disalin sebagai pesan
+WhatsApp, dan hasil laga disalin sebagai teks pengumuman.
 
 Catatan: APK sekarang selalu lewat `/api` (token sesi). Connection string DB
 hanya ada di env server, tidak lagi disimpan di HP.
@@ -166,6 +171,7 @@ lagi", yang tidak bisa diuji lewat cache memori.
 | Baris sudah dihapus di cloud (`UPDATE`/`DELETE` mengenai 0 baris) | Ditandai gagal dengan pesan jelas, **bukan** dilaporkan "terkirim" |
 | Induk gagal dikirim (id sementara tanpa id asli) | Anaknya ditandai gagal di klien, tidak pernah dikirim dengan id negatif |
 | Sebagian gagal | Cache **tidak** dibuang, supaya data yang baru diisi tidak lenyap dari layar |
+| Berkas antrean tidak bisa dibaca / penyimpanan penuh | Antrean **tidak ditimpa** dan kejadiannya dilaporkan di Pengaturan — bukan dianggap kosong |
 
 Antrean yang gagal bisa dilihat dan dibuang di Pengaturan → Data offline.
 

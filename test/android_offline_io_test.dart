@@ -318,5 +318,33 @@ void main() {
       expect(params['t'], isA<String>());
       expect(DateTime.tryParse(params['t']! as String), isNotNull);
     });
+
+    test('antrean rusak: tulis baru tidak menimpa berkas, dan terbaca saat membaik', () async {
+      // Regresi: dulu kegagalan baca diperlakukan sama dengan "antrean kosong",
+      // sehingga tulisan berikutnya MENIMPA berkas yang belum terbaca — seluruh
+      // tulisan offline yang belum terkirim hilang permanen.
+      const corrupt = '{"items": [rusak';
+      File('${temp.path}/outbox.json').writeAsStringSync(corrupt);
+      Outbox.reloadFromDiskForTest();
+      await Outbox.load();
+      expect(Outbox.loadError, isNotNull,
+          reason: 'kerusakan harus diketahui, bukan dianggap kosong');
+
+      // Tulisan baru tetap masuk antrean (banner menunjukkan 1 menunggu)…
+      await Outbox.enqueue('INSERT INTO members (name) VALUES (@n)', {'n': 'X'});
+      expect(Outbox.pending.value, 1);
+      // …tetapi berkas yang belum terbaca TIDAK ditimpa.
+      expect(File('${temp.path}/outbox.json').readAsStringSync(), corrupt,
+          reason: 'isi berkas belum diketahui; menimpanya berarti membuang '
+              'tulisan lama yang belum terkirim');
+
+      // Berkas membaik (setelah restart dengan penyimpanan yang sehat):
+      // muat ulang berhasil dan error-nya hilang.
+      File('${temp.path}/outbox.json').writeAsStringSync('{"items":[],"seq":0}');
+      Outbox.reloadFromDiskForTest();
+      await Outbox.load();
+      expect(Outbox.loadError, isNull);
+      expect(Outbox.pending.value, 0);
+    });
   });
 }

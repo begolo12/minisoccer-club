@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
+import 'export.dart';
 import 'fmt.dart';
 import 'forms.dart';
 import 'theme.dart';
@@ -30,8 +31,17 @@ class _FinanceData {
   static Future<_FinanceData> load(String? period) async {
     final results = await Future.wait<Soft<Object?>>([
       // Kas dihitung dari kapan uangnya MASUK (`paid_at`), bukan turnamen mana
-      // yang dibayar: turnamen bulan lalu bisa dibayar bulan ini.
-      soft('Iuran', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
+      // yang dibayar: turnamen bulan lalu bisa dibayar bulan ini. Periode
+      // iuran HARUS ikut pemilih periode — sebelumnya selalu bulan berjalan,
+      // sehingga saldo "Semua" kehilangan semua iuran bulan-bulan sebelumnya
+      // dan saldo bulan lampau tercampur iuran bulan ini.
+      soft(
+        'Iuran',
+        () => period == null
+            ? Payment.all()
+            : Payment.inMonth(_monthOf(period)),
+        fallback: const <Payment>[],
+      ),
       soft('Kas', () => Transaction.all(period: period), fallback: const <Transaction>[]),
     ]);
     final failures = settle(results);
@@ -46,6 +56,12 @@ class _FinanceData {
       {for (final t in transactions) t.id: t},
       failures,
     );
+  }
+
+  /// Awal bulan dari periode `YYYY-MM`.
+  static DateTime _monthOf(String period) {
+    final p = period.split('-');
+    return DateTime(int.parse(p[0]), int.parse(p[1]));
   }
 }
 
@@ -77,6 +93,57 @@ class _FinancePageState extends State<FinancePage> {
   Future<void> _add() async {
     if (!Auth.canWrite) return;
     if (await showTransactionForm(context)) _reload();
+  }
+
+  /// Ekspor buku kas yang sedang tampil (periode ikut dipatuhi) sebagai CSV.
+  ///
+  /// Urutan dibalik jadi kronologis dan saldo berjalan dihitung di sini:
+  /// laporan yang dibaca orang luar (Excel/Sheets) harus mulai dari awal
+  /// bulan dan berakhir di saldo yang sama dengan yang tampil di app.
+  Future<void> _export() async {
+    final _FinanceData d;
+    try {
+      d = await _future;
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Data belum termuat: ${errText(e)}');
+      return;
+    }
+    if (d.entries.isEmpty) {
+      if (!mounted) return;
+      toast(context, 'Belum ada catatan untuk diekspor');
+      return;
+    }
+    var saldo = 0.0;
+    final rows = <List<Object?>>[
+      ['Tanggal', 'Jenis', 'Kategori', 'Keterangan', 'Masuk', 'Keluar', 'Saldo'],
+    ];
+    // Kronologis (terlama dulu) supaya laporan terbaca mulai dari awal
+    // periode dan saldo berjalannya berakhir persis di saldo app.
+    for (final e in d.entries.reversed) {
+      saldo += e.amount;
+      rows.add([
+        '${e.date.year}-${e.date.month.toString().padLeft(2, '0')}-'
+            '${e.date.day.toString().padLeft(2, '0')}',
+        e.isIncome ? 'Masuk' : 'Keluar',
+        e.label,
+        e.detail,
+        e.isIncome ? e.amount : null,
+        e.isIncome ? null : -e.amount,
+        saldo,
+      ]);
+    }
+    if (!mounted) return;
+    await showCsvExport(
+      context,
+      title: 'Ekspor buku kas',
+      description: _period == null
+          ? 'Semua catatan kas (${rows.length - 1} baris), CSV siap dibuka di Excel/Sheets.'
+          : 'Buku kas ${periodLabel(_period!)} (${rows.length - 1} baris), '
+              'CSV siap dibuka di Excel/Sheets.',
+      filename: 'kas-${_period ?? 'semua'}.csv',
+      csv: buildCsv(rows),
+    );
   }
 
   @override
@@ -151,7 +218,14 @@ class _FinancePageState extends State<FinancePage> {
                         ),
                       )
                     else ...[
-                      const SectionTitle('Buku kas'),
+                      SectionTitle(
+                        'Buku kas',
+                        action: TextButton.icon(
+                          onPressed: _export,
+                          icon: const Icon(Icons.ios_share, size: 15),
+                          label: const Text('Ekspor'),
+                        ),
+                      ),
                       // Saat periode "Semua" dipilih, buku kas menyeberangi
                       // beberapa bulan — beri batas bulan supaya saldo tidak
                       // terbaca sebagai satu deret tanpa jeda.
@@ -281,7 +355,7 @@ class _LedgerRow extends StatelessWidget {
           if (Auth.canWrite) ...[
             const SizedBox(width: 6),
             SizedBox(
-              width: 34,
+              width: 40,
               // `transaction` null untuk iuran DAN sewa booking; keduanya
               // tidak boleh dihapus dari buku kas.
               child: transaction == null

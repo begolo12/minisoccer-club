@@ -176,12 +176,20 @@ Future<bool> confirm(
 }
 
 /// Toast pendek gaya shadcn. Jatuh ke SnackBar kalau Sonner tidak terpasang.
+///
+/// Pesan yang menandai kegagalan tampil lebih lama: penjelasan error tidak
+/// sempat dibaca dalam 2 detik, dan toast yang hilang sama dengan tidak ada.
 void toast(BuildContext context, String msg) {
+  final isError = msg.startsWith('Gagal') ||
+      msg.startsWith('Tidak bisa') ||
+      msg.contains(' ditolak') ||
+      msg.contains(' belum bisa');
+  final duration = Duration(seconds: isError ? 5 : 2);
   final sonner = ShadSonner.maybeOf(context);
   if (sonner != null) {
     sonner.show(ShadToast(
       title: Text(msg),
-      duration: const Duration(seconds: 2),
+      duration: duration,
     ));
     return;
   }
@@ -190,7 +198,7 @@ void toast(BuildContext context, String msg) {
     ..showSnackBar(SnackBar(
       content: Text(msg),
       behavior: SnackBarBehavior.floating,
-      duration: const Duration(seconds: 2),
+      duration: duration,
     ));
 }
 

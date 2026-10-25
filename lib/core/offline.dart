@@ -150,6 +150,12 @@ class Outbox {
   static bool _flushing = false;
   static bool _loaded = false;
 
+  /// True selama pembacaan antrean dari disk belum berhasil dan isi berkas
+  /// BELUM DIKETAHUI. Selama bernilai true, `_persist()` menolak menulis:
+  /// menimpa berkas yang belum terbaca berarti mengganti tulisan lama yang
+  /// belum terkirim dengan isi memori — kehilangan data permanen.
+  static bool _loadFailed = false;
+
   /// Kegagalan membaca antrean dari disk, kalau ada. Ditampilkan di
   /// Pengaturan supaya pengguna tahu datanya tidak hilang diam-diam.
   static String? loadError;
@@ -173,16 +179,25 @@ class Outbox {
   /// penuh) membuat antrean dianggap kosong sepanjang sesi: banner tidak
   /// muncul, sinkron tidak pernah jalan, dan data hanya tersimpan di disk
   /// sampai app di-restart.
+  ///
+  /// Kegagalan membaca berkas yang ada tidak diubah jadi "kosong": `readOutbox`
+  /// melempar, dan di sini `_loadFailed` mengunci penimpaan berkas sampai
+  /// pembacaan berhasil — tulis baru tetap masuk memori dan tampil di banner,
+  /// tapi isi berkas lama tidak pernah digantikan buta.
   static Future<void> load() async {
     if (_loaded) return;
-    final raw = await readOutbox();
-
-    // Tidak ada berkas = memang belum ada antrean. Ini bukan kegagalan.
-    if (raw == null) {
-      _loaded = true;
+    final String? raw;
+    try {
+      raw = await readOutbox();
+    } catch (_) {
+      loadError = 'Antrean offline belum bisa dibaca dari penyimpanan.';
+      _loadFailed = true;
       return;
     }
-    if (raw.trim().isEmpty) {
+
+    // Tidak ada berkas = memang belum ada antrean. Ini bukan kegagalan.
+    if (raw == null || raw.trim().isEmpty) {
+      _loadFailed = false;
       _loaded = true;
       return;
     }
@@ -193,7 +208,7 @@ class Outbox {
         // Isi tidak dikenali: jangan hapus, tapi jangan klaim termuat penuh
         // supaya percobaan berikutnya masih bisa membaca ulang.
         loadError = 'Antrean offline tidak terbaca (format tidak dikenali).';
-        _loaded = true;
+        _loadFailed = true;
         return;
       }
       final list = (decoded['items'] as List?) ?? const [];
@@ -223,13 +238,16 @@ class Outbox {
       }
       pending.value = _queue.length;
       loadError = null;
+      _loadFailed = false;
       _loaded = true;
     } catch (e) {
       // JSON rusak (mis. app dimatikan saat menulis). Antrean tidak bisa
       // dipulihkan otomatis, tapi pengguna harus tahu — bukan diam-diam
-      // dianggap kosong.
+      // dianggap kosong. Berkasnya juga tidak ditimpa: mungkin masih bisa
+      // dibaca ulang, dan isi yang belum terbaca bukan milik kita untuk
+      // dibuang.
       loadError = 'Antrean offline rusak dan tidak bisa dibaca.';
-      _loaded = true;
+      _loadFailed = true;
     }
   }
 
@@ -424,16 +442,31 @@ class Outbox {
   /// lebih awal, penulisan yang mengantre bisa menyimpan keadaan yang sudah
   /// basi dan menghapus tulis yang baru masuk.
   static Future<void> _persist() {
+    // Kunci penimpaan: selama isi berkas di disk belum berhasil dibaca,
+    // menulis berarti menggantinya dengan isi memori — tulisan lama yang
+    // belum terkirim bisa hilang permanen. Kunci terangkat sendiri begitu
+    // load() berhasil (lihat [load]).
+    if (_loadFailed) return Future.value();
     final next = _writeChain.then((_) async {
-      await writeOutbox(jsonEncode({
-        'items': _queue.map((w) => w.toJson()).toList(),
-        'next_temp_id': _nextTempId,
-        'seq': _seq,
-        'id_map': _idMap.map((k, v) => MapEntry('$k', v)),
-      }));
+      try {
+        await writeOutbox(jsonEncode({
+          'items': _queue.map((w) => w.toJson()).toList(),
+          'next_temp_id': _nextTempId,
+          'seq': _seq,
+          'id_map': _idMap.map((k, v) => MapEntry('$k', v)),
+        }));
+        // Sukses menulis berarti isi disk kini sama dengan memori — catatan
+        // kegagalan sebelumnya tidak lagi benar.
+        loadError = null;
+      } catch (_) {
+        // Kegagalan simpan = data hanya di memori. Dilaporkan lewat
+        // `loadError` (tampil di Pengaturan), bukan diam: pengguna bisa
+        // memutuskan, mis. sinkron sekarang sebelum menutup app.
+        loadError = 'Perubahan belum bisa disimpan ke penyimpanan HP.';
+      }
     });
     // Rantai tidak boleh putus karena satu kegagalan: kegagalan tulis sudah
-    // ditangani `writeOutbox` (tidak melempar), dan rantai yang putus akan
+    // ditangani di atas (tidak melempar), dan rantai yang putus akan
     // membuat semua penulisan berikutnya tidak pernah jalan.
     //
     // Pemanggil juga tidak boleh dibuat gagal: tulisan sudah masuk memori dan
@@ -452,6 +485,8 @@ class Outbox {
     _seq = 0;
     _flushing = false;
     _loaded = true;
+    _loadFailed = false;
+    loadError = null;
     pending.value = 0;
     syncing.value = false;
   }
@@ -468,6 +503,8 @@ class Outbox {
     _seq = 0;
     _flushing = false;
     _loaded = false;
+    _loadFailed = false;
+    loadError = null;
     pending.value = 0;
     syncing.value = false;
   }

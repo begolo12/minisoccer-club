@@ -180,6 +180,18 @@ class _BookingRow extends StatelessWidget {
           if (Auth.canWrite && b.status == 'booked') ...[
             const SizedBox(width: 8),
             iconAction(context, Icons.check, () async {
+              // "Selesai" menggeser sewa ke Riwayat dan tidak ada tombol
+              // buka-lagi di baris mana pun, jadi salah ketuk tanpa
+              // konfirmasi langsung menghilang dari "Akan datang".
+              if (!await confirm(
+                context,
+                'Tandai selesai?',
+                '${b.title} dipindah ke Riwayat.',
+                confirmLabel: 'Selesai',
+              )) {
+                return;
+              }
+              if (!context.mounted) return;
               if (await attempt(context, () => b.setStatus('done'), fail: 'Gagal menyimpan')) {
                 await onChanged();
               }
@@ -212,7 +224,15 @@ class _BookingRow extends StatelessWidget {
           if (Auth.canWrite) ...[
             const SizedBox(width: 6),
             iconAction(context, Icons.delete_outline, () async {
-              if (await confirm(context, 'Hapus sewa?', b.title)) {
+              // Hapus mengikuti bentuk peringatan di jalur batal: uang yang
+              // sudah tercatat ikut hilang, dan itu harus dikatakan sebelum
+              // jalan, bukan ditemukan lewat saldo Kas yang tiba-tiba berubah.
+              String message = b.title;
+              if (b.cost > 0 && b.inCash) {
+                message = 'Catatan kas ${fmtMoney(b.cost)} untuk sewa ini ikut '
+                    'terhapus. $message.';
+              }
+              if (await confirm(context, 'Hapus sewa?', message)) {
                 if (!context.mounted) return;
                 if (await attempt(context, () => Booking.delete(b.id), fail: 'Gagal menghapus')) {
                   await onChanged();
@@ -276,13 +296,31 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     final picked = await _pickMembers(context, candidates);
     if (picked.isEmpty) return;
     final names = {for (final m in candidates) m.id: m.name};
+    // Penambahan dijalankan per orang; kalau salah satu gagal di tengah
+    // (jaringan putus, satu baris ditolak), yang terlanjur masuk tetap
+    // sah — jangan diam: sebutkan berapa yang berhasil, lalu muat ulang
+    // supaya UI mencerminkan keadaan sebenarnya.
+    var added = 0;
+    Object? failure;
     for (final id in picked) {
-      await BookingAttendance.add(
-        widget.booking.id,
-        id,
-        widget.booking.cost,
-        memberName: names[id] ?? '',
-      );
+      try {
+        await BookingAttendance.add(
+          widget.booking.id,
+          id,
+          widget.booking.cost,
+          memberName: names[id] ?? '',
+        );
+        added++;
+      } catch (e) {
+        failure = e;
+        break;
+      }
+    }
+    if (!mounted) return;
+    if (failure != null) {
+      toast(context, added == 0
+          ? 'Gagal menambah hadirin: ${errText(failure)}'
+          : '$added masuk, sisanya gagal: ${errText(failure)}');
     }
     await _reload();
   }

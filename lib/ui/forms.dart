@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/models.dart';
@@ -9,6 +10,12 @@ import 'widgets.dart';
 
 /// Kumpulan form (bottom-sheet style dialog) yang dipakai lintas halaman.
 /// Return true kalau ada perubahan data.
+
+/// Tanggal dijepit ke rentang picker. Dulu `initialDate` = tanggal data —
+/// mengedit catatan lebih tua dari rentang picker membuat picker melewati
+/// assert debug (dan di rilis terbuka di bulan yang salah).
+DateTime clampPickerDate(DateTime d, DateTime first, DateTime last) =>
+    d.isBefore(first) ? first : (d.isAfter(last) ? last : d);
 
 Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
   final name = TextEditingController(text: member?.name ?? '');
@@ -21,11 +28,21 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
 
   final ok = await showShadDialog<bool>(
     context: context,
+    // Dialog tulis tidak bisa ditutup dari luar: ketukan barrier/back di
+    // tengah simpan menutup dialog tanpa hasil, toast gagalnya terbuang
+    // (guard `ctx.mounted`), dan pengguna mengetik ulang — data bisa ganda.
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
           if (name.text.trim().isEmpty) {
             toast(ctx, 'Nama tidak boleh kosong');
+            return;
+          }
+          final jerseyValue = int.tryParse(jersey.text.trim());
+          if (jersey.text.trim().isNotEmpty &&
+              (jerseyValue == null || jerseyValue < 0 || jerseyValue > 99)) {
+            toast(ctx, 'Nomor punggung 0–99');
             return;
           }
           setLocal(() => saving = true);
@@ -95,7 +112,17 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
                   const SizedBox(width: 10),
                   SizedBox(
                     width: 96,
-                    child: ShadInput(controller: jersey, placeholder: const Text('No.'), keyboardType: TextInputType.number),
+                    child: ShadInput(
+                      controller: jersey,
+                      placeholder: const Text('No.'),
+                      keyboardType: TextInputType.number,
+                      // Hanya angka, dan dibatasi 2 digit: menempel "-5" atau
+                      // "9999" tidak boleh tersimpan apa adanya.
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(2),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -173,14 +200,17 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
 
   final ok = await showShadDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> pickDate() async {
+          final first = DateTime.now().subtract(const Duration(days: 365));
+          final last = DateTime.now().add(const Duration(days: 730));
           final d = await showDatePicker(
             context: ctx,
-            initialDate: date,
-            firstDate: DateTime.now().subtract(const Duration(days: 365)),
-            lastDate: DateTime.now().add(const Duration(days: 730)),
+            initialDate: clampPickerDate(date, first, last),
+            firstDate: first,
+            lastDate: last,
           );
           if (d != null) setLocal(() => date = d);
         }
@@ -332,6 +362,7 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
 
   final ok = await showShadDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
@@ -537,6 +568,7 @@ Future<bool> showPaymentForm(
 
   final ok = await showShadDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
@@ -638,6 +670,7 @@ Future<bool> showTransactionForm(
 
   final ok = await showShadDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         final categories = Transaction.categoriesFor(kind);
@@ -730,15 +763,13 @@ Future<bool> showTransactionForm(
                   Expanded(
                     child: ShadButton.outline(
                       onPressed: () async {
+                        final first = DateTime.now().subtract(const Duration(days: 365));
+                        final last = DateTime.now().add(const Duration(days: 30));
                         final d = await showDatePicker(
                           context: ctx,
-                          initialDate: date,
-                          firstDate: DateTime.now().subtract(
-                            const Duration(days: 365),
-                          ),
-                          lastDate: DateTime.now().add(
-                            const Duration(days: 30),
-                          ),
+                          initialDate: clampPickerDate(date, first, last),
+                          firstDate: first,
+                          lastDate: last,
                         );
                         if (d != null) setLocal(() => date = d);
                       },
@@ -786,6 +817,7 @@ Future<bool> showBookingForm(BuildContext context) async {
 
   final ok = await showShadDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
@@ -928,6 +960,7 @@ Future<bool> showAnnouncementForm(
 
   final ok = await showShadDialog<bool>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {

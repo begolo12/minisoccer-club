@@ -23,7 +23,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  bool _dark = true;
+  ThemeMode _mode = ThemeMode.dark;
 
   @override
   void initState() {
@@ -33,12 +33,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _load() async {
     final theme = await SecureStore.read('theme');
-    if (mounted) setState(() => _dark = theme != 'light');
+    if (!mounted) return;
+    setState(() => _mode = switch (theme) {
+          'light' => ThemeMode.light,
+          'system' => ThemeMode.system,
+          _ => ThemeMode.dark,
+        });
   }
 
-  Future<void> _setDark(bool v) async {
-    setState(() => _dark = v);
-    await ThemeController.setDark(v);
+  Future<void> _setMode(ThemeMode m) async {
+    setState(() => _mode = m);
+    await ThemeController.setMode(m);
   }
 
   @override
@@ -51,13 +56,38 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           const SectionTitle('Tampilan'),
           Panel(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            child: ShadSwitch(
-              value: _dark,
-              label: const Text('Mode gelap'),
-              sublabel: const Text('Nyaman dipakai malam hari'),
-              onChanged: _setDark,
-              padding: const EdgeInsetsDirectional.only(start: 12),
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Tema', style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(
+                  // "Ikuti sistem" penting untuk pengguna yang menjadwalkan
+                  // gelap otomatis di HP: app berubah sendiri tanpa dibuka.
+                  'Ikuti sistem = gelap/terang mengikuti setelan HP.',
+                  style: t.textTheme.small,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (final (m, label) in [
+                      (ThemeMode.system, 'Sistem'),
+                      (ThemeMode.dark, 'Gelap'),
+                      (ThemeMode.light, 'Terang'),
+                    ]) ...[
+                      if (m != ThemeMode.system) const SizedBox(width: 8),
+                      Expanded(
+                        child: _ThemeOption(
+                          label,
+                          selected: _mode == m,
+                          onTap: () => _setMode(m),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 22),
@@ -183,6 +213,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: ShadButton.outline(
                       onPressed: () => showShadDialog<bool>(
                         context: context,
+                        // Menutup dialog di tengah simpan membuat hasilnya
+                        // tidak pernah tampil; pengguna bisa mengira
+                        // passwordnya sudah berganti.
+                        barrierDismissible: false,
                         builder: (_) => const _PasswordDialog(),
                       ),
                       child: const Text('Ganti password'),
@@ -269,6 +303,48 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Satu pilihan tema: segmen yang sama dengan pemilih tim di papan catat.
+/// Ukuran 40px mengikuti pedoman sentuh — tiga pilihan di 320px tetap muat
+/// satu baris karena tiap segmen memakai Expanded.
+class _ThemeOption extends StatelessWidget {
+  const _ThemeOption(this.label, {required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Material(
+      color: selected ? t.colorScheme.primary : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(
+          color: selected ? t.colorScheme.primary : t.colorScheme.border,
+        ),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          height: 40,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? t.colorScheme.primaryForeground : t.colorScheme.foreground,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -619,6 +695,18 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                             'dan akan menimpa data cloud.',
                     style: t.textTheme.small,
                   ),
+                  // Antrean yang gagal dibaca/ditulis ke disk: data hanya di
+                  // memori. Tanpa baris ini pengguna tidak tahu bahwa menutup
+                  // app bisa menghilangkan perubahan yang tampak aman.
+                  if (Outbox.loadError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '${Outbox.loadError} Coba sinkron sekarang, lalu '
+                        'buka ulang aplikasi.',
+                        style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,

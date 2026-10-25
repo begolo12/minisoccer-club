@@ -120,8 +120,11 @@ class TagChip extends StatelessWidget {
                 InkWell(
                   onTap: onRemove,
                   borderRadius: BorderRadius.circular(4),
+                  // Ketukan diperluas ke ±24px meski glyph-nya 13px: tombol
+                  // ini mengeluarkan pemain dari tim, dan di Wrap yang padat
+                  // target 17px hampir selalu salah ketuk.
                   child: Padding(
-                    padding: const EdgeInsets.all(2),
+                    padding: const EdgeInsets.all(5.5),
                     child: Icon(Icons.close, size: 13, color: t.colorScheme.mutedForeground),
                   ),
                 ),
@@ -295,7 +298,13 @@ class SectionTitle extends StatelessWidget {
           Text(text.toUpperCase(), style: t.textTheme.h4),
           const SizedBox(width: 10),
           Expanded(child: Container(height: 1, color: t.colorScheme.border)),
-          if (action != null) ...[const SizedBox(width: 8), action!],
+          if (action != null) ...[
+            const SizedBox(width: 8),
+            // Tinggi aksi dipaksa 40px: tombol teks ("Semua", "Buka") hanya
+            // 32px sendirian — target ketuk terkecil di halaman, tepat di
+            // tempat yang jadi pintu ke halaman lain.
+            SizedBox(height: 40, child: action!),
+          ],
         ],
       ),
     );
@@ -812,9 +821,11 @@ class _StepButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
+          // 40px mengikuti pedoman sentuh; stepper skor ditekan berulang
+          // cepat saat mencatat gol, salah ketuk di sini mahal harganya.
           child: SizedBox(
-            width: 38,
-            height: 38,
+            width: 40,
+            height: 40,
             child: Icon(
               icon,
               size: 18,
