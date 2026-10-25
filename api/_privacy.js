@@ -73,8 +73,14 @@ function scrubValue(value, hidden) {
     return out;
   }
   if (typeof value === 'object') {
-    // Objek biasa (hasil jsonDecode) —>sanitasi berarti memeriksa
-    // keberadaannya sebagai properti.
+    // Date, Buffer, dan objek bawaan lain BUKAN wadah data: propertinya
+    // tidak enumerable, jadi menyusun ulang `{}` di bawah menghasilkan objek
+    // kosong. Itu yang dulu membuat `joined_at` sampai ke klien sebagai `{}`
+    // dan halaman Lainnya menampilkan "Anggota: FormatException: Invalid date
+    // format" untuk semua role yang disaring (anggota & tamu). Teruskan apa
+    // adanya; `JSON.stringify` yang mengubah Date jadi ISO-8601.
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
     const out = {};
     for (const [k, v] of Object.entries(value)) {
       if (hidden.includes(String(k).toLowerCase())) continue;

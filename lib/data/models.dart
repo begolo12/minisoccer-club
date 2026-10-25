@@ -2,6 +2,7 @@
 library;
 
 import '../core/db.dart';
+import '../core/net.dart' as net;
 import '../core/offline.dart';
 import '../core/row_patch.dart';
 import 'auth.dart';
@@ -1735,21 +1736,60 @@ class AppUser {
   final String role; // admin | treasurer | member
   final bool active;
 
-  AppUser({required this.id, required this.username, required this.role, required this.active});
+  /// Baris anggota yang tertaut ke akun ini (null untuk admin/bendahara yang
+  /// tidak mewakili satu pemain). Admin bisa mengubahnya lewat panel akun.
+  final int? memberId;
+
+  /// Kapan akun dibuat. Ditampilkan di panel kredensial supaya admin tahu
+  /// akun mana yang baru/asing.
+  final DateTime? createdAt;
+
+  /// Apakah akun ini punya password. Hanya FAKTA, bukan isinya: password
+  /// disimpan sebagai bcrypt satu arah dan tidak bisa dibaca kembali.
+  final bool hasPassword;
+
+  AppUser({
+    required this.id,
+    required this.username,
+    required this.role,
+    required this.active,
+    this.memberId,
+    this.createdAt,
+    this.hasPassword = true,
+  });
 
   factory AppUser.fromMap(Map<String, dynamic> m) => AppUser(
         id: m['id'] as int,
         username: m['username'] as String,
         role: (m['role'] as String?) ?? 'member',
         active: (m['active'] as bool?) ?? true,
+        memberId: m['member_id'] as int?,
+        createdAt: m['created_at'] == null ? null : _dt(m['created_at']),
+        hasPassword: (m['has_password'] as bool?) ?? true,
       );
 
   static const roles = ['admin', 'treasurer', 'member'];
 
+  /// Daftar akun + status kredensialnya.
+  ///
+  /// Lewat `/api/auth` (khusus admin), bukan jalur SQL: kolom
+  /// `password_hash` sengaja tidak bisa dibaca dari sana, dan hanya server
+  /// yang tahu apakah sebuah akun sudah punya password.
+  ///
+  /// Kalau jaringan mati, daftar diambil dari cache SQL (id, username, role,
+  /// status) supaya halaman ini tidak kosong di HP yang sedang offline —
+  /// hanya detail kredensial yang butuh server.
   static Future<List<AppUser>> all() async {
-    // Kolom eksplisit: password_hash tidak pernah dikirim ke klien.
-    final rows = await Db.query('SELECT id, username, role, active FROM users ORDER BY role, username');
-    return rows.map(AppUser.fromMap).toList();
+    try {
+      final rows = await Auth.listUsers();
+      return rows.map(AppUser.fromMap).toList();
+    } catch (e) {
+      if (!net.isNetworkFailure(e)) rethrow;
+      final rows = await Db.query(
+        'SELECT id, username, role, active FROM users ORDER BY role, username',
+      );
+      return rows.map(AppUser.fromMap).toList();
+    }
   }
 
   static Future<void> insert(String username, String role, {String? password}) async {
@@ -1766,14 +1806,27 @@ class AppUser {
   /// dihapus: riwayat iuran dan patungan masih menunjuk akunnya.
   static Future<void> setActive(int id, bool active) => Auth.setUserActive(id, active);
 
-  /// Ubah username dan/atau role. Nama anggota dibuat dari nama depan, jadi
-  /// koreksi nama (atau perbaikan role yang keliru) perlu jalan ini.
+  /// Ubah username, role, dan/atau tautan anggota. Nama anggota dibuat dari
+  /// nama depan, jadi koreksi nama (atau perbaikan role yang keliru) perlu
+  /// jalan ini.
+  ///
+  /// [memberId] hanya dipakai kalau [touchMember] true: `null` berarti
+  /// lepaskan tautan, angka berarti tautkan ke baris anggota itu. Tanpa
+  /// [touchMember], tautan lama dibiarkan.
   static Future<void> update(
     int id, {
     String? username,
     String? role,
+    int? memberId,
+    bool touchMember = false,
   }) =>
-      Auth.updateUser(id, username: username, role: role);
+      Auth.updateUser(
+        id,
+        username: username,
+        role: role,
+        memberId: touchMember ? memberId : null,
+        touchMember: touchMember,
+      );
 
   static Future<void> delete(int id) => Auth.deleteUser(id);
 }
@@ -1806,8 +1859,24 @@ class ScorerRow {
   }
 }
 
-DateTime _dt(dynamic v) =>
-    v is DateTime ? v : DateTime.parse(v.toString()).toLocal();
+/// Parse tanggal dari server.
+///
+/// Toleran dengan sengaja: satu nilai rusak tidak boleh menggagalkan SELURUH
+/// daftar. Server pernah mengirim kolom tanggal sebagai `{}` (bug penyaring
+/// privasi), dan `DateTime.parse('{}')` melempar FormatException — akibatnya
+/// halaman Lainnya menampilkan "Anggota: FormatException: Invalid date
+/// format" dan "0 aktif" padahal 13 anggota ada. Nilai yang tak terbaca jatuh
+/// ke epoch: barisnya tetap tampil, dan tanggal 1 Jan 1970 terlihat jelas
+/// sebagai data aneh alih-alih menyembunyikan orangnya.
+DateTime _dt(dynamic v) {
+  if (v is DateTime) return v.toLocal();
+  if (v is String) {
+    final parsed = DateTime.tryParse(v);
+    if (parsed != null) return parsed.toLocal();
+  }
+  if (v is int) return DateTime.fromMillisecondsSinceEpoch(v).toLocal();
+  return DateTime.fromMillisecondsSinceEpoch(0);
+}
 
 // ---------- Turnamen internal ----------
 //

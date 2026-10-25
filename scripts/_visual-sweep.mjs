@@ -23,7 +23,7 @@ const viewports = [
   { name: 'hp-kecil', width: 320, height: 640, mobile: true },
   { name: 'hp', width: 390, height: 844, mobile: true },
   { name: 'desktop', width: 1440, height: 900, mobile: false },
-];
+].filter((v) => !process.env.ONLY || v.name === process.env.ONLY);
 
 const port = 9100 + Math.floor(Math.random() * 80);
 const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', [
@@ -69,6 +69,70 @@ async function tap(needle, { role = null, last = false } = {}) {
   await clickAt(hit.x, hit.y);
   return true;
 }
+/// Gulir daftar ke bawah dengan roda mouse di tengah layar.
+///
+/// Dipakai untuk halaman yang barisnya berada di bawah lipatan (Lainnya di
+/// layar 320×640): pengguna sungguhan menggulir dulu, jadi harness juga.
+async function scrollDown(times = 1) {
+  for (let i = 0; i < times; i++) {
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseWheel', x: 160, y: 420, deltaX: 0, deltaY: 260, button: 'none',
+    });
+    await sleep(500);
+  }
+}
+
+/// Ketuk [needle]; kalau belum terlihat, gulir dulu lalu coba lagi.
+async function tapScroll(needle, opts = {}) {
+  for (let i = 0; i < 5; i++) {
+    if (await tap(needle, opts)) return true;
+    await scrollDown();
+  }
+  return false;
+}
+
+
+/// Isi satu kolom Flutter di dalam kanvas.
+///
+/// `Input.insertText` cukup untuk sebagian build, tetapi pada build lain teks
+/// tidak pernah sampai ke `TextEditingController` — form terlihat terisi
+/// padahal server menerima password kosong, dan hasilnya "Username atau
+/// password salah" yang membingungkan. Jadi nilai kolom diperiksa; kalau
+/// tidak cocok, teks diketik dengan event papan ketik.
+async function fillInput(point, text) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await clickAt(point.x, point.y);
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', modifiers: 2, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', modifiers: 2, key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65 });
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+    await send('Input.insertText', { text });
+    await sleep(300);
+    const ok = await evaluate(`(() => {
+      const el = [...document.querySelectorAll('input')].find((e) => {
+        const r = e.getBoundingClientRect();
+        return Math.abs(r.x + r.width / 2 - ${point.x}) < 40 && Math.abs(r.y + r.height / 2 - ${point.y}) < 40;
+      });
+      return el ? el.value === ${JSON.stringify(text)} : false;
+    })()`);
+    if (ok) return true;
+    for (const ch of text) {
+      await send('Input.dispatchKeyEvent', { type: 'char', text: ch });
+      await sleep(12);
+    }
+    await sleep(300);
+    const ok2 = await evaluate(`(() => {
+      const el = [...document.querySelectorAll('input')].find((e) => {
+        const r = e.getBoundingClientRect();
+        return Math.abs(r.x + r.width / 2 - ${point.x}) < 40 && Math.abs(r.y + r.height / 2 - ${point.y}) < 40;
+      });
+      return el ? el.value === ${JSON.stringify(text)} : false;
+    })()`);
+    if (ok2) return true;
+  }
+  return false;
+}
+
 async function screenText() {
   const ax = await send('Accessibility.getFullAXTree');
   return (ax?.nodes ?? []).flatMap((n) => [n.name?.value, n.value?.value])
@@ -128,6 +192,18 @@ function record(name, ok, detail = '') {
 async function shot(view, page) {
   const r = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(`${OUT}/${view}--${page}.png`, Buffer.from(r.data, 'base64'));
+  return Buffer.from(r.data, 'base64').length;
+}
+
+/// Layar yang terpotret benar-benar berisi, bukan kanvas kosong.
+///
+/// Kadang Chrome headless menyelesaikan pemuatan (pohon aksesibilitas sudah
+/// terisi) tetapi belum menggambar apa pun setelah ukuran layar diubah, dan
+/// hasil potretnya hitam total. Itu artefak harness, bukan cacat aplikasi:
+/// muat ulang sekali lalu periksa lagi.
+async function painted() {
+  const r = await send('Page.captureScreenshot', { format: 'png' });
+  return Buffer.from(r.data, 'base64').length > 8000;
 }
 
 async function main() {
@@ -188,6 +264,16 @@ async function main() {
       await sleep(1200);
       if ((await nodes()).length > 0) { ready = true; break; }
     }
+    if (ready && !(await painted())) {
+      await send('Page.navigate', { url: base });
+      await sleep(9000);
+      for (let i = 0; i < 12; i++) {
+        await evaluate(`document.querySelector('flt-semantics-placeholder')?.click()`);
+        await sleep(1200);
+        if ((await nodes()).length > 0) break;
+      }
+      record(`[${vp.name}] kanvas tergambar setelah muat ulang`, await painted());
+    }
     if (!ready) {
       const diag = await evaluate(`({ url: location.href, ready: document.readyState,
         canvas: !!document.querySelector('flt-glass-pane, flutter-view, canvas'),
@@ -199,21 +285,35 @@ async function main() {
 
     // Masuk supaya tombol tulis ikut dinilai. Tunggu form-nya benar-benar ada:
     // pada 320px layar masuk butuh waktu lebih lama untuk ter-render.
-    await tap('Masuk');
+    await tapScroll('Masuk');
+    // Kolom isian hanya ada di dalam viewport pada layar 320×640 setelah
+    // halaman masuk digulir — sama seperti pengguna melakukannya.
     let inputs = [];
     for (let i = 0; i < 15; i++) {
-      inputs = (await evaluate(`[...document.querySelectorAll('input')].map(el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })`)) ?? [];
+      inputs = (await evaluate(`[...document.querySelectorAll('input')].map(el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; }).filter(p => p.y > 0 && p.y < window.innerHeight)`)) ?? [];
       if (inputs.length >= 2) break;
+      await scrollDown();
       await sleep(800);
     }
     if (inputs.length >= 2) {
-      await clickAt(inputs[0].x, inputs[0].y); await send('Input.insertText', { text: 'admin' });
-      await clickAt(inputs[1].x, inputs[1].y); await send('Input.insertText', { text: adminPass });
+      // `Input.insertText` tidak selalu sampai ke pengendali teks Flutter
+      // (kolom tetap kosong), jadi nilainya diperiksa dan diketik ulang
+      // dengan event papan ketik sungguhan kalau perlu.
+      await fillInput(inputs[0], adminUser);
+      await fillInput(inputs[1], adminPass);
       // Tombol kirim ada di bawah form; bilah "Masuk" di atas memakai teks sama.
       await tap('Masuk', { role: 'button', last: true });
       await sleep(5000);
     }
-    const loggedIn = (await nodes()).some((n) => textOf(n) === 'Lainnya');
+    // Setelah login aplikasi memasang shell baru (dan service worker rilis
+    // baru bisa memuat ulang halaman sekali), sehingga pohon aksesibilitas
+    // dibangun ulang dari nol. Tunggu sampai terisi lagi sebelum menilai.
+    let loggedIn = false;
+    for (let i = 0; i < 15; i++) {
+      if ((await nodes()).some((n) => textOf(n) === 'Lainnya')) { loggedIn = true; break; }
+      await evaluate(`document.querySelector('flt-semantics-placeholder')?.click()`);
+      await sleep(1200);
+    }
     record(`[${vp.name}] masuk sebagai admin`, loggedIn);
 
     // Ukuran tap target diukur sekali per viewport, di Beranda.
@@ -233,11 +333,13 @@ async function main() {
 
     // Halaman turunan.
     const pages = ['Anggota', 'Sewa lapangan', 'Kas klub', 'Turnamen internal',
-      'Statistik', 'Pengumuman', 'Pengguna', 'Pengaturan'];
+      'Statistik', 'Pengumuman', 'Akun & akses', 'Pengaturan'];
     for (const page of pages) {
       await tap('Lainnya');
       await sleep(1400);
-      const opened = await tap(page);
+      // Baris bawah (Pengaturan) ada di luar layar 320×640: gulir dulu,
+      // sama seperti pengguna.
+      const opened = await tapScroll(page);
       await sleep(2400);
       const ov = await overflow();
       await shot(vp.name, `page-${page.toLowerCase().replace(/\s+/g, '-')}`);

@@ -28,6 +28,16 @@ class _LoginPageState extends State<LoginPage> {
   bool? _bootstrap;
   String? _err;
 
+  /// `onSignedIn` hanya boleh sekali.
+  ///
+  /// Dua jalur memanggilnya: listener sesi (untuk alur pendaftaran) dan
+  /// `_submit` setelah `Auth.login` selesai. `Auth.login` menyalakan sesi
+  /// SEBELUM ia kembali, jadi pada login biasa keduanya menyala berdekatan —
+  /// dua `Navigator.pop` beruntun, dan yang kedua mem-pop shell itu sendiri:
+  /// layar jadi kosong (hanya latar) sampai halaman dimuat ulang. Itu yang
+  /// terjadi di HP: login berhasil, lalu app menghilang.
+  bool _finished = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,7 +52,13 @@ class _LoginPageState extends State<LoginPage> {
   void _onSession() {
     if (!mounted || !Auth.session.value) return;
     Auth.session.removeListener(_onSession);
-    // onSignedIn mem-pop halaman ini; shell menyesuaikan diri ke mode masuk.
+    _finish();
+  }
+
+  /// Tutup layar masuk, tepat satu kali.
+  void _finish() {
+    if (_finished) return;
+    _finished = true;
     widget.onSignedIn();
   }
 
@@ -76,7 +92,7 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         await Auth.login(_user.text, _pass.text);
       }
-      if (mounted) widget.onSignedIn();
+      if (mounted) _finish();
     } catch (e) {
       if (mounted) setState(() => _err = e.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -444,7 +460,7 @@ class _FormPanel extends StatelessWidget {
           Text(
             firstRun
                 ? 'Password disimpan dalam bentuk teracak. Tidak ada yang bisa membacanya.'
-                : 'Lupa password? Minta admin mengatur ulang lewat menu Pengguna.',
+                : 'Lupa password? Minta admin menyetel password baru lewat Lainnya → Akun & akses.',
             textAlign: TextAlign.start,
             style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.5),
           ),

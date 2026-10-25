@@ -111,3 +111,25 @@ test('penyebutan kolom recognizes alias dan quoted identifier', () => {
   // `telepon` bukan `phone` — kolom itu memang tidak ada di tabel.
   assert.equal(mentionsHidden('SELECT telepon FROM members', ['phone']), false);
 });
+
+test('saringan hasil tidak merusak tipe bawaan (tanggal)', () => {
+  // Neon mengembalikan timestamptz sebagai objek Date. Menyusun ulang
+  // propertinya menghasilkan `{}` — dan klien lalu melempar
+  // "FormatException: Invalid date format" saat mem-parse `joined_at`.
+  const when = new Date('2026-10-22T14:09:25.493Z');
+  const rows = [{ id: 1, name: 'Budi', phone: '0812', address: 'Jl. Mawar', joined_at: when }];
+  for (const role of ['public', 'member', 'treasurer', 'admin']) {
+    const scrubbed = scrubRows(rows, hiddenColumns(role));
+    assert.equal(scrubbed[0].joined_at, when, `Date harus utuh untuk role ${role}`);
+    assert.equal(
+      JSON.parse(JSON.stringify(scrubbed[0])).joined_at,
+      '2026-10-22T14:09:25.493Z',
+    );
+  }
+});
+
+test('saringan hasil tidak merusak tanggal di dalam json_agg', () => {
+  const rows = [{ items: [{ name: 'Budi', joined_at: new Date('2026-01-02T03:04:05.000Z') }] }];
+  const scrubbed = scrubRows(rows, hiddenColumns('public'));
+  assert.equal(scrubbed[0].items[0].joined_at.toISOString(), '2026-01-02T03:04:05.000Z');
+});

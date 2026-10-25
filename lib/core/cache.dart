@@ -60,6 +60,12 @@ class CachedRows {
 /// sendiri.
 String cacheKey(String sql, Map<String, Object?> params, {String scope = ''}) {
   final canonical = jsonEncode({
+    // Versi bentuk baris yang tersimpan. Dinaikkan saat bentuk data dari
+    // server berubah supaya entri lama tidak lagi terbaca: server sempat
+    // mengirim kolom tanggal sebagai `{}` (bug scrubRows), dan entri cache
+    // itu tetap menghasilkan "FormatException: Invalid date format" saat
+    // offline walau servernya sudah diperbaiki.
+    'v': 2,
     'sql': sql.trim().replaceAll(RegExp(r'\s+'), ' '),
     'scope': scope,
     'params': {

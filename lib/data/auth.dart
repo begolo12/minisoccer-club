@@ -310,6 +310,17 @@ class Auth {
 
   static Future<void> deleteUser(int id) => _post({'action': 'delete', 'id': id});
 
+  /// Daftar akun + status kredensial (admin).
+  ///
+  /// Mengembalikan baris apa adanya dari server supaya `AppUser.fromMap`
+  /// memakai satu bentuk data yang sama untuk daftar dan hasil ubahan.
+  static Future<List<Map<String, dynamic>>> listUsers() async {
+    final body = await _post({'action': 'list'});
+    final rows = body['users'];
+    if (rows is! List) return const [];
+    return [for (final r in rows) Map<String, dynamic>.from(r as Map)];
+  }
+
   /// Nonaktifkan/aktifkan akun (admin). Untuk anggota yang keluar klub:
   /// riwayatnya tetap dipakai, jadi akunnya tidak perlu dihapus.
   static Future<void> setUserActive(int id, bool active) =>
@@ -325,12 +336,15 @@ class Auth {
     int id, {
     String? username,
     String? role,
+    int? memberId,
+    bool touchMember = false,
   }) =>
       _post({
         'action': 'update',
         'id': id,
         'username': ?username?.trim(),
         'role': ?role,
+        if (touchMember) 'member_id': memberId,
       });
 }
 

@@ -88,10 +88,30 @@ export default async function handler(req, res) {
     // ---- admin-only ----
     if (
       action === 'create' || action === 'reset' || action === 'delete' ||
-      action === 'setActive' || action === 'update'
+      action === 'setActive' || action === 'update' || action === 'list'
     ) {
       const admin = adminOf(req);
       if (!admin) return res.status(403).json({ error: 'Hanya admin yang bisa mengelola pengguna' });
+
+      // ---- daftar kredensial (admin) ----
+      //
+      // Kenapa lewat /api/auth, bukan /api/sql: kolom `password_hash` tidak
+      // pernah boleh terbaca dari jalur SQL bebas (guard menolaknya), dan
+      // role `app_web` juga tidak punya grant kolom itu. Yang dikirim hanya
+      // FAKTA apakah password sudah diset — bukan hash-nya.
+      //
+      // Password itu sendiri tidak bisa ditampilkan: disimpan sebagai bcrypt
+      // satu arah (`crypt` + `gen_salt('bf')`). Yang bisa dilakukan admin:
+      // menyetel password baru, lalu menyalinnya sekali dari layar.
+      if (action === 'list') {
+        const rows = await sql(
+          `SELECT id, username, role, active, member_id, created_at,
+                  (password_hash IS NOT NULL) AS has_password
+             FROM users
+            ORDER BY role, username`,
+        );
+        return res.status(200).json({ users: rows });
+      }
 
       // Ubah username dan/atau role.
       //
@@ -106,7 +126,18 @@ export default async function handler(req, res) {
         const body = bodyOf(req);
         const newName = body.username === undefined ? null : String(body.username).trim();
         const newRole = body.role === undefined ? null : String(body.role);
-        if (newName === null && newRole === null) {
+        // Tautan ke baris anggota. Tiga keadaan, jadi `undefined` (tidak
+        // diubah) harus dibedakan dari `null` (dilepas): akun admin tidak
+        // punya baris anggota, akun anggota harus punya.
+        const touchMember = body.member_id !== undefined;
+        let newMember = null;
+        if (touchMember && body.member_id !== null) {
+          newMember = Number(body.member_id);
+          if (!Number.isInteger(newMember) || newMember <= 0) {
+            return res.status(400).json({ error: 'Anggota tidak dikenal' });
+          }
+        }
+        if (newName === null && newRole === null && !touchMember) {
           return res.status(400).json({ error: 'Tidak ada yang diubah' });
         }
         if (newName !== null && (newName.length === 0 || newName.length > MAX_USER)) {
@@ -131,13 +162,18 @@ export default async function handler(req, res) {
             }
           }
         }
+        if (touchMember && newMember !== null) {
+          const [exists] = await sql('SELECT id FROM members WHERE id = $1', [newMember]);
+          if (!exists) return res.status(404).json({ error: 'Anggota tidak ditemukan' });
+        }
         const rows = await sql(
           `UPDATE users
-              SET username = coalesce($2, username),
-                  role     = coalesce($3, role)
+              SET username  = coalesce($2, username),
+                  role      = coalesce($3, role),
+                  member_id = CASE WHEN $4::boolean THEN $5::int ELSE member_id END
             WHERE id = $1
             RETURNING id, username, role, active, member_id`,
-          [uid, newName, newRole],
+          [uid, newName, newRole, touchMember, newMember],
         );
         if (!rows.length) return res.status(404).json({ error: 'User tidak ditemukan' });
         return res.status(200).json({ ok: true, user: rows[0] });

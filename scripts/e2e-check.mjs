@@ -223,6 +223,11 @@ if (memberUser.token) {
     memberUser.token,
   );
   check('anggota tidak bisa mengelola pengguna', r.code === 403, `code ${r.code}`);
+
+  // Daftar kredensial (panel "Akun & akses"): hanya admin, dan yang keluar
+  // hanya STATUS punya-password — bukan hash-nya.
+  r = await post('/api/auth', { action: 'list' }, memberUser.token);
+  check('anggota tidak bisa melihat daftar akun', r.code === 403, `code ${r.code}`);
 } else {
   check('akun anggota dibuat', false, memberUser.error);
 }
@@ -249,7 +254,38 @@ await roundTrip('admin bisa menulis data klub', adminToken);
 r = await sqlAs(null, "INSERT INTO settings (key, value) VALUES ('_uji', '1')");
 check('tamu tidak bisa menulis', r.code === 403, `code ${r.code}`);
 
-// ---------- 7. Bersihkan akun uji ----------
+// ---------- 7. Daftar kredensial untuk admin ----------
+console.log('\n-- kelola akun (admin) --');
+r = await post('/api/auth', { action: 'list' }, adminToken);
+const listed = r.json.users ?? [];
+const tempRow = listed.find((u) => u.username === memberUser.username);
+check('admin bisa melihat daftar akun', r.code === 200 && listed.length > 0, `${listed.length} akun`);
+check('daftar akun membawa id & status password',
+  Boolean(tempRow) && tempRow.id > 0 && tempRow.has_password === true,
+  JSON.stringify(tempRow ?? {}).slice(0, 120));
+check('daftar akun tidak membocorkan hash',
+  !JSON.stringify(listed).includes('password_hash') && !JSON.stringify(listed).includes('$2'),
+  'tidak ada password_hash / bcrypt');
+
+// Ubah tautan anggota lalu lepas lagi: membuktikan kolom member_id bisa
+// diatur admin (dipakai "Akun saya" dan absensi), dan nilai yang tidak ada
+// ditolak — bukan diterima diam-diam.
+if (tempRow) {
+  const someMember = await sqlAs(adminToken, 'SELECT id FROM members ORDER BY id LIMIT 1');
+  const memberId = someMember.json.rows?.[0]?.id;
+  if (memberId) {
+    r = await post('/api/auth', { action: 'update', id: tempRow.id, member_id: memberId }, adminToken);
+    check('admin bisa menautkan akun ke anggota', r.code === 200 && r.json.user?.member_id === memberId,
+      `code ${r.code}`);
+    r = await post('/api/auth', { action: 'update', id: tempRow.id, member_id: null }, adminToken);
+    check('admin bisa melepas tautan anggota', r.code === 200 && r.json.user?.member_id === null,
+      `code ${r.code}`);
+  }
+  r = await post('/api/auth', { action: 'update', id: tempRow.id, member_id: 99999999 }, adminToken);
+  check('tautan ke anggota yang tidak ada ditolak', r.code === 404, `code ${r.code}`);
+}
+
+// ---------- 8. Bersihkan akun uji ----------
 for (const id of madeIds) {
   await post('/api/auth', { action: 'delete', id }, adminToken);
 }

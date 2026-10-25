@@ -58,7 +58,7 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Sewa lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu sewa = satu catatan kas, dan bila pencatatannya gagal di tengah, sisanya masuk antrean — booking tidak pernah diulang dari form). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan sewa ikut membuang setoran patungannya |
 | **Pengumuman** | Info klub untuk anggota |
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
-| **Pengguna** | Akun + role admin / bendahara / anggota; admin bisa **mengubah username dan role** setiap akun, **menonaktifkan** anggota yang berhenti tanpa menghapus riwayatnya |
+| **Akun & akses** | Khusus admin: daftar akun dengan **ID**, role, anggota tertaut, status, dan tanggal dibuat. Ketuk satu akun → ubah username, role, tautan anggota, aktif/nonaktif, **setel password baru** (ditampilkan sekali + tombol salin), hapus akun. Password lama tidak bisa ditampilkan karena disimpan bcrypt satu arah |
 | **Akun saya** | Untuk role anggota: total iuran, tunggakan, main berikutnya, dan riwayat iuran — jawaban untuk "saya sudah bayar apa?" tanpa mencari nama sendiri di daftar anggota |
 | **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), info server, tes koneksi, keluar |
 
@@ -139,11 +139,13 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 235 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
+| `flutter test` | 258 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
+| `npm run check:visual` | Sapuan visual di **3 ukuran layar** (320×640, 390×844, 1440×900): setiap tab & halaman terbuka, tidak bisa digeser menyamping, tap target ≥ 40px, tidak ada error konsol. `ONLY=hp npm run check:visual` untuk satu ukuran saja |
+| `npm run check:users` | Di **Chrome sungguhan**: admin membuka **Akun & akses** → daftar memuat ID & status password → panel akun memuat tautan anggota, status masuk, tombol setel password → password baru disalin dari tombol **Salin** dan **benar-benar dipakai masuk** oleh akun itu (akun percobaan, dihapus lagi di akhir) |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
 | `npm run check:attendance` | Di **Chrome sungguhan**: booking 300.000 → tandai 3 orang hadir → bagian terbagi tepat 300.000 → tandai setor → muncul di buku kas sebagai pemasukan `patungan` → **putus jaringan** → tulis lagi (antrean) → online → terkirim |
 | `npm run check:register` | Di **Chrome sungguhan**: tautan `/daftar` tanpa login → kirim kosong ditolak per isian → isi lengkap → anggota + akun dibuat (nama depan jadi username) → akun itu bisa masuk → nomor HP ganda ditolak |
@@ -192,7 +194,7 @@ Antrean yang gagal bisa dilihat dan dibuang di Pengaturan → Data offline.
    Daftar tabel/view yang di-grant ada di `scripts/_grants.mjs`; query baru
    yang memakai tabel belum ter-grant akan gagal di `npm test`.
 4. Buka app → layar masuk → akun pertama dibuat lewat form **Admin pertama**,
-   lalu tambah akun lain dari menu **Pengguna**.
+   lalu tambah akun lain dari menu **Lainnya → Akun & akses**.
 
 `db:init` aman diulang dan **wajib dijalankan setiap kali `db/schema.sql`
 berubah**. `CREATE TABLE IF NOT EXISTS` tidak menyentuh tabel yang sudah ada,
@@ -440,7 +442,7 @@ untuk rilis.
 | Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `public`/`member` read-only dan tidak bisa membaca daftar pengguna |
 | Privasi anggota | Nomor HP & alamat tidak untuk tamu; alamat juga tidak untuk role anggota. Dijaga dua lapis: query yang menyebut kolom itu **ditolak**, dan hasil `SELECT *` **disaring** (`api/_privacy.js`). Cache offline dibaca per role, jadi hasil yang dibaca admin tidak bisa dibaca tamu dari perangkat |
 | Parameter | `@nama` → positional hanya di luar string/komentar; parameter yang tidak dikirim ditolak (bukan NULL diam-diam) |
-| Kelola user | Tambah/reset/hapus hanya lewat `/api/auth` (admin), bukan lewat SQL |
+| Kelola user | Tambah/reset/hapus/ubah/daftar hanya lewat `/api/auth` (admin), bukan lewat SQL. Daftar akun mengirim **status** punya-password, bukan hash-nya — `password_hash` tidak pernah keluar dari server dan tidak bisa dibaca role `app_web` |
 | Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |
 
 APK tidak lagi menyimpan connection string Neon — kredensial DB hanya ada di env

@@ -279,7 +279,7 @@ async function main() {
     'Turnamen internal',
     'Statistik',
     'Pengumuman',
-    'Pengguna',
+    'Akun & akses',
     'Pengaturan',
   ];
   for (const page of pages) {

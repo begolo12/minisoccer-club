@@ -83,6 +83,12 @@ mock.log
 # Screenshot pembanding milik produk lain.
 design/ref/
 
+# Tangkapan `scripts/_visual-sweep.mjs` (dan varian lokalnya). Dibuat ulang
+# setiap kali dijalankan, ukurannya megabyte, dan tidak dibaca siapa pun.
+design/sweep/
+design/sweep-local/
+design/sweep-prod/
+
 # File kerja sementara (mis. connection string saat debug).
 *.tmp
 *.bak

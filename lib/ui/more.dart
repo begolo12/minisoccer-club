@@ -318,8 +318,8 @@ class _MorePageState extends State<MorePage> {
               if (Auth.isAdmin)
                 _Tile(
                   icon: Icons.people_outline,
-                  title: 'Pengguna',
-                  subtitle: 'Akun & hak akses admin/bendahara',
+                  title: 'Akun & akses',
+                  subtitle: 'ID, password, role & tautan anggota',
                   onTap: () => _open(context, const UsersPage()),
                 ),
               // Baris ini satu-satunya tempat pembaruan terlihat tanpa
