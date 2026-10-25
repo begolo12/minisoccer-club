@@ -67,7 +67,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
             }
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }
@@ -99,14 +99,20 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
               Row(
                 children: [
                   Expanded(
-                    child: ShadSelect<String>(
-                      placeholder: const Text('Posisi'),
-                      initialValue: position,
-                      options: const ['Kiper', 'Bek', 'Gelandang', 'Penyerang', 'Bebas']
-                          .map((p) => ShadOption(value: p, child: Text(p)))
-                          .toList(),
-                      selectedOptionBuilder: (c, v) => Text(v),
-                      onChanged: (v) => setLocal(() => position = v ?? 'Bebas'),
+                    // Placeholder saja tidak cukup untuk pembaca layar:
+                    // setelah dipilih, kontrol hanya mengumumkan nilainya
+                    // ("Bek") tanpa nama fieldnya.
+                    child: Semantics(
+                      label: 'Posisi bermain',
+                      child: ShadSelect<String>(
+                        placeholder: const Text('Posisi'),
+                        initialValue: position,
+                        options: const ['Kiper', 'Bek', 'Gelandang', 'Penyerang', 'Bebas']
+                            .map((p) => ShadOption(value: p, child: Text(p)))
+                            .toList(),
+                        selectedOptionBuilder: (c, v) => Text(v),
+                        onChanged: (v) => setLocal(() => position = v ?? 'Bebas'),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -245,7 +251,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
             }
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }
@@ -267,13 +273,16 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
               Row(
                 children: [
                   Expanded(
-                    child: ShadSelect<int>(
-                      placeholder: const Text('Tim 1'),
-                      initialValue: homeId,
-                      options: teams.map((t) => ShadOption(value: t.id, child: Text(t.name))).toList(),
-                      selectedOptionBuilder: (c, v) =>
-                          Text(teams.firstWhere((t) => t.id == v).name),
-                      onChanged: (v) => setLocal(() => homeId = v ?? homeId),
+                    child: Semantics(
+                      label: 'Tim pertama',
+                      child: ShadSelect<int>(
+                        placeholder: const Text('Tim 1'),
+                        initialValue: homeId,
+                        options: teams.map((t) => ShadOption(value: t.id, child: Text(t.name))).toList(),
+                        selectedOptionBuilder: (c, v) =>
+                            Text(teams.firstWhere((t) => t.id == v).name),
+                        onChanged: (v) => setLocal(() => homeId = v ?? homeId),
+                      ),
                     ),
                   ),
                   const Padding(
@@ -281,13 +290,16 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
                     child: Text('vs'),
                   ),
                   Expanded(
-                    child: ShadSelect<int>(
-                      placeholder: const Text('Tim 2'),
-                      initialValue: awayId,
-                      options: teams.map((t) => ShadOption(value: t.id, child: Text(t.name))).toList(),
-                      selectedOptionBuilder: (c, v) =>
-                          Text(teams.firstWhere((t) => t.id == v).name),
-                      onChanged: (v) => setLocal(() => awayId = v ?? awayId),
+                    child: Semantics(
+                      label: 'Tim kedua',
+                      child: ShadSelect<int>(
+                        placeholder: const Text('Tim 2'),
+                        initialValue: awayId,
+                        options: teams.map((t) => ShadOption(value: t.id, child: Text(t.name))).toList(),
+                        selectedOptionBuilder: (c, v) =>
+                            Text(teams.firstWhere((t) => t.id == v).name),
+                        onChanged: (v) => setLocal(() => awayId = v ?? awayId),
+                      ),
                     ),
                   ),
                 ],
@@ -375,7 +387,7 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
             await match.finish(gf: home, ga: away);
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }
@@ -612,7 +624,7 @@ Future<bool> showPaymentForm(
             );
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }
@@ -628,13 +640,16 @@ Future<bool> showPaymentForm(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadSelect<int>(
-                placeholder: const Text('Anggota'),
-                initialValue: selected,
-                options: candidates.map((m) => ShadOption(value: m.id, child: Text(m.name))).toList(),
-                selectedOptionBuilder: (c, v) =>
-                    Text(candidates.firstWhere((m) => m.id == v).name),
-                onChanged: (v) => setLocal(() => selected = v ?? selected),
+              Semantics(
+                label: 'Anggota yang membayar',
+                child: ShadSelect<int>(
+                  placeholder: const Text('Anggota'),
+                  initialValue: selected,
+                  options: candidates.map((m) => ShadOption(value: m.id, child: Text(m.name))).toList(),
+                  selectedOptionBuilder: (c, v) =>
+                      Text(candidates.firstWhere((m) => m.id == v).name),
+                  onChanged: (v) => setLocal(() => selected = v ?? selected),
+                ),
               ),
               const SizedBox(height: 10),
               MoneyField(
@@ -705,7 +720,7 @@ Future<bool> showTransactionForm(
             }
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }
@@ -726,30 +741,36 @@ Future<bool> showTransactionForm(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadSelect<String>(
-                placeholder: const Text('Jenis'),
-                initialValue: kind,
-                options: const [
-                  ShadOption(value: 'income', child: Text('Pemasukan')),
-                  ShadOption(value: 'expense', child: Text('Pengeluaran')),
-                ],
-                selectedOptionBuilder: (c, v) =>
-                    Text(v == 'income' ? 'Pemasukan' : 'Pengeluaran'),
-                onChanged: (v) => setLocal(() {
-                  kind = v ?? 'expense';
-                  category = Transaction.categoriesFor(kind).keys.first;
-                }),
+              Semantics(
+                label: 'Jenis transaksi',
+                child: ShadSelect<String>(
+                  placeholder: const Text('Jenis'),
+                  initialValue: kind,
+                  options: const [
+                    ShadOption(value: 'income', child: Text('Pemasukan')),
+                    ShadOption(value: 'expense', child: Text('Pengeluaran')),
+                  ],
+                  selectedOptionBuilder: (c, v) =>
+                      Text(v == 'income' ? 'Pemasukan' : 'Pengeluaran'),
+                  onChanged: (v) => setLocal(() {
+                    kind = v ?? 'expense';
+                    category = Transaction.categoriesFor(kind).keys.first;
+                  }),
+                ),
               ),
               const SizedBox(height: 10),
-              ShadSelect<String>(
-                key: ValueKey(kind),
-                placeholder: const Text('Kategori'),
-                initialValue: category,
-                options: categories.entries
-                    .map((e) => ShadOption(value: e.key, child: Text(e.value)))
-                    .toList(),
-                selectedOptionBuilder: (c, v) => Text(categories[v] ?? v),
-                onChanged: (v) => setLocal(() => category = v ?? category),
+              Semantics(
+                label: 'Kategori',
+                child: ShadSelect<String>(
+                  key: ValueKey(kind),
+                  placeholder: const Text('Kategori'),
+                  initialValue: category,
+                  options: categories.entries
+                      .map((e) => ShadOption(value: e.key, child: Text(e.value)))
+                      .toList(),
+                  selectedOptionBuilder: (c, v) => Text(categories[v] ?? v),
+                  onChanged: (v) => setLocal(() => category = v ?? category),
+                ),
               ),
               const SizedBox(height: 10),
               MoneyField(
@@ -874,7 +895,16 @@ Future<bool> showBookingForm(BuildContext context) async {
             );
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (!ctx.mounted) return;
+            if (e is BookingPartialException) {
+              // Parsial: booking SUDAH masuk. Form ditutup supaya Simpan
+              // tidak ditekan lagi — pengulangan berarti dua sewa untuk satu
+              // lapangan. Sisa pekerjaannya (catatan kas) dijelaskan pesan.
+              toast(ctx, e.message);
+              Navigator.pop(ctx, true);
+              return;
+            }
+            toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }
@@ -919,14 +949,17 @@ Future<bool> showBookingForm(BuildContext context) async {
                 ],
               ),
               const SizedBox(height: 10),
-              ShadSelect<int>(
-                placeholder: const Text('Durasi'),
-                initialValue: duration,
-                options: const [60, 90, 120, 150]
-                    .map((d) => ShadOption(value: d, child: Text('$d menit')))
-                    .toList(),
-                selectedOptionBuilder: (c, v) => Text('$v menit'),
-                onChanged: (v) => setLocal(() => duration = v ?? duration),
+              Semantics(
+                label: 'Durasi sewa',
+                child: ShadSelect<int>(
+                  placeholder: const Text('Durasi'),
+                  initialValue: duration,
+                  options: const [60, 90, 120, 150]
+                      .map((d) => ShadOption(value: d, child: Text('$d menit')))
+                      .toList(),
+                  selectedOptionBuilder: (c, v) => Text('$v menit'),
+                  onChanged: (v) => setLocal(() => duration = v ?? duration),
+                ),
               ),
               const SizedBox(height: 10),
               MoneyField(
@@ -980,7 +1013,7 @@ Future<bool> showAnnouncementForm(
             }
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
-            if (ctx.mounted) toast(ctx, 'Gagal simpan: ${errText(e)}');
+            if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
           } finally {
             if (ctx.mounted) setLocal(() => saving = false);
           }

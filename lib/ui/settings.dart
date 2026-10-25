@@ -812,7 +812,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       await Auth.changePassword(current: _current.text, next: _next.text);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _err = e.toString().replaceFirst('ApiException: ', ''));
+      if (mounted) setState(() => _err = writeFailText(e, fail: 'Gagal mengganti password'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

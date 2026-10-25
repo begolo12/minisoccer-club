@@ -174,7 +174,7 @@ class _UsersPageState extends State<UsersPage> {
                       } catch (e) {
                         if (ctx.mounted) {
                           setLocal(() => saving = false);
-                          toast(ctx, 'Gagal: ${errText(e)}');
+                          toast(ctx, writeFailText(e, fail: 'Gagal'));
                         }
                       }
                     },
@@ -230,7 +230,7 @@ class _UsersPageState extends State<UsersPage> {
                       } catch (e) {
                         if (ctx.mounted) {
                           setLocal(() => saving = false);
-                          toast(ctx, 'Gagal simpan: ${errText(e)}');
+                          toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
                         }
                       }
                     },

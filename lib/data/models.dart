@@ -1019,6 +1019,20 @@ class CashSummary {
 
 // ---------- Bookings ----------
 
+/// Booking sudah tersimpan tetapi catatan kasnya belum — kondisi parsial.
+///
+/// Form penerima wajib MENUTUP form saat menangkap ini, bukan membiarkan
+/// pengguna menekan Simpan lagi: pengulangan membuat dua booking untuk satu
+/// sewa, dan sisanya (catatan kas) sudah ditangani lewat antrean atau pesan.
+class BookingPartialException implements Exception {
+  BookingPartialException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class Booking {
   final int id;
   final String title;
@@ -1108,6 +1122,12 @@ class Booking {
   /// "Sewa lapangan" di kas dengan `booking_id` — satu pengeluaran, satu
   /// catatan. Tanpa tautan ini "Total sewa" di halaman Booking dan saldo di
   /// Kas klub menghitung dua angka berbeda untuk uang yang sama.
+  ///
+  /// Kegagalan di tengah diperlakukan khusus: kegagalan jaringan ditangani
+  /// `Db` (leg kasnya masuk antrean sendiri), tetapi penolakan server pada
+  /// leg KEDUA menyisakan booking tanpa catatan kas. Kondisi parsial itu
+  /// dilontarkan sebagai [BookingPartialException] — pemanggil wajib menutup
+  /// form, karena menekan Simpan lagi membuat DUA booking untuk satu sewa.
   static Future<void> insert({
     required String title,
     required DateTime startsAt,
@@ -1122,16 +1142,31 @@ class Booking {
     );
     if (!postToCash || cost <= 0) return;
     final id = rows.first['id'] as int;
-    await Db.execute(
-      '''INSERT INTO transactions (kind, category, amount, occurred_at, note, booking_id)
-         VALUES ('expense', 'sewa', @amount, @date, @note, @booking)''',
-      params: {
-        'amount': cost,
-        'date': _dateOnly(startsAt),
-        'note': title,
-        'booking': id,
-      },
-    );
+    const txSql = '''INSERT INTO transactions (kind, category, amount, occurred_at, note, booking_id)
+         VALUES ('expense', 'sewa', @amount, @date, @note, @booking)''';
+    final txParams = {
+      'amount': cost,
+      'date': _dateOnly(startsAt),
+      'note': title,
+      'booking': id,
+    };
+    try {
+      await Db.execute(txSql, params: txParams);
+    } catch (e) {
+      // Sesi habis ikut di sini (Db melempar setelah memicu masuk ulang):
+      // tulisannya tetap diantrekan supaya tidak hilang setelah login lagi.
+      String why;
+      try {
+        await Outbox.enqueue(txSql, txParams);
+        why = 'Sewa "$title" tersimpan. Catatan kasnya masuk antrean dan '
+            'dikirim otomatis bersama sinkron berikutnya.';
+      } catch (_) {
+        why = 'Sewa "$title" tersimpan, tetapi catatan kasnya belum bisa '
+            'dicatat. Lengkapi lewat Kas → Catat transaksi '
+            '(pengeluaran • Sewa lapangan).';
+      }
+      throw BookingPartialException(why);
+    }
   }
 
   /// Ubah status booking. Membatalkan booking sekaligus membuang pengeluaran

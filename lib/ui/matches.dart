@@ -665,7 +665,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       } catch (e) {
                         if (ctx.mounted) {
                           setLocal(() => saving = false);
-                          toast(ctx, 'Gagal simpan: ${errText(e)}');
+                          toast(ctx, writeFailText(e, fail: 'Gagal simpan'));
                         }
                       }
                     },
@@ -764,7 +764,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 last = '${MatchEvent.typeLabels[type] ?? type} ${member.name}';
               });
             } catch (e) {
-              if (ctx.mounted) toast(ctx, 'Gagal: ${errText(e)}');
+              if (ctx.mounted) toast(ctx, writeFailText(e, fail: 'Gagal'));
             }
           }
 

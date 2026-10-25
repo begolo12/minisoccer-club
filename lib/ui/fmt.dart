@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/db.dart' show Unauthorized;
 import '../core/errors.dart';
 
 export '../core/errors.dart';
+
+/// Pesan untuk aksi tulis yang gagal.
+///
+/// Sesi berakhir (token 12 jam) punya pesannya sendiri yang lebih berguna
+/// daripada "Gagal simpan: …": tulisan TIDAK hilang — pengguna masuk lagi,
+/// lalu mengulang aksinya. Pesan generik justru membuat orang mengira
+/// datanya rusak dan mengetik ulang dari nol.
+String writeFailText(Object e, {String fail = 'Gagal menyimpan'}) =>
+    e is Unauthorized ? errText(e) : '$fail: ${errText(e)}';
 
 /// Format tanggal/jam Indonesia tanpa dependensi locale intl tambahan.
 String fmtDate(DateTime d) {
@@ -213,7 +223,7 @@ Future<bool> attempt(
     await action();
     return true;
   } catch (e) {
-    if (context.mounted) toast(context, '$fail: ${errText(e)}');
+    if (context.mounted) toast(context, writeFailText(e, fail: fail));
     return false;
   }
 }

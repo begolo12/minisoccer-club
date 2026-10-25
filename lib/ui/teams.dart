@@ -86,7 +86,7 @@ class _TeamsPageState extends State<TeamsPage> {
                 } catch (e) {
                   if (ctx.mounted) {
                     setLocal(() => saving = false);
-                    toast(ctx, 'Gagal: ${errText(e)}');
+                    toast(ctx, writeFailText(e, fail: 'Gagal'));
                   }
                 }
               },

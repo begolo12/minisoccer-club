@@ -177,7 +177,12 @@ class _RegisterPageState extends State<RegisterPage> {
         children: [
           _Label('Nama lengkap', required: true),
           Semantics(
-            label: 'Nama lengkap',
+            // Error validasi diumumkan dari FIELD-nya: pembaca layar yang
+            // fokus ke isian langsung mendengar apa yang kurang, tanpa harus
+            // mencari teks error terpisah di bawah.
+            label: _touched && _nameErr != null
+                ? 'Nama lengkap, $_nameErr'
+                : 'Nama lengkap',
             child: ShadInput(
             controller: _name,
             focusNode: _nameFocus,
@@ -194,7 +199,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
           _Label('Nomor HP', required: true),
           Semantics(
-            label: 'Nomor HP',
+            label: _touched && _phoneErr != null ? 'Nomor HP, $_phoneErr' : 'Nomor HP',
             child: ShadInput(
             controller: _phone,
             focusNode: _phoneFocus,
@@ -211,7 +216,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
           _Label('Alamat', required: true),
           Semantics(
-            label: 'Alamat',
+            label: _touched && _addressErr != null ? 'Alamat, $_addressErr' : 'Alamat',
             child: ShadInput(
             controller: _address,
             focusNode: _addressFocus,
@@ -230,39 +235,47 @@ class _RegisterPageState extends State<RegisterPage> {
           // Radio, bukan dropdown: di HP semua pilihan langsung terlihat dan
           // cukup satu ketukan. Dropdown menyembunyikan pilihan di balik satu
           // ketukan lagi, dan formulir ini diisi sambil berdiri.
-          Material(
-            key: _positionKey,
-            type: MaterialType.transparency,
-            // RadioGroup mengelola nilai terpilih untuk semua Radio di
-            // dalamnya; sejak Flutter 3.32 `groupValue` per-Radio sudah
-            // deprecated.
-            child: RadioGroup<String>(
-              groupValue: _position,
-              onChanged: (v) {
-                if (!_saving) setState(() => _position = v);
-              },
-              child: Column(
-                children: [
-                  for (final p in kPositions)
-                    InkWell(
-                      onTap: _saving ? null : () => setState(() => _position = p),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          children: [
-                            Radio<String>(
-                              value: p,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(p, style: t.textTheme.large.copyWith(fontSize: 14)),
-                          ],
+          Semantics(
+            // Kelompok radio diberi nama + status errornya: tiap radio hanya
+            // mengumumkan pilihannya sendiri ("Striker"), padahal yang perlu
+            // diketahui pembaca layar adalah pertanyaannya.
+            label: _touched && _positionErr != null
+                ? 'Posisi bermain, $_positionErr'
+                : 'Posisi bermain',
+            child: Material(
+              key: _positionKey,
+              type: MaterialType.transparency,
+              // RadioGroup mengelola nilai terpilih untuk semua Radio di
+              // dalamnya; sejak Flutter 3.32 `groupValue` per-Radio sudah
+              // deprecated.
+              child: RadioGroup<String>(
+                groupValue: _position,
+                onChanged: (v) {
+                  if (!_saving) setState(() => _position = v);
+                },
+                child: Column(
+                  children: [
+                    for (final p in kPositions)
+                      InkWell(
+                        onTap: _saving ? null : () => setState(() => _position = p),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              Radio<String>(
+                                value: p,
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(p, style: t.textTheme.large.copyWith(fontSize: 14)),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

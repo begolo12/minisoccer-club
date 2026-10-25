@@ -318,9 +318,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     }
     if (!mounted) return;
     if (failure != null) {
-      toast(context, added == 0
-          ? 'Gagal menambah hadirin: ${errText(failure)}'
-          : '$added masuk, sisanya gagal: ${errText(failure)}');
+      final reason = writeFailText(failure, fail: 'Gagal menambah hadirin');
+      toast(context, added == 0 ? reason : '$added masuk, sisanya belum: $reason');
     }
     await _reload();
   }
