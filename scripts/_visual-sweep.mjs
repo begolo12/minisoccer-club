@@ -31,6 +31,9 @@ const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', [
 
 let ws; let msgId = 0; const pending = new Map();
 const consoleErrors = [];
+/// Permintaan yang gagal (4xx/5xx), lengkap dengan URL-nya. Tanpa URL, pesan
+/// "Failed to load resource" tidak bisa ditindaklanjuti.
+const failedRequests = [];
 const send = (m, p = {}) => new Promise((r) => { const id = ++msgId; pending.set(id, r); ws.send(JSON.stringify({ id, method: m, params: p })); });
 const evaluate = async (e) => (await send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true }))?.result?.value;
 
@@ -70,20 +73,47 @@ async function screenText() {
     .filter((v) => typeof v === 'string' && v.trim()).join('\n');
 }
 
-/// Overflow horizontal: lebar isi melebihi lebar layar.
+/// Overflow horizontal yang NYATA: halaman bisa digeser ke samping.
+///
+/// Bukan sekadar "ada elemen yang lebih lebar dari layar": Flutter menaruh
+/// elemen pengukur teks tersembunyi selebar ribuan piksel, dan daftar
+/// horizontal (chip periode) memang menyimpan isinya di luar layar. Keduanya
+/// bukan cacat. Yang benar-benar mengganggu pengguna adalah halaman yang bisa
+/// digeser menyamping, dan itu diukur dari dokumen.
 async function overflow() {
   return await evaluate(`(() => {
     const w = window.innerWidth;
-    const bad = [];
-    for (const el of document.querySelectorAll('*')) {
+    const scroll = document.documentElement.scrollWidth;
+    // Teks yang keluar dari kotaknya sendiri (terpotong tanpa elipsis) —
+    // dicek hanya pada elemen yang benar-benar terlihat.
+    const clipped = [];
+    for (const el of document.querySelectorAll('flt-semantics, [role="button"], [role="tab"]')) {
       const r = el.getBoundingClientRect();
-      if (r.width === 0) continue;
-      if (r.right > w + 1.5 || r.left < -1.5) {
-        const t = (el.textContent || '').trim().slice(0, 40);
-        if (t) bad.push({ t, left: Math.round(r.left), right: Math.round(r.right) });
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.left < -2 || r.right > w + 2) continue; // di luar layar: bagian dari scroller
+      if (el.scrollWidth > el.clientWidth + 2 && el.clientWidth > 0) {
+        const t = (el.textContent || '').trim().slice(0, 30);
+        if (t) clipped.push(t);
       }
     }
-    return { w, count: bad.length, sample: bad.slice(0, 3) };
+    return { w, scroll, pageOverflow: Math.max(0, scroll - w), clipped: clipped.slice(0, 3) };
+  })()`);
+}
+
+/// Tap target terlalu kecil: tombol yang sulit dikenai jari.
+async function smallTargets() {
+  return await evaluate(`(() => {
+    const bad = [];
+    for (const el of document.querySelectorAll('[role="button"], [role="tab"]')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (r.top < 0 || r.bottom > window.innerHeight) continue;
+      if (r.width < 40 || r.height < 40) {
+        const t = (el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 24);
+        if (t) bad.push({ t, w: Math.round(r.width), h: Math.round(r.height) });
+      }
+    }
+    return bad.slice(0, 4);
   })()`);
 }
 
@@ -121,8 +151,12 @@ async function main() {
     if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
       consoleErrors.push(m.params.entry.text ?? 'log error');
     }
+    if (m.method === 'Network.responseReceived' && m.params.response.status >= 400) {
+      failedRequests.push(`${m.params.response.status} ${m.params.response.url}`);
+    }
   });
-  await send('Page.enable'); await send('Runtime.enable'); await send('Log.enable'); await send('Accessibility.enable');
+  await send('Page.enable'); await send('Runtime.enable'); await send('Log.enable');
+  await send('Network.enable'); await send('Accessibility.enable');
 
   // Alamat tanpa garis miring di akhir: orang mengetiknya seperti itu, dan
   // sebelumnya hasilnya layar kosong karena aset relatif jatuh ke akar domain.
@@ -178,14 +212,19 @@ async function main() {
     const loggedIn = (await nodes()).some((n) => textOf(n) === 'Lainnya');
     record(`[${vp.name}] masuk sebagai admin`, loggedIn);
 
+    // Ukuran tap target diukur sekali per viewport, di Beranda.
+    const small = await smallTargets();
+    record(`[${vp.name}] tap target >= 40px di Beranda`, small.length === 0,
+      small.length === 0 ? '' : JSON.stringify(small));
+
     const tabs = ['Beranda', 'Tanding', 'Tim', 'Iuran', 'Lainnya'];
     for (const tab of tabs) {
       const opened = await tap(tab);
       await sleep(2600);
       const ov = await overflow();
       await shot(vp.name, `tab-${tab.toLowerCase()}`);
-      record(`[${vp.name}] tab ${tab}`, opened && ov.count === 0,
-        ov.count === 0 ? '' : `overflow ${ov.count}: ${JSON.stringify(ov.sample)}`);
+      record(`[${vp.name}] tab ${tab}`, opened && ov.pageOverflow === 0,
+        ov.pageOverflow === 0 ? '' : `halaman bisa digeser ${ov.pageOverflow}px`);
     }
 
     // Halaman turunan.
@@ -198,8 +237,8 @@ async function main() {
       await sleep(2400);
       const ov = await overflow();
       await shot(vp.name, `page-${page.toLowerCase().replace(/\s+/g, '-')}`);
-      record(`[${vp.name}] halaman ${page}`, opened && ov.count === 0,
-        ov.count === 0 ? '' : `overflow ${ov.count}: ${JSON.stringify(ov.sample)}`);
+      record(`[${vp.name}] halaman ${page}`, opened && ov.pageOverflow === 0,
+        ov.pageOverflow === 0 ? '' : `halaman bisa digeser ${ov.pageOverflow}px`);
       await tap('Kembali', { role: 'button' });
       await sleep(1200);
     }
@@ -207,6 +246,9 @@ async function main() {
 
   const real = consoleErrors.filter((e) => !/favicon|manifest|DevTools|third-party cookie|base-uri/i.test(e));
   record('tidak ada error konsol', real.length === 0, real.slice(0, 2).join(' | '));
+  const badReq = [...new Set(failedRequests)]
+    .filter((u) => !/favicon|manifest\.json/i.test(u));
+  record('tidak ada permintaan yang gagal', badReq.length === 0, badReq.slice(0, 4).join(' | '));
 
   const bad = results.filter((r) => !r.ok).length;
   writeFileSync(`${OUT}/report.json`, JSON.stringify({ base, results }, null, 2));

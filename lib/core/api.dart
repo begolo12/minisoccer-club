@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+import 'api_prefix_stub.dart'
+    if (dart.library.js_interop) 'api_prefix_web.dart' show documentPathPrefix;
+
 /// Alamat server API.
 ///
 /// Kosong = same-origin, dipakai versi web di Vercel.
@@ -15,14 +18,14 @@ const _apiBase = String.fromEnvironment('API_BASE', defaultValue: '');
 /// dan panggilan `/api/sql` yang absolut akan mendarat di domain portal —
 /// proyek lain, tanpa fungsi itu — sehingga aplikasi gagal memuat data.
 ///
-/// `Uri.base` di web berisi `self.location.href`; jalur dokumen itu dipakai
-/// sebagai prefiks. APK tidak punya dokumen, jadi prefiks hanya dihitung di
-/// web dan hanya saat `API_BASE` kosong (APK selalu mengisinya absolut).
+/// Sumbernya `<base href>`, BUKAN `Uri.base`. `Uri.base` adalah alamat yang
+/// sedang dibuka, termasuk nama rute: membuka `/minisoccer/daftar` membuat
+/// prefiksnya `/minisoccer/daftar`, lalu API dipanggil ke
+/// `/minisoccer/daftar/api/sql` dan dijawab 404. `<base href>` menyatakan
+/// tempat aplikasi dipasang, bukan halaman yang sedang dibuka.
 String get _pathPrefix {
   if (!kIsWeb || _apiBase.isNotEmpty) return '';
-  var path = Uri.base.path;
-  if (!path.endsWith('/')) path = path.substring(0, path.lastIndexOf('/') + 1);
-  return path == '/' ? '' : path.substring(0, path.length - 1);
+  return documentPathPrefix();
 }
 
 /// Basis API. Kosong di akar domain, `/minisoccer` saat dipasang di portal,
