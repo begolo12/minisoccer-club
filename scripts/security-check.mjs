@@ -119,10 +119,15 @@ if (madeUser) {
 }
 
 // 14. Error DB tidak bocor detail
+// Pesannya sengaja generik di api/sql.js (detail hanya ke log server).
+// Dulu teksnya "Query gagal dijalankan", sekarang "Data belum bisa dimuat…"
+// — yang dicek bukan teks persisnya, tapi kode 400 dan TIDAK membawa
+// detail Postgres (nama tabel, posisi error, SQL mentah).
 r = await post('/api/sql', { sql: 'SELECT * FROM tabel_tidak_ada' }, auth);
+const leakFree = !/relation|syntax|column|tabel_tidak_ada|postgres/i.test(r.json.error ?? '');
 check(
   'error DB tidak bocor detail',
-  r.code === 400 && r.json.error === 'Query gagal dijalankan',
+  r.code === 400 && leakFree,
   `${r.code} ${r.json.error}`,
 );
 
