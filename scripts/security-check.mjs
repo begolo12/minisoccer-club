@@ -155,6 +155,26 @@ check('header X-Frame-Options DENY', h.get('x-frame-options') === 'DENY');
 check('header nosniff', h.get('x-content-type-options') === 'nosniff');
 check('header HSTS', !!h.get('strict-transport-security'));
 
+// 20. Privasi data anggota untuk tamu.
+//
+// Mode publik sengaja menampilkan data klub, tapi nomor HP dan alamat
+// tinggal anggota adalah data pribadi. Dua lapis yang diuji di sini:
+// guard (query yang menyebut kolomnya ditolak) dan saringan hasil
+// (`SELECT *` tidak menyebut kolomnya, jadi isinya yang dibuang).
+r = await post('/api/sql', { sql: 'SELECT name, phone FROM members' });
+check('tamu tidak boleh menanyakan nomor HP', r.code === 403, `code ${r.code}`);
+
+r = await post('/api/sql', { sql: 'SELECT address FROM members' });
+check('tamu tidak boleh menanyakan alamat', r.code === 403, `code ${r.code}`);
+
+r = await post('/api/sql', { sql: 'SELECT * FROM members LIMIT 5' });
+const leaked = (r.json.rows ?? []).some((row) => 'phone' in row || 'address' in row);
+check('tamu tidak menerima nomor HP/alamat di SELECT *', r.code === 200 && !leaked,
+  r.code === 200 ? `baris: ${JSON.stringify(r.json.rows?.[0] ?? {})}` : `code ${r.code}`);
+
+r = await post('/api/sql', { sql: 'SELECT count(*)::int AS c FROM members' });
+check('tamu boleh menghitung anggota', r.code === 200, `code ${r.code}`);
+
 const bad = results.filter((x) => !x.ok).length;
 console.log(`\n${results.length - bad}/${results.length} lulus.`);
 process.exit(bad ? 1 : 0);

@@ -50,6 +50,19 @@ class Member {
     return rows.map(Member.fromMap).toList();
   }
 
+  /// Satu anggota berdasarkan id.
+  ///
+  /// Dipakai untuk "Akun saya": role anggota tahu id-nya sendiri (dari
+  /// akun), tapi datanya (nama, posisi, nomor punggung) ada di tabel anggota.
+  static Future<Member?> byId(int id) async {
+    final rows = await Db.query(
+      'SELECT * FROM members WHERE id = @id',
+      params: {'id': id},
+    );
+    if (rows.isEmpty) return null;
+    return Member.fromMap(rows.first);
+  }
+
   /// Tambah anggota. Id dikembalikan supaya pemanggil bisa langsung memakai
   /// baris baru (mis. menambahkannya ke tim) — dan supaya mode offline bisa
   /// memetakan id sementara ke id asli saat sinkron.
@@ -712,6 +725,15 @@ class Payment {
   /// Satu baris tagihan: anggota yang ikut turnamen, dan status bayarnya.
   static Future<List<DuesRow>> bill(int tournamentId) async {
     final rows = await Db.query(
+      // `GROUP BY m.id, p.id` — bukan daftar kolom lengkap. Postgres
+      // memperbolehkan semua kolom tabel ikut dipilih kalau primary key-nya
+      // ada di GROUP BY (functional dependency), jadi kolom `m.phone` dan
+      // `m.address` tidak perlu disebut-sebut di sini.
+      //
+      // Kenapa itu penting: penyebutan kolom data pribadi membuat query ini
+      // DITOLAK untuk tamu dan anggota (lihat api/_privacy.js). Sebut kolom
+      // saja sudah cukup untuk membocorkan lewat `SELECT *`, jadi nama
+      // kolomnya tidak perlu muncul di query.
       '''SELECT m.*, p.id AS payment_id, p.amount AS paid_amount,
                 p.paid_at AS paid_at, p.note AS paid_note
          FROM members m
@@ -719,8 +741,7 @@ class Payment {
          JOIN tournament_teams tt ON tt.team_id = tp.team_id
          LEFT JOIN payments p ON p.member_id = m.id AND p.tournament_id = @t
          WHERE tt.tournament_id = @t
-         GROUP BY m.id, m.name, m.phone, m.position, m.jersey, m.active,
-                  m.joined_at, p.id, p.amount, p.paid_at, p.note
+         GROUP BY m.id, p.id
          ORDER BY m.name''',
       params: {'t': tournamentId},
     );

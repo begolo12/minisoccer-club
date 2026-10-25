@@ -17,6 +17,16 @@ class Auth {
   static String? role;
   static String? token;
 
+  /// Id anggota yang tertaut dengan akun ini.
+  ///
+  /// Terisi hanya untuk akun anggota yang dibuat lewat pendaftaran (nama
+  /// depan jadi username, akunnya tertaut ke baris anggota). Admin dan
+  /// bendahara tidak punya tautan — mereka 관리 klub, bukan cumaplaying.
+  ///
+  /// Dipakai supaya role anggota bisa membuka "Akun saya" tanpa mencari
+  /// namanya di daftar anggota.
+  static int? memberId;
+
   /// Berubah saat login/logout — dipakai root untuk pindah layar.
   static final ValueNotifier<bool> session = ValueNotifier(false);
 
@@ -39,6 +49,13 @@ class Auth {
     role = r;
     token = t;
     Db.authToken = t;
+    // Scope cache ikut role yang dipulihkan — cache lama dari role lain
+    // tidak boleh dipakai (lihat `Db.cacheScope`).
+    Db.cacheScope = r ?? 'signed-in';
+    // Id anggota ikut dipulihkan: disimpan terpisah karena hanya sebagian
+    // akun yang punya (anggota俱乐部 yang mendaftar sendiri).
+    final m = await SecureStore.read('auth_member');
+    memberId = m == null ? null : int.tryParse(m);
     session.value = true;
   }
 
@@ -52,7 +69,21 @@ class Auth {
     final u = user.trim();
     if (u.isEmpty || pass.isEmpty) throw Exception('Username dan password wajib diisi');
     final body = await _post({'action': 'login', 'username': u, 'password': pass}, auth: false);
-    await _save(body['username'] as String, body['role'] as String?, body['token'] as String?);
+    await _save(
+      body['username'] as String,
+      body['role'] as String?,
+      body['token'] as String?,
+      _memberIdOf(body),
+    );
+  }
+
+  /// Id anggota dari balasan server (null kalau akun ini bukan anggota).
+  static int? _memberIdOf(Map<String, dynamic> body) {
+    final v = body['member_id'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
   }
 
   /// Buat admin pertama (hanya bisa saat belum ada user).
@@ -70,11 +101,18 @@ class Auth {
     username = null;
     role = null;
     token = null;
+    memberId = null;
     Db.authToken = null;
+    Db.cacheScope = 'public';
     session.value = false;
+    // Sama seperti saat login: cache role lama dibuang, supaya data yang
+    // hanya boleh dilihat anggota (nomor HP) tidak tinggal di perangkat
+    // setelah keluar.
+    await Db.clearOfflineCache();
     await SecureStore.delete('auth_user');
     await SecureStore.delete('auth_role');
     await SecureStore.delete('auth_token');
+    await SecureStore.delete('auth_member');
   }
 
   /// Dipanggil dari [Db] saat server menolak token: sesi dibuang tanpa
@@ -84,15 +122,30 @@ class Auth {
     await logout();
   }
 
-  static Future<void> _save(String u, String? r, String? t) async {
+  static Future<void> _save(String u, String? r, String? t, [int? member]) async {
     username = u;
     role = r;
     token = t;
+    memberId = member;
     Db.authToken = t;
+    // Scope cache ikut role: admin melihat nomor HP dan alamat anggota,
+    // anggota hanya nomor HP, tamu tidak. Cache tiap role terpisah, jadi
+    // hasil yang dibaca admin tidak bisa dibaca tamu dari cache lokal.
+    Db.cacheScope = r ?? 'signed-in';
     session.value = true;
+    // Cache dibaca per role (lihat `Db.cacheScope`). Ganti role berarti isi
+    // cache yang lama tidak boleh dipakai: kalau admin membaca daftar
+    // anggota lengkap dengan nomor HP, lalu keluar, cache itu masih ada
+    // dan mode publik bisa membacanya.
+    await Db.clearOfflineCache();
     await SecureStore.write('auth_user', u);
     if (r != null) await SecureStore.write('auth_role', r);
     if (t != null) await SecureStore.write('auth_token', t);
+    if (member != null) {
+      await SecureStore.write('auth_member', '$member');
+    } else {
+      await SecureStore.delete('auth_member');
+    }
   }
 
   static Future<Map<String, dynamic>> _post(

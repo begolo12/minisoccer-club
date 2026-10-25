@@ -52,9 +52,16 @@ class CachedRows {
 
 /// Kunci cache: hash isi query, bukan SQL mentah (nama kolom panjang bisa
 /// melebihi batas nama berkas).
-String cacheKey(String sql, Map<String, Object?> params) {
+///
+/// [scope] membedakan cache per role. Tanpa itu, hasil query yang dibaca
+/// admin (yang boleh melihat nomor HP anggota) tersimpan di kunci yang sama
+/// dengan yang dibaca tamu — dan tamu bisa membacanya dari cache, melewati
+/// penyaringan privasi di server. Scope membuat tiap role punya salinannya
+/// sendiri.
+String cacheKey(String sql, Map<String, Object?> params, {String scope = ''}) {
   final canonical = jsonEncode({
     'sql': sql.trim().replaceAll(RegExp(r'\s+'), ' '),
+    'scope': scope,
     'params': {
       for (final k in params.keys.toList()..sort())
         k: params[k] is DateTime

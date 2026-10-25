@@ -11,10 +11,20 @@ function sign(payload) {
   return createHmac('sha256', SECRET).update(payload).digest('base64url');
 }
 
-export function issueToken({ id, username, role }) {
+export function issueToken({ id, username, role, member_id }) {
   if (!SECRET) throw new Error('AUTH_SECRET belum diset di server');
   const payload = b64(
-    JSON.stringify({ id, u: username, r: role, exp: Math.floor(Date.now() / 1000) + TTL_SECONDS }),
+    JSON.stringify({
+      id,
+      u: username,
+      r: role,
+      // Id anggota yang tertaut dengan akun ini (null untuk admin/bendahara
+      // yang bukan anggota klub). Dipakai supaya role anggota bisa melihat
+      // "saya" — iuran dan patungan miliknya sendiri — tanpa perlu mencari
+      // namanya di daftar anggota.
+      m: member_id ?? null,
+      exp: Math.floor(Date.now() / 1000) + TTL_SECONDS,
+    }),
   );
   return `${payload}.${sign(payload)}`;
 }

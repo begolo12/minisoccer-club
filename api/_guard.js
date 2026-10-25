@@ -6,6 +6,10 @@
 //   2. Tulis hanya ke tabel yang diizinkan; `users` hanya lewat /api/auth.
 //   3. Role `member` tidak boleh menulis sama sekali.
 //   4. Kalau sebuah tulis tidak bisa dipastikan targetnya, tolak.
+//   5. Data pribadi anggota (nomor HP, alamat) tidak boleh diambil role
+//      baca-saja — lihat `_privacy.js`.
+
+import { hiddenColumns, hiddenColumnMessage, mentionsHidden } from './_privacy.js';
 
 const MAX_LEN = 20_000;
 
@@ -110,6 +114,22 @@ function writeTargets(code) {
   return { targets, ambiguous: false };
 }
 
+// Kolom data pribadi anggota, dipisah menurut tingkat akses.
+//
+//   * `address` (alamat tinggal) — untuk SEMUA orang kecuali admin dan
+//     bendahara. Alamat rumah tidak perlu dilihat siapa pun di luar klub.
+//
+//   * `phone` (nomor HP) — untuk admin, bendahara, dan anggota yang sudah
+//     masuk. Anggota perlu nomor satu sama lain untuk menjadwalkan main.
+//     Tamu (mode publik) tidak: aplikasi sengaja menampilkan data klub
+//     tanpa login, tapi daftar anggota lengkap dengan nomor HP adalah data
+//     pribadi yang tidak perlu terlihat oleh siapa pun di luar klub.
+//
+// Rincian aturannya hidup di `_privacy.js` — satu sumber kebenaran untuk
+// guard (menolak query yang menyebut kolom ini) dan sql.js (menyaring hasil
+// query yang memakai `SELECT *`).
+export { hiddenColumns, mentionsHidden, hiddenColumnMessage } from './_privacy.js';
+
 /** Return pesan error (string) kalau query ditolak, null kalau boleh. */
 export function rejectSql(text, session) {
   if (typeof text !== 'string' || !text.trim()) return 'sql required';
@@ -139,6 +159,20 @@ export function rejectSql(text, session) {
   const { targets, ambiguous } = writeTargets(scan);
 
   if (ambiguous) return 'Query tidak dikenali';
+
+  // Data pribadi anggota (nomor HP, alamat tinggal) TIDAK boleh keluar ke
+  // role baca-saja.
+  //
+  // Kenapa: mode publik (tamu tanpa login) sengaja menampilkan data klub
+  // supaya orang bisa lihat jadwal dan kas tanpa akun. Tapi daftar anggota
+  // yang ikut打出 lengkap dengan nomor HP dan alamat adalah data pribadi
+  // yang tidak perlu terlihat oleh siapa pun di luar klub — dan lewat
+  // /api/sql yang menerima SQL bebas, "SELECT * FROM members" cukup untuk
+  // mengambil semuanya dalam satu permintaan.
+  //
+  // Yang boleh: admin dan bendahara (keduanya sudah memegang data kas dan
+  // iuran, jadi nomor HP untuk="@+62" plainly needed). Role `member` dan
+  // tamu tidak.
   if (targets.length === 0) {
     if (/\busers\b/i.test(scan) && session?.r !== 'admin') {
       return 'Hanya admin yang bisa melihat pengguna';
@@ -146,6 +180,14 @@ export function rejectSql(text, session) {
     // Daftar pengguna juga tidak untuk tamu, termasuk lewat view/join.
     if (session?.r === 'public' && /\busers\b/i.test(scan)) {
       return 'Hanya admin yang bisa melihat pengguna';
+    }
+    // Data pribadi anggota (nomor HP untuk tamu, alamat untuk semua role
+    // baca-saja) tidak boleh ditanyakan secara eksplisit. Query yang
+    // memakai `SELECT *` tidak bisa dicek di sini — hasilnya disaring di
+    // sql.js.
+    const hidden = hiddenColumns(session?.r);
+    if (mentionsHidden(scan, hidden)) {
+      return hiddenColumnMessage(scan, hidden);
     }
     return null;
   }

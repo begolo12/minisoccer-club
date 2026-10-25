@@ -13,6 +13,7 @@ import 'finance.dart';
 import 'fmt.dart';
 import 'login.dart';
 import 'members.dart';
+import 'my_account.dart';
 import 'settings.dart';
 import 'stats.dart';
 import 'tournament.dart';
@@ -137,6 +138,13 @@ class MorePage extends StatefulWidget {
 class _MorePageState extends State<MorePage> {
   late Future<_Counts> _future;
 
+  /// Data anggota milik akun yang sedang masuk (untuk "Akun saya").
+  ///
+  /// Null kalau akun ini bukan anggota klub (admin/bendahara) atau kalau
+  /// pemuatannya gagal — barisnya lalu disembunyikan, bukan menampilkan
+  /// halaman kosong.
+  Future<Member?>? _meFuture;
+
   /// Nilai `Db.writes` saat angka terakhir dimuat.
   int _seenWrites = Db.writes.value;
 
@@ -144,7 +152,18 @@ class _MorePageState extends State<MorePage> {
   void initState() {
     super.initState();
     _future = _Counts.load();
+    _meFuture = _loadMe();
     Db.writes.addListener(_onWrites);
+  }
+
+  Future<Member?> _loadMe() async {
+    final id = Auth.memberId;
+    if (id == null) return null;
+    try {
+      return await Member.byId(id);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -167,7 +186,11 @@ class _MorePageState extends State<MorePage> {
 
   Future<void> _reload() async {
     final f = _Counts.load();
-    setState(() => _future = f);
+    final me = _loadMe();
+    setState(() {
+      _future = f;
+      _meFuture = me;
+    });
     await f;
   }
 
@@ -275,6 +298,23 @@ class _MorePageState extends State<MorePage> {
                 onTap: () => _open(context, const AnnouncementsPage()),
               ),
               const SectionTitle('Akun'),
+              // Halaman milik anggota sendiri. Role anggota adalah mayoritas
+              // pengguna app ini, dan sebelumnya tidak punya tempat untuk
+              // melihat "saya sudah bayar apa" tanpa mencari namanya di
+              // daftar anggota.
+              FutureBuilder<Member?>(
+                future: _meFuture,
+                builder: (context, snap) {
+                  final m = snap.data;
+                  if (m == null) return const SizedBox.shrink();
+                  return _Tile(
+                    icon: Icons.person_outline,
+                    title: 'Akun saya',
+                    subtitle: 'Iuran saya, tunggakan, jadwal main',
+                    onTap: () => _open(context, MyAccountPage(member: m)),
+                  );
+                },
+              ),
               if (Auth.isAdmin)
                 _Tile(
                   icon: Icons.people_outline,

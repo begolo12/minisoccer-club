@@ -229,7 +229,7 @@ export default async function handler(req, res) {
     }
 
     const rows = await sql(
-      `SELECT id, username, role FROM users
+      `SELECT id, username, role, member_id FROM users
         WHERE username = $1 AND active AND password_hash IS NOT NULL
           AND password_hash = crypt($2, password_hash)`,
       [user, pass],
@@ -254,7 +254,13 @@ export default async function handler(req, res) {
     if (known.failed_attempts || known.locked_until) {
       await sql('UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = $1', [known.id]);
     }
-    return res.status(200).json({ ...rows[0], token: issueToken(rows[0]) });
+    // `member_id` ikut dikembalikan: role anggota membutuhkannya untuk
+    // membuka "Akun saya" (iuran & patungan miliknya sendiri).
+    return res.status(200).json({
+      ...rows[0],
+      member_id: rows[0].member_id ?? null,
+      token: issueToken(rows[0]),
+    });
   } catch (e) {
     console.error('[auth]', e);
     return res.status(500).json({ error: 'Server sedang bermasalah. Coba lagi.' });

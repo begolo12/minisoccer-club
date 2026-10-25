@@ -25,6 +25,17 @@ class Db {
   /// Token sesi (diisi `Auth` setelah login).
   static String? authToken;
 
+  /// Scope cache: siapa yang sedang membaca.
+  ///
+  /// Cache dibaca per role karena isi query yang sama bisa berbeda isinya:
+  /// admin melihat nomor HP dan alamat anggota, anggota hanya nomor HP, tamu
+  /// tidak keduanya. Tanpa scope, hasil yang dibaca admin tersimpan di kunci
+  /// yang sama dengan yang dibaca tamu — lalu tamu membacanya dari cache dan
+  /// melewati penyaringan privasi di server.
+  ///
+  /// Diisi `Auth` saat login/logout (role ada di sana, bukan di sini).
+  static String cacheScope = 'public';
+
   /// Dipanggil sekali saat server menolak token. Root memakainya untuk
   /// kembali ke layar masuk, jadi user tidak melihat error di tiap halaman.
   static Future<void> Function()? onSessionExpired;
@@ -56,7 +67,7 @@ class Db {
     Map<String, Object?> params = const {},
   }) async {
     final write = _isWrite(sql);
-    final key = cacheKey(sql, params);
+    final key = cacheKey(sql, params, scope: cacheScope);
     try {
       final rows = await driver.query(sql, params: params);
       if (write) {

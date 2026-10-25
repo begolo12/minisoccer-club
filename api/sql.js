@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { bearer, verifyToken } from './_auth.js';
 import { MissingParam, rejectSql, toPositional } from './_guard.js';
+import { hiddenColumns, scrubRows } from './_privacy.js';
 
 // POST /api/sql  { sql, params }
 // Satu-satunya pintu DB untuk web dan APK (klien tidak memegang kredensial).
@@ -80,7 +81,12 @@ export default async function handler(req, res) {
   try {
     const { text: query, values } = toPositional(text, params);
     const result = await sql(query, values, { fullResults: true });
-    return res.status(200).json({ rows: result.rows, rowCount: result.rowCount });
+    // Lapis kedua privasi: hasil query disaring sebelum keluar. Guard hanya
+    // bisa menolak query yang MENYEBUT kolom sensitif; `SELECT *` dan
+    // `row_to_json(m)` menyebutnya tanpa nama, jadi harus disaring di sini.
+    const hidden = hiddenColumns(session?.r);
+    const rows = hidden.length > 0 ? scrubRows(result.rows ?? [], hidden) : result.rows ?? [];
+    return res.status(200).json({ rows, rowCount: result.rowCount });
   } catch (e) {
     if (e instanceof MissingParam) return res.status(400).json({ error: e.message });
     // Detail hanya ke log server; klien dapat pesan umum.

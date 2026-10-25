@@ -59,6 +59,7 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Pengumuman** | Info klub untuk anggota |
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Pengguna** | Akun + role admin / bendahara / anggota; anggota yang berhenti bisa **dinonaktifkan** tanpa menghapus riwayatnya |
+| **Akun saya** | Untuk role anggota: total iuran, tunggakan, main berikutnya, dan riwayat iuran — jawaban untuk "saya sudah bayar apa?" tanpa mencari nama sendiri di daftar anggota |
 | **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), info server, tes koneksi, keluar |
 
 Poin klasemen hanya dihitung dari laga berstatus selesai; skor laga yang
@@ -421,6 +422,7 @@ untuk rilis.
 | Jalur data | Semua query lewat `/api/sql`. **Tamu tanpa token boleh membaca** (mode publik read-only); menulis wajib `Authorization: Bearer <token>` |
 | Role DB | `app_web`: tanpa DDL, tanpa akses `password_hash` (dibuat `npm run db:harden`) |
 | Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `public`/`member` read-only dan tidak bisa membaca daftar pengguna |
+| Privasi anggota | Nomor HP & alamat tidak untuk tamu; alamat juga tidak untuk role anggota. Dijaga dua lapis: query yang menyebut kolom itu **ditolak**, dan hasil `SELECT *` **disaring** (`api/_privacy.js`). Cache offline dibaca per role, jadi hasil yang dibaca admin tidak bisa dibaca tamu dari perangkat |
 | Parameter | `@nama` → positional hanya di luar string/komentar; parameter yang tidak dikirim ditolak (bukan NULL diam-diam) |
 | Kelola user | Tambah/reset/hapus hanya lewat `/api/auth` (admin), bukan lewat SQL |
 | Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |

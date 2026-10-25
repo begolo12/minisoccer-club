@@ -60,6 +60,9 @@ export const reads = {
          LEFT JOIN tournaments t ON t.id = p.tournament_id
          WHERE p.paid_at >= @from AND p.paid_at < @to
          ORDER BY p.paid_at DESC`,
+  // `GROUP BY m.id, p.id` — Postgres mengizinkan semua kolom ikut dipilih
+  // lewat functional dependency pada primary key. Menyebut `m.phone` di sini
+  // membuat query DITOLAK untuk tamu dan anggota (lihat api/_privacy.js).
   duesBill: `SELECT m.*, p.id AS payment_id, p.amount AS paid_amount,
                 p.paid_at AS paid_at, p.note AS paid_note
          FROM members m
@@ -67,8 +70,7 @@ export const reads = {
          JOIN tournament_teams tt ON tt.team_id = tp.team_id
          LEFT JOIN payments p ON p.member_id = m.id AND p.tournament_id = @t
          WHERE tt.tournament_id = @t
-         GROUP BY m.id, m.name, m.phone, m.position, m.jersey, m.active,
-                  m.joined_at, p.id, p.amount, p.paid_at, p.note
+         GROUP BY m.id, p.id
          ORDER BY m.name`,
   paymentExists: 'SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
   paymentsForMember: `SELECT p.*, m.name AS member_name, t.name AS tournament_name
