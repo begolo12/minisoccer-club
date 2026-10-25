@@ -1,12 +1,16 @@
 // Uji keamanan endpoint live. Jalankan: node scripts/security-check.mjs
-// Butuh akun admin yang sudah ada (env ADMIN_USER/ADMIN_PASS, default admin/admin123).
+// Butuh akun admin yang sudah ada (env ADMIN_USER/ADMIN_PASS, atau isi di
+// .env di root repo). Tidak ada nilai default lagi — repo ini publik, dan
+// password default yang pernah tertulis di sini memberi akses admin ke
+// club mana pun yang memakai app ini.
 //
 // Sejak mode publik (tamu boleh membaca), "tanpa token" TIDAK lagi 401:
 // tamu boleh SELECT data klub, tetapi tetap tidak boleh menulis. Uji di bawah
 // mengikuti aturan itu; batas baca/tulis per role ada di scripts/e2e-check.mjs.
+import { adminCredentials } from './_admin-auth.mjs';
+
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 
 const post = async (path, body, headers = {}) => {
   const res = await fetch(base + path, {

@@ -9,6 +9,8 @@ import { spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
+import { adminCredentials } from './_admin-auth.mjs';
+
 // Alamat aplikasi HARUS berakhir dengan garis miring: `<base href>` build
 // menunjuk ke `/minisoccer/`, jadi tanpa garis miring aset relatif jatuh ke
 // akar domain. URL tanpa garis miring diuji terpisah di bawah.
@@ -130,8 +132,10 @@ async function shot(view, page) {
 
 async function main() {
   // Login admin sekali (lewat API) supaya semua tombol tulis terlihat.
+  // Kredensial dari env/.env — tidak ada default (repo ini publik).
+  const { user: adminUser, pass: adminPass } = adminCredentials();
   const auth = await fetch(`${apiBase}/api/auth`, { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'login', username: 'admin', password: 'admin123' }) }).then((r) => r.json());
+    body: JSON.stringify({ action: 'login', username: adminUser, password: adminPass }) }).then((r) => r.json());
   record('login admin (API)', Boolean(auth.token), auth.error ?? '');
 
   let target = null;
@@ -204,7 +208,7 @@ async function main() {
     }
     if (inputs.length >= 2) {
       await clickAt(inputs[0].x, inputs[0].y); await send('Input.insertText', { text: 'admin' });
-      await clickAt(inputs[1].x, inputs[1].y); await send('Input.insertText', { text: 'admin123' });
+      await clickAt(inputs[1].x, inputs[1].y); await send('Input.insertText', { text: adminPass });
       // Tombol kirim ada di bawah form; bilah "Masuk" di atas memakai teks sama.
       await tap('Masuk', { role: 'button', last: true });
       await sleep(5000);

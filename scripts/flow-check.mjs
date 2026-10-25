@@ -8,11 +8,12 @@
 //
 //   BASE=https://minisoccer-club.vercel.app node scripts/flow-check.mjs
 //
-// Butuh ADMIN_USER/ADMIN_PASS. Semua baris yang dibuat berawalan `_flow_`
-// dan dihapus di akhir, termasuk saat gagal.
+// Butuh ADMIN_USER/ADMIN_PASS (atau isi di .env). Semua baris yang dibuat
+// berawalan `_flow_` dan dihapus di akhir, termasuk saat gagal.
+import { adminCredentials } from './_admin-auth.mjs';
+
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 
 const results = [];
 const check = (name, ok, detail = '') => {

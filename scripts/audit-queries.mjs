@@ -16,13 +16,13 @@
 //   3. Tabel dan kolom yang disebut benar-benar ada di DB (lewat probe SELECT;
 //      tidak ada tulis yang dieksekusi).
 import { readFileSync, existsSync } from 'node:fs';
+import { adminCredentials } from './_admin-auth.mjs';
 
 import { rejectSql } from '../api/_guard.js';
 import { probeFor, isRead, paramNames } from './_sql-probe.mjs';
 
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 
 const file = '.audit/queries.json';
 if (!existsSync(file)) {

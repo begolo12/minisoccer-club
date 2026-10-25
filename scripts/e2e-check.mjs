@@ -16,10 +16,10 @@
 // Butuh akun admin (env ADMIN_USER / ADMIN_PASS). Kalau DB masih kosong
 // (`bootstrap: true`), akun admin itu dibuat otomatis.
 import { reads, writes, paramsFor } from './_app-queries.mjs';
+import { adminCredentials } from './_admin-auth.mjs';
 
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 
 const results = [];
 const check = (name, ok, detail = '') => {

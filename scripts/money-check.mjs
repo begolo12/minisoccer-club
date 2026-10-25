@@ -11,10 +11,10 @@
 //
 //   BASE=https://minisoccer-club.vercel.app node scripts/money-check.mjs
 import { readFileSync, existsSync } from 'node:fs';
+import { adminCredentials } from './_admin-auth.mjs';
 
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 
 const results = [];
 const check = (name, ok, detail = '') => {

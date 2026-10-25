@@ -58,7 +58,7 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Sewa lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu sewa = satu catatan kas, dan bila pencatatannya gagal di tengah, sisanya masuk antrean — booking tidak pernah diulang dari form). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan sewa ikut membuang setoran patungannya |
 | **Pengumuman** | Info klub untuk anggota |
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
-| **Pengguna** | Akun + role admin / bendahara / anggota; anggota yang berhenti bisa **dinonaktifkan** tanpa menghapus riwayatnya |
+| **Pengguna** | Akun + role admin / bendahara / anggota; admin bisa **mengubah username dan role** setiap akun, **menonaktifkan** anggota yang berhenti tanpa menghapus riwayatnya |
 | **Akun saya** | Untuk role anggota: total iuran, tunggakan, main berikutnya, dan riwayat iuran — jawaban untuk "saya sudah bayar apa?" tanpa mencari nama sendiri di daftar anggota |
 | **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), info server, tes koneksi, keluar |
 
@@ -216,6 +216,22 @@ nama kolom yang kurang. Perbaikannya selalu `npm run db:init` +
 bendahara boleh tulis.
 
 Connection string hanya ada di env server, tidak pernah di HP maupun browser.
+
+### Kredensial dan repo publik
+
+Repo GitHub app ini **publik**, jadi tidak boleh ada kredensial di dalamnya:
+
+| Yang | Di mana |
+|---|---|
+| Kredensial admin untuk skrip pemeriksaan (`ADMIN_USER`/`ADMIN_PASS`) | `.env` di mesin devs (sudah masuk `.gitignore`) atau env shell. **Tidak ada nilai default** — skrip berhenti dengan pesan jelas kalau kosong |
+| `DATABASE_URL`, `DATABASE_URL_WEB`, `AUTH_SECRET` | env server (Vercel) dan `.env` lokal. `.env.example` hanya berisi placeholder |
+| Kunci penandatangan APK | GitHub Secrets (`KEYSTORE_BASE64`, dll) + `android/key.properties` lokal (ter-ignore) |
+
+Password default pernah menjadi lubang: `admin123` tertulis di 15 skrip, dan
+password itu masih berlaku di produksi. Sudah dibersihkan — password admin
+produksi sudah dirotasi, dan skrip sekarang **gagal keras** tanpa kredensial
+daripada diam-diam memakai password lemah. Kalau skrip cek gagal dengan
+"ADMIN_PASS belum diisi", itu bukan bug: isikan `.env`-nya.
 
 ## Development
 

@@ -9,11 +9,11 @@
 //
 //   node scripts/attendance-browser-check.mjs
 import { spawn } from 'node:child_process';
+import { adminCredentials } from './_admin-auth.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const base = (process.env.BASE || 'https://airevo-digital.my.id/minisoccer').replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 const port = 9900 + Math.floor(Math.random() * 90);
 const tag = `_at_${Date.now().toString(36)}`;
 

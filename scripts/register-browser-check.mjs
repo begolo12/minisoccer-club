@@ -10,6 +10,7 @@
 //   BASE=https://minisoccer-club.vercel.app/minisoccer/ node scripts/register-browser-check.mjs
 //   BASE=http://127.0.0.1:8123/minisoccer/ node scripts/register-browser-check.mjs
 import { spawn } from 'node:child_process';
+import { adminCredentials } from './_admin-auth.mjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const base = (process.env.BASE || 'https://airevo-digital.my.id/minisoccer/').replace(/\/$/, '');
@@ -18,8 +19,7 @@ const base = (process.env.BASE || 'https://airevo-digital.my.id/minisoccer/').re
 // `/minisoccer` dibuang, sehingga uji ini menembak `/api/sql` di akar portal —
 // proyek lain, tanpa fungsi itu.
 const apiBase = (process.env.API_BASE || base).replace(/\/$/, '');
-const adminUser = process.env.ADMIN_USER || 'admin';
-const adminPass = process.env.ADMIN_PASS || 'admin123';
+const { user: adminUser, pass: adminPass } = adminCredentials();
 const port = 9500 + Math.floor(Math.random() * 90);
 // Nama hanya boleh huruf, jadi penanda uji dibuat dari huruf saja.
 const tag = `Rg${Math.random().toString(36).replace(/[^a-z]/g, '').slice(0, 6)}`;
