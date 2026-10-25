@@ -205,6 +205,11 @@ class Auth {
       _post({'action': 'reset', 'id': id, 'password': password});
 
   static Future<void> deleteUser(int id) => _post({'action': 'delete', 'id': id});
+
+  /// Nonaktifkan/aktifkan akun (admin). Untuk anggota yang keluar klub:
+  /// riwayatnya tetap dipakai, jadi akunnya tidak perlu dihapus.
+  static Future<void> setUserActive(int id, bool active) =>
+      _post({'action': 'setActive', 'id': id, 'active': active});
 }
 
 

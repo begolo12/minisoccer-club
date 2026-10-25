@@ -1706,6 +1706,10 @@ class AppUser {
   /// Atur ulang password (dipakai admin kalau anggota lupa).
   static Future<void> setPassword(int id, String password) => Auth.resetPassword(id, password);
 
+  /// Nonaktifkan/aktifkan akun. Anggota yang keluar klub tidak perlu
+  /// dihapus: riwayat iuran dan patungan masih menunjuk akunnya.
+  static Future<void> setActive(int id, bool active) => Auth.setUserActive(id, active);
+
   static Future<void> delete(int id) => Auth.deleteUser(id);
 }
 

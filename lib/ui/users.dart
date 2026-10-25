@@ -94,6 +94,36 @@ class _UsersPageState extends State<UsersPage> {
                       }, tooltip: 'Atur ulang password'),
                       if (u.username != Auth.username) ...[
                         const SizedBox(width: 6),
+                        // Nonaktifkan/aktifkan: pintu masuk yang bisa dibuka
+                        // lagi. Menghapus akun mengunci riwayat lama; ini
+                        // cukup untuk anggota yang berhenti datang.
+                        iconAction(
+                          context,
+                          u.active ? Icons.person_off_outlined : Icons.how_to_reg_outlined,
+                          () async {
+                            if (u.active) {
+                              if (!await confirm(
+                                context,
+                                'Nonaktifkan ${u.username}?',
+                                'Akun tidak bisa masuk sampai diaktifkan lagi. '
+                                    'Riwayat datanya tetap ada.',
+                                confirmLabel: 'Nonaktifkan',
+                              )) {
+                                return;
+                              }
+                            }
+                            if (!context.mounted) return;
+                            if (await attempt(
+                              context,
+                              () => AppUser.setActive(u.id, !u.active),
+                              fail: 'Gagal menyimpan',
+                            )) {
+                              _reload();
+                            }
+                          },
+                          tooltip: u.active ? 'Nonaktifkan' : 'Aktifkan',
+                        ),
+                        const SizedBox(width: 6),
                         iconAction(context, Icons.delete_outline, () async {
                           if (await confirm(context, 'Hapus pengguna?', u.username)) {
                             if (!context.mounted) return;
@@ -118,6 +148,7 @@ class _UsersPageState extends State<UsersPage> {
     var saving = false;
     final ok = await showShadDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: Text('Password baru — ${u.username}'),
@@ -170,6 +201,7 @@ class _UsersPageState extends State<UsersPage> {
 
     final ok = await showShadDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Tambah pengguna'),

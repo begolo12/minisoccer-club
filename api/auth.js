@@ -5,9 +5,11 @@ import { bearer, issueToken, verifyToken } from './_auth.js';
 //   status   : publik, cek apakah DB masih kosong (layar login)
 //   register : publik, hanya saat tabel users kosong (admin pertama)
 //   login    : publik, password dicek bcrypt oleh Postgres (pgcrypto)
+//   change   : siapa pun yang sudah masuk — ganti password sendiri
 //   create   : admin — tambah user
 //   reset    : admin — ganti password user lain
 //   delete   : admin — hapus user
+//   setActive: admin — nonaktifkan/aktifkan akun (tanpa menghapus riwayat)
 //
 // Password TIDAK pernah dibaca/ditulis lewat /api/sql; semua di sini
 // pakai koneksi owner (DATABASE_URL). Koneksi web (/api/sql) pakai role
@@ -84,9 +86,36 @@ export default async function handler(req, res) {
     }
 
     // ---- admin-only ----
-    if (action === 'create' || action === 'reset' || action === 'delete') {
+    if (action === 'create' || action === 'reset' || action === 'delete' || action === 'setActive') {
       const admin = adminOf(req);
       if (!admin) return res.status(403).json({ error: 'Hanya admin yang bisa mengelola pengguna' });
+
+      // Nonaktif ≠ hapus: riwayat iuran/patungan tetap menunjuk akunnya.
+      // Yang berubah cuma pintu masuknya.
+      if (action === 'setActive') {
+        const uid = Number(id);
+        const on = Boolean(bodyOf(req).active);
+        if (!uid) return res.status(400).json({ error: 'id wajib' });
+        if (!on) {
+          if (uid === admin.id) return res.status(400).json({ error: 'Tidak bisa menonaktifkan akun sendiri' });
+          const [target] = await sql('SELECT role FROM users WHERE id = $1', [uid]);
+          if (!target) return res.status(404).json({ error: 'User tidak ditemukan' });
+          if (target.role === 'admin') {
+            const [{ n }] = await sql(
+              `SELECT count(*)::int AS n FROM users
+                WHERE role = 'admin' AND active AND id <> $1`,
+              [uid],
+            );
+            if (n === 0) return res.status(400).json({ error: 'Admin aktif terakhir tidak bisa dinonaktifkan' });
+          }
+        }
+        const rows = await sql(
+          'UPDATE users SET active = $2 WHERE id = $1 RETURNING id, username, active',
+          [uid, on],
+        );
+        if (!rows.length) return res.status(404).json({ error: 'User tidak ditemukan' });
+        return res.status(200).json({ ok: true, active: rows[0].active });
+      }
 
       if (action === 'delete') {
         const uid = Number(id);
