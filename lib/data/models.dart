@@ -1766,6 +1766,15 @@ class AppUser {
   /// dihapus: riwayat iuran dan patungan masih menunjuk akunnya.
   static Future<void> setActive(int id, bool active) => Auth.setUserActive(id, active);
 
+  /// Ubah username dan/atau role. Nama anggota dibuat dari nama depan, jadi
+  /// koreksi nama (atau perbaikan role yang keliru) perlu jalan ini.
+  static Future<void> update(
+    int id, {
+    String? username,
+    String? role,
+  }) =>
+      Auth.updateUser(id, username: username, role: role);
+
   static Future<void> delete(int id) => Auth.deleteUser(id);
 }
 

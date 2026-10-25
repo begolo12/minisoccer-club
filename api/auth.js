@@ -86,9 +86,62 @@ export default async function handler(req, res) {
     }
 
     // ---- admin-only ----
-    if (action === 'create' || action === 'reset' || action === 'delete' || action === 'setActive') {
+    if (
+      action === 'create' || action === 'reset' || action === 'delete' ||
+      action === 'setActive' || action === 'update'
+    ) {
       const admin = adminOf(req);
       if (!admin) return res.status(403).json({ error: 'Hanya admin yang bisa mengelola pengguna' });
+
+      // Ubah username dan/atau role.
+      //
+      // Kenapa perlu: username anggota dibuat otomatis dari nama depan
+      // ("irvan", "irvan2"). Kalau orang Spray改 nama, atau salah dibuat
+      // dengan role yang keliru, tanpa ini satu-satunya jalan adalah hapus
+      // lalu buat ulang — dan menghapus akun anggota berarti kehilangan
+      // tautan ke baris anggotanya.
+      if (action === 'update') {
+        const uid = Number(id);
+        if (!uid) return res.status(400).json({ error: 'id wajib' });
+        const body = bodyOf(req);
+        const newName = body.username === undefined ? null : String(body.username).trim();
+        const newRole = body.role === undefined ? null : String(body.role);
+        if (newName === null && newRole === null) {
+          return res.status(400).json({ error: 'Tidak ada yang diubah' });
+        }
+        if (newName !== null && (newName.length === 0 || newName.length > MAX_USER)) {
+          return res.status(400).json({ error: `Username wajib (maks ${MAX_USER})` });
+        }
+        if (newRole !== null && !['admin', 'treasurer', 'member'].includes(newRole)) {
+          return res.status(400).json({ error: 'Role tidak dikenal' });
+        }
+        // Menjaga agar klub tidak terkunci di luar: admin aktif terakhir
+        // tidak boleh kehilangan aksesnya sendiri.
+        if (newRole !== null && newRole !== 'admin') {
+          const [target] = await sql('SELECT role, active FROM users WHERE id = $1', [uid]);
+          if (!target) return res.status(404).json({ error: 'User tidak ditemukan' });
+          if (target.role === 'admin' && target.active) {
+            const [{ n }] = await sql(
+              `SELECT count(*)::int AS n FROM users
+                WHERE role = 'admin' AND active AND id <> $1`,
+              [uid],
+            );
+            if (n === 0) {
+              return res.status(400).json({ error: 'Admin aktif terakhir tidak bisa kehilangan role admin' });
+            }
+          }
+        }
+        const rows = await sql(
+          `UPDATE users
+              SET username = coalesce($2, username),
+                  role     = coalesce($3, role)
+            WHERE id = $1
+            RETURNING id, username, role, active, member_id`,
+          [uid, newName, newRole],
+        );
+        if (!rows.length) return res.status(404).json({ error: 'User tidak ditemukan' });
+        return res.status(200).json({ ok: true, user: rows[0] });
+      }
 
       // Nonaktif ≠ hapus: riwayat iuran/patungan tetap menunjuk akunnya.
       // Yang berubah cuma pintu masuknya.

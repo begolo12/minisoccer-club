@@ -17,6 +17,12 @@ class Auth {
   static String? role;
   static String? token;
 
+  /// Id akun yang sedang masuk.
+  ///
+  /// Dipakai untuk mengenali baris "kamu" di daftar pengguna — jadi saat
+  /// admin mengubah username-nya sendiri, baris itu ikut berubah.
+  static int? userId;
+
   /// Id anggota yang tertaut dengan akun ini.
   ///
   /// Terisi hanya untuk akun anggota yang dibuat lewat pendaftaran (nama
@@ -53,9 +59,12 @@ class Auth {
     // tidak boleh dipakai (lihat `Db.cacheScope`).
     Db.cacheScope = r ?? 'signed-in';
     // Id anggota ikut dipulihkan: disimpan terpisah karena hanya sebagian
-    // akun yang punya (anggota俱乐部 yang mendaftar sendiri).
+    // akun yang punya (anggota klub yang mendaftar sendiri).
     final m = await SecureStore.read('auth_member');
     memberId = m == null ? null : int.tryParse(m);
+    // Id akun juga: dipakai untuk mengenali baris "kamu" di daftar pengguna.
+    final uid = await SecureStore.read('auth_uid');
+    userId = uid == null ? null : int.tryParse(uid);
     session.value = true;
   }
 
@@ -74,12 +83,22 @@ class Auth {
       body['role'] as String?,
       body['token'] as String?,
       _memberIdOf(body),
+      _intOf(body),
     );
   }
 
   /// Id anggota dari balasan server (null kalau akun ini bukan anggota).
   static int? _memberIdOf(Map<String, dynamic> body) {
     final v = body['member_id'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  /// Id akun dari balasan server.
+  static int? _intOf(Map<String, dynamic> body) {
+    final v = body['id'];
     if (v is int) return v;
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v);
@@ -94,7 +113,13 @@ class Auth {
       {'action': 'register', 'username': u, 'password': pass, 'role': role},
       auth: false,
     );
-    await _save(body['username'] as String, body['role'] as String?, body['token'] as String?);
+    await _save(
+      body['username'] as String,
+      body['role'] as String?,
+      body['token'] as String?,
+      _memberIdOf(body),
+      _intOf(body),
+    );
   }
 
   static Future<void> logout() async {
@@ -102,6 +127,7 @@ class Auth {
     role = null;
     token = null;
     memberId = null;
+    userId = null;
     Db.authToken = null;
     Db.cacheScope = 'public';
     session.value = false;
@@ -113,6 +139,7 @@ class Auth {
     await SecureStore.delete('auth_role');
     await SecureStore.delete('auth_token');
     await SecureStore.delete('auth_member');
+    await SecureStore.delete('auth_uid');
   }
 
   /// Dipanggil dari [Db] saat server menolak token: sesi dibuang tanpa
@@ -122,11 +149,18 @@ class Auth {
     await logout();
   }
 
-  static Future<void> _save(String u, String? r, String? t, [int? member]) async {
+  static Future<void> _save(
+    String u,
+    String? r,
+    String? t, [
+    int? member,
+    int? userId,
+  ]) async {
     username = u;
     role = r;
     token = t;
     memberId = member;
+    Auth.userId = userId;
     Db.authToken = t;
     // Scope cache ikut role: admin melihat nomor HP dan alamat anggota,
     // anggota hanya nomor HP, tamu tidak. Cache tiap role terpisah, jadi
@@ -146,6 +180,23 @@ class Auth {
     } else {
       await SecureStore.delete('auth_member');
     }
+    if (userId != null) {
+      await SecureStore.write('auth_uid', '$userId');
+    } else {
+      await SecureStore.delete('auth_uid');
+    }
+  }
+
+  /// Perbarui nama pengguna sesi di tempat.
+  ///
+  /// Dipakai setelah admin mengubah username-nya sendiri: tanpa ini, app
+  /// masih menampilkan nama lama (dan "kamu" di daftar pengguna) sampai
+  /// aplikasi ditutup — padahal server sudah menerima nama baru.
+  static Future<void> renameSelf(String username) async {
+    username = username.trim();
+    if (username.isEmpty) return;
+    await SecureStore.write('auth_user', username);
+    Auth.username = username;
   }
 
   static Future<Map<String, dynamic>> _post(
@@ -263,8 +314,25 @@ class Auth {
   /// riwayatnya tetap dipakai, jadi akunnya tidak perlu dihapus.
   static Future<void> setUserActive(int id, bool active) =>
       _post({'action': 'setActive', 'id': id, 'active': active});
-}
 
+  /// Ubah username dan/atau role (admin).
+  ///
+  /// Username anggota dibuat otomatis dari nama depan ("irvan", "irvan2"),
+  /// jadi koreksi nama atau perbaikan role yang keliru perlu jalan ini —
+  /// tanpa itu satu-satunya cara adalah hapus lalu buat ulang, dan menghapus
+  /// akun anggota memutus tautannya ke baris anggota.
+  static Future<void> updateUser(
+    int id, {
+    String? username,
+    String? role,
+  }) =>
+      _post({
+        'action': 'update',
+        'id': id,
+        'username': ?username?.trim(),
+        'role': ?role,
+      });
+}
 
 /// Hasil pendaftaran: username dan password awal yang harus ditunjukkan ke
 /// pendaftar SEKALI, karena password tidak disimpan dalam bentuk terbaca.

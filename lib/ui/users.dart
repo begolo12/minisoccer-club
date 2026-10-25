@@ -20,6 +20,12 @@ class _UsersPageState extends State<UsersPage> {
 
   static const roleLabels = {'admin': 'Admin', 'treasurer': 'Bendahara', 'member': 'Anggota'};
 
+  /// Id akun yang sedang masuk — dipakai untuk menandai baris "kamu".
+  ///
+  /// Dicari lewat ID, bukan nama: nama bisa diubah admin (dan kalau
+  /// comparesbynama, baris "kamu" akan hilang begitu namanya diganti).
+  int? get _selfId => Auth.userId;
+
   @override
   void initState() {
     super.initState();
@@ -81,7 +87,7 @@ class _UsersPageState extends State<UsersPage> {
                     size: 17,
                     color: u.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
                   ),
-                  title: u.username == Auth.username ? '${u.username} (kamu)' : u.username,
+                  title: u.id == _selfId ? '${u.username} (kamu)' : u.username,
                   subtitle: [
                     roleLabels[u.role] ?? u.role,
                     if (!u.active) 'nonaktif',
@@ -89,10 +95,16 @@ class _UsersPageState extends State<UsersPage> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Ubah username & role: username anggota dibuat dari
+                      // nama depan, jadi koreksi nama (atau role yang keliru)
+                      // harus bisa tanpa hapus-buat-ulang.
+                      iconAction(context, Icons.edit_outlined, () async {
+                        if (await _editUser(context, u)) _reload();
+                      }, tooltip: 'Ubah akun'),
                       iconAction(context, Icons.key_outlined, () async {
                         if (await _resetPassword(context, u)) _reload();
                       }, tooltip: 'Atur ulang password'),
-                      if (u.username != Auth.username) ...[
+                      if (u.id != _selfId) ...[
                         const SizedBox(width: 6),
                         // Nonaktifkan/aktifkan: pintu masuk yang bisa dibuka
                         // lagi. Menghapus akun mengunci riwayat lama; ini
@@ -141,6 +153,86 @@ class _UsersPageState extends State<UsersPage> {
         },
       ),
     );
+  }
+
+  /// Ubah username dan role satu akun.
+  ///
+  /// Nama anggota dibuat otomatis dari nama depan ("irvan", "irvan2"), jadi
+  /// ada kalanya perlu dikoreksi — dan role yang keliru (mis. anggota dibuat
+  /// jadi bendahara) harus bisa diperbaiki tanpa menghapus akun.
+  Future<bool> _editUser(BuildContext context, AppUser u) async {
+    final name = TextEditingController(text: u.username);
+    var role = u.role;
+    var saving = false;
+
+    final ok = await showShadDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => ShadDialog(
+          title: Text('Ubah akun — ${u.username}'),
+          description: const Text(
+            'Nama pengguna dipakai untuk masuk. Role menentukan bisa menulis '
+            'data klub atau tidak.',
+          ),
+          actions: [
+            ShadButton.outline(
+              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            ShadButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      final v = name.text.trim();
+                      if (v.isEmpty) {
+                        toast(ctx, 'Nama pengguna tidak boleh kosong');
+                        return;
+                      }
+                      setLocal(() => saving = true);
+                      try {
+                        await AppUser.update(u.id, username: v, role: role);
+                        // Kalau yang diubah akun sendiri, sesi ikut
+                        // diperbarui — kalau tidak, app masih menampilkan
+                        // nama lama sampai ditutup.
+                        if (u.id == _selfId) await Auth.renameSelf(v);
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } catch (e) {
+                        if (ctx.mounted) {
+                          setLocal(() => saving = false);
+                          toast(ctx, writeFailText(e, fail: 'Gagal menyimpan'));
+                        }
+                      }
+                    },
+              child: Text(saving ? 'Menyimpan…' : 'Simpan'),
+            ),
+          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ShadInput(
+                controller: name,
+                placeholder: const Text('Nama pengguna'),
+                autocorrect: false,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 10),
+              ShadSelect<String>(
+                placeholder: const Text('Hak akses'),
+                initialValue: role,
+                options: AppUser.roles
+                    .map((r) => ShadOption(value: r, child: Text(roleLabels[r] ?? r)))
+                    .toList(),
+                selectedOptionBuilder: (c, v) => Text(roleLabels[v] ?? v),
+                onChanged: (v) => setLocal(() => role = v ?? role),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    name.dispose();
+    return ok ?? false;
   }
 
   Future<bool> _resetPassword(BuildContext context, AppUser u) async {
