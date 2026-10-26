@@ -9,6 +9,7 @@ import 'bookings.dart';
 import 'finance.dart';
 import 'teams.dart';
 import 'fmt.dart';
+import 'login_gate.dart';
 import 'forms.dart';
 import 'matches.dart';
 import 'members.dart';
@@ -62,6 +63,13 @@ class _DashboardData {
   /// hanya boleh dikatakan kalau kedua sumber itu benar-benar terbaca.
   final bool cashKnown;
 
+  /// True kalau pengguna belum masuk, sehingga kas & iuran TIDAK diminta.
+  ///
+  /// Server menolak membacanya tanpa sesi (`api/_guard.js`), jadi meminta
+  /// hanya menghasilkan 403 dan baris "gagal dimuat" — padahal tidak ada
+  /// yang rusak. Beranda menampilkan ajakan masuk di tempat angka uang.
+  final bool moneyLocked;
+
   _DashboardData({
     required this.upcoming,
     required this.tournaments,
@@ -80,6 +88,7 @@ class _DashboardData {
     this.paymentsKnown = true,
     this.membersKnown = true,
     this.cashKnown = true,
+    this.moneyLocked = false,
   });
 
   /// Laga yang sedang berlangsung — satu-satunya laga yang layak jadi papan
@@ -127,14 +136,22 @@ class _DashboardData {
   /// layar terisi.
   static Future<_DashboardData> load() async {
     final period = periodNow();
+    // Uang klub hanya untuk yang sudah masuk. Sumbernya tetap dijalankan
+    // (dengan nilai kosong) supaya indeks di bawah tidak berubah; yang
+    // berbeda adalah tidak ada permintaan ke server untuk tamu.
+    final money = Auth.signedIn;
     final r = await Future.wait<Soft<Object?>>([
       soft('Jadwal laga', Match.upcoming, fallback: const <Match>[]),
       soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
       soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
       soft('Jumlah anggota', Member.countActive, fallback: 0),
       soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]),
-      soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
-      soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
+      soft('Iuran bulan ini',
+          () => money ? Payment.inMonth(DateTime.now()) : Future.value(const <Payment>[]),
+          fallback: const <Payment>[]),
+      soft('Kas bulan ini',
+          () => money ? Transaction.all(period: period) : Future.value(const <Transaction>[]),
+          fallback: const <Transaction>[]),
       soft('Daftar tim', Team.all, fallback: const <Team>[]),
       // Jumlah pemain per tim: menentukan apakah klub sudah siap membuat
       // turnamen. Tanpa ini beranda menyuruh "Susun turnamen" pada klub yang
@@ -178,7 +195,7 @@ class _DashboardData {
 
     var bill = const <DuesRow>[];
     var billKnown = true;
-    if (active != null) {
+    if (active != null && money) {
       final b = await soft('Iuran turnamen', () => Payment.bill(active!.id),
           fallback: const <DuesRow>[]);
       failures.addAll(settle([b]));
@@ -213,7 +230,8 @@ class _DashboardData {
       membersKnown: billKnown,
       // Kas = iuran + transaksi; kalau salah satu gagal, angkanya bukan nol
       // yang sebenarnya melainkan nol yang tidak diketahui.
-      cashKnown: r[5].ok && r[6].ok,
+      cashKnown: money && r[5].ok && r[6].ok,
+      moneyLocked: !money,
     );
   }
 }
@@ -437,13 +455,17 @@ class _MainColumn extends StatelessWidget {
               ),
               StatTile(
                 label: 'Iuran',
-                value: fmtMoney(d.income),
+                // Angka uang tidak ditampilkan untuk tamu: bukan karena
+                // gagal dimuat, tapi karena memang tidak boleh dibaca.
+                value: d.moneyLocked ? '—' : fmtMoney(d.income),
                 color: AppThemes.money(context),
                 // Lunas dihitung dari daftar peserta turnamen aktif. Kalau
                 // sumbernya gagal, angkanya tidak bermakna — jangan diklaim.
-                hint: (d.paymentsKnown && d.membersKnown)
-                    ? '${d.unpaid.isEmpty ? 'semua' : '${d.unpaid.length} belum'} lunas'
-                    : 'data belum lengkap',
+                hint: d.moneyLocked
+                    ? 'masuk untuk lihat'
+                    : (d.paymentsKnown && d.membersKnown)
+                        ? '${d.unpaid.isEmpty ? 'semua' : '${d.unpaid.length} belum'} lunas'
+                        : 'data belum lengkap',
               ),
             ],
           ),
@@ -452,7 +474,9 @@ class _MainColumn extends StatelessWidget {
         _In(
           anim: anim,
           begin: 0.14,
-          child: _CashBlock(cash: d.cash, known: d.cashKnown, onChanged: onChanged),
+          child: d.moneyLocked
+              ? _LockedCash(onChanged: onChanged)
+              : _CashBlock(cash: d.cash, known: d.cashKnown, onChanged: onChanged),
         ),
         if (Auth.canWrite)
           _In(
@@ -1161,6 +1185,51 @@ class _ResultLine extends StatelessWidget {
   }
 }
 
+/// Pengganti blok kas untuk tamu.
+///
+/// Menampilkan "Rp 0" akan menjadi kebohongan: angkanya bukan nol, hanya
+/// tidak boleh dibaca tanpa masuk. Jadi yang ditampilkan adalah alasannya
+/// plus satu tombol untuk masuk.
+class _LockedCash extends StatelessWidget {
+  const _LockedCash({required this.onChanged});
+
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionTitle('Kas bulan ini'),
+        Panel(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Row(
+            children: [
+              Icon(Icons.lock_outline, size: 18, color: t.colorScheme.mutedForeground),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Kas dan iuran hanya untuk anggota klub. Masuk untuk melihat.',
+                  style: t.textTheme.small,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ShadButton.outline(
+                height: 36,
+                onPressed: () async {
+                  if (await openLogin(context)) await onChanged();
+                },
+                child: const Text('Masuk'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Ringkasan kas bulan ini. Ketuk untuk membuka buku kas lengkap.
 class _CashBlock extends StatelessWidget {
   const _CashBlock({required this.cash, required this.known, required this.onChanged});
@@ -1245,10 +1314,15 @@ class _RailData {
   final List<Booking> bookings;
 
   static Future<_RailData> load() async {
+    // Sewa lapangan memuat biaya, jadi termasuk data uang: tamu tidak
+    // memintanya ke server sama sekali.
+    final money = Auth.signedIn;
     final r = await Future.wait<Soft<Object?>>([
       soft('Pencetak gol', ScorerRow.top, fallback: const <ScorerRow>[]),
       soft('Klasemen tim', Team.standings, fallback: const <Standing>[]),
-      soft('Sewa lapangan', Booking.upcoming, fallback: const <Booking>[]),
+      soft('Sewa lapangan',
+          () => money ? Booking.upcoming() : Future.value(const <Booking>[]),
+          fallback: const <Booking>[]),
     ]);
     settle(r);
     return _RailData(

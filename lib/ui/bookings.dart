@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
+import 'login_gate.dart';
 import 'forms.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -18,10 +19,35 @@ class BookingsPage extends StatefulWidget {
 class _BookingsPageState extends State<BookingsPage> {
   late Future<List<Booking>> _future;
 
+  /// Sewa lapangan memuat biaya, jadi termasuk data uang: tamu ditolak
+  /// server, dan muatan baru dibuat setelah ada sesi.
+  bool _loaded = false;
+
   @override
   void initState() {
     super.initState();
+    Auth.session.addListener(_onAuth);
+    _ensureLoaded();
+  }
+
+  void _ensureLoaded() {
+    if (!Auth.signedIn || _loaded) return;
+    _loaded = true;
     _future = Booking.all();
+  }
+
+  void _onAuth() {
+    if (!mounted) return;
+    setState(() {
+      _loaded = false;
+      _ensureLoaded();
+    });
+  }
+
+  @override
+  void dispose() {
+    Auth.session.removeListener(_onAuth);
+    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -32,6 +58,7 @@ class _BookingsPageState extends State<BookingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!Auth.signedIn) return const LockedMoney(title: 'Sewa lapangan');
     return PageScaffold(
       title: 'Sewa lapangan',
       subtitle: 'Sewa lapangan & biaya',

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { rejectSql, toPositional } from './_guard.js';
 import { APP_WEB_TABLES, APP_WEB_VIEWS } from '../scripts/_grants.mjs';
-import { reads, writes, paramsFor } from '../scripts/_app-queries.mjs';
+import { reads, writes, paramsFor, MONEY_READS } from '../scripts/_app-queries.mjs';
 
 // Query yang benar-benar dikirim aplikasi ada di scripts/_app-queries.mjs
 // (dipakai juga oleh scripts/e2e-check.mjs). Tujuannya menangkap filter yang
@@ -70,13 +70,14 @@ test('setiap tabel/view aplikasi punya izin app_web', () => {
   }
 });
 
-// Mode publik: tamu (tanpa token) boleh membaca data klub, tetapi tidak boleh
-// menulis dan tidak boleh melihat daftar pengguna.
+// Mode publik: tamu (tanpa token) boleh membaca data PERTANDINGAN, tetapi
+// tidak boleh menulis, tidak boleh melihat daftar pengguna, dan tidak boleh
+// membaca uang klub (kas, iuran, biaya sewa).
 test('tamu hanya boleh membaca data klub', () => {
   const guest = { r: 'public' };
   for (const [name, sql] of Object.entries(reads)) {
-    if (name === 'users') {
-      assert.notEqual(rejectSql(sql, guest), null, 'baca users harus ditolak');
+    if (name === 'users' || MONEY_READS.has(name)) {
+      assert.notEqual(rejectSql(sql, guest), null, `baca ${name} harus ditolak`);
       continue;
     }
     assert.equal(rejectSql(sql, guest), null, `baca ${name}`);

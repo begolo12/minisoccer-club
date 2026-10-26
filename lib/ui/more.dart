@@ -38,6 +38,7 @@ class _Counts {
     required this.news,
     required this.lastNews,
     required this.failures,
+    this.moneyLocked = false,
   });
 
   final int active;
@@ -51,17 +52,29 @@ class _Counts {
   final int news;
   final Announcement? lastNews;
 
+  /// True kalau pengguna belum masuk. Kas, iuran, dan sewa lapangan tidak
+  /// diminta ke server (server menolak tamu), dan subjudulnya menyebut
+  /// "masuk untuk melihat" alih-alih menampilkan angka nol yang menyesatkan.
+  final bool moneyLocked;
+
   /// Sumber yang gagal dimuat. Subjudul baris sudah jatuh ke teks statis saat
   /// angka tidak tersedia; daftar ini hanya memberi tahu *apa* yang gagal.
   final List<String> failures;
 
   static Future<_Counts> load() async {
     final period = periodNow();
+    final money = Auth.signedIn;
     final r = await Future.wait<Soft<Object?>>([
       soft('Anggota', Member.all, fallback: const <Member>[]),
-      soft('Sewa lapangan', Booking.upcoming, fallback: const <Booking>[]),
-      soft('Iuran bulan ini', () => Payment.inMonth(DateTime.now()), fallback: const <Payment>[]),
-      soft('Kas bulan ini', () => Transaction.all(period: period), fallback: const <Transaction>[]),
+      soft('Sewa lapangan',
+          () => money ? Booking.upcoming() : Future.value(const <Booking>[]),
+          fallback: const <Booking>[]),
+      soft('Iuran bulan ini',
+          () => money ? Payment.inMonth(DateTime.now()) : Future.value(const <Payment>[]),
+          fallback: const <Payment>[]),
+      soft('Kas bulan ini',
+          () => money ? Transaction.all(period: period) : Future.value(const <Transaction>[]),
+          fallback: const <Transaction>[]),
       soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
       soft('Rekap laga', Match.stats, fallback: const [0, 0, 0, 0, 0]),
       soft('Pengumuman', Announcement.all, fallback: const <Announcement>[]),
@@ -99,7 +112,7 @@ class _Counts {
     activeTour ??= tours.isEmpty ? null : tours.first;
 
     var unpaid = 0;
-    if (activeTour != null) {
+    if (activeTour != null && money) {
       final b = await soft('Iuran turnamen', () => Payment.bill(activeTour!.id),
           fallback: const <DuesRow>[]);
       failures.addAll(settle([b]));
@@ -118,6 +131,7 @@ class _Counts {
       news: news.length,
       lastNews: news.isEmpty ? null : news.first,
       failures: failures,
+      moneyLocked: !money,
     );
   }
 }
@@ -257,16 +271,18 @@ class _MorePageState extends State<MorePage> {
               _Tile(
                 icon: Icons.stadium_outlined,
                 title: 'Sewa lapangan',
-                subtitle: c?.nextBooking == null
-                    ? 'Belum ada jadwal sewa'
-                    : 'Berikutnya ${fmtShortDate(c!.nextBooking!.startsAt)} '
-                        '${fmtTime(c.nextBooking!.startsAt)}',
+                subtitle: c?.moneyLocked == true
+                    ? 'Masuk untuk melihat jadwal & biaya'
+                    : c?.nextBooking == null
+                        ? 'Belum ada jadwal sewa'
+                        : 'Berikutnya ${fmtShortDate(c!.nextBooking!.startsAt)} '
+                            '${fmtTime(c.nextBooking!.startsAt)}',
                 onTap: () => _open(context, const BookingsPage()),
               ),
               _Tile(
                 icon: Icons.account_balance_wallet_outlined,
                 title: 'Kas klub',
-                subtitle: c == null
+                subtitle: c == null || c.moneyLocked
                     ? 'Pemasukan, pengeluaran & saldo'
                     : 'Saldo ${fmtShortMoney(c.saldo)} bulan ini'
                         '${c.saldo < 0 ? ' • defisit' : ''}',

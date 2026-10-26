@@ -7,6 +7,26 @@
 //   - scripts/e2e-check.mjs      → menjalankan query yang sama ke server
 //     sungguhan untuk tiap role, jadi schema yang kurang kolom atau izin yang
 //     belum diberikan ketahuan sebelum dilihat pengguna.
+/// Query baca yang menyentuh UANG: kas, iuran, biaya sewa, dan patungan.
+///
+/// Tamu (tanpa sesi) TIDAK boleh membacanya — server menolaknya di
+/// `api/_guard.js`. Daftar ini dipakai `scripts/e2e-check.mjs` untuk
+/// membuktikan penolakan itu benar-benar terjadi per query, bukan hanya
+/// untuk satu contoh.
+export const MONEY_READS = new Set([
+  'payments',
+  'paymentsInMonth',
+  'duesBill',
+  'paymentExists',
+  'paymentsForMember',
+  'unpaidForMember',
+  'attendanceForBooking',
+  'attendanceForMember',
+  'transactions',
+  'bookings',
+  'bookingsWithCash',
+]);
+
 export const reads = {
   members: 'SELECT * FROM members WHERE active ORDER BY name',
   membersAll: 'SELECT * FROM members  ORDER BY name',

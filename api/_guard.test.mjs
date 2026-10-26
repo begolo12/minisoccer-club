@@ -107,3 +107,56 @@ test('parameter yang sama dipakai berulang memakai satu posisi', () => {
   assert.equal(r.text, 'SELECT * FROM t WHERE a=$1 OR b=$1');
   assert.deepEqual(r.values, [1]);
 });
+
+// Uang klub tidak boleh terbaca tanpa masuk.
+//
+// Sebelum aturan ini, siapa pun yang tahu alamat aplikasinya bisa membaca
+// siapa belum bayar iuran, saldo kas, dan biaya sewa lapangan lewat satu
+// `SELECT *` — tanpa akun, tanpa jejak.
+test('tamu tidak bisa membaca kas, iuran, dan sewa lapangan', () => {
+  const guest = { r: 'public' };
+  const cases = [
+    'SELECT * FROM payments',
+    'SELECT * FROM transactions',
+    'SELECT * FROM bookings',
+    'SELECT * FROM booking_attendance',
+    'SELECT * FROM settings',
+    // Lewat join/subquery juga.
+    'SELECT m.name FROM members m JOIN payments p ON p.member_id = m.id',
+    'SELECT sum(amount) FROM transactions WHERE kind = \'in\'',
+    'WITH x AS (SELECT cost FROM bookings) SELECT * FROM x',
+  ];
+  for (const sql of cases) {
+    const blocked = rejectSql(sql, guest);
+    assert.notEqual(blocked, null, `harus ditolak: ${sql}`);
+    assert.match(blocked, /Masuk dulu/);
+  }
+});
+
+test('tamu tetap boleh melihat data pertandingan', () => {
+  const guest = { r: 'public' };
+  for (const sql of [
+    'SELECT id, name, position, jersey FROM members',
+    'SELECT * FROM teams',
+    'SELECT * FROM tournaments',
+    'SELECT * FROM matches',
+    'SELECT * FROM match_events',
+    'SELECT * FROM announcements',
+    'SELECT * FROM v_team_standings',
+  ]) {
+    assert.equal(rejectSql(sql, guest), null, `harus boleh: ${sql}`);
+  }
+});
+
+test('anggota dan bendahara tetap bisa membaca kas & iuran', () => {
+  for (const role of ['member', 'treasurer', 'admin']) {
+    const s = { r: role };
+    for (const sql of [
+      'SELECT * FROM payments',
+      'SELECT * FROM transactions',
+      'SELECT * FROM bookings',
+    ]) {
+      assert.equal(rejectSql(sql, s), null, `${role} harus boleh: ${sql}`);
+    }
+  }
+});

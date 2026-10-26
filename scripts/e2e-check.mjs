@@ -15,7 +15,7 @@
 //
 // Butuh akun admin (env ADMIN_USER / ADMIN_PASS). Kalau DB masih kosong
 // (`bootstrap: true`), akun admin itu dibuat otomatis.
-import { reads, writes, paramsFor } from './_app-queries.mjs';
+import { reads, writes, paramsFor, MONEY_READS } from './_app-queries.mjs';
 import { adminCredentials } from './_admin-auth.mjs';
 
 const base = (process.env.BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
@@ -161,7 +161,7 @@ console.log('\n-- hak baca per role --');
 const guestReads = await (async () => {
   let bad = 0;
   for (const [name, sql] of Object.entries(reads)) {
-    if (name === 'users') continue;
+    if (name === 'users' || MONEY_READS.has(name)) continue;
     const res = await sqlAs(null, sql, paramsFor(sql));
     if (res.code !== 200) {
       bad++;
@@ -170,7 +170,26 @@ const guestReads = await (async () => {
   }
   return bad;
 })();
-check('tamu bisa membaca semua data klub', guestReads === 0, `${guestReads} gagal`);
+check('tamu bisa membaca data pertandingan', guestReads === 0, `${guestReads} gagal`);
+
+// Uang klub TIDAK boleh terbaca tanpa sesi. Diperiksa per query, bukan satu
+// contoh: satu query yang lolos sudah cukup untuk membocorkan siapa belum
+// bayar iuran atau berapa saldo kas.
+let moneyLeaked = 0;
+for (const name of MONEY_READS) {
+  const sql = reads[name];
+  if (!sql) continue;
+  const res = await sqlAs(null, sql, paramsFor(sql));
+  if (res.code !== 403) {
+    moneyLeaked++;
+    check(`tamu baca ${name}`, false, `${res.code} ${res.json.error ?? 'LOLOS'}`);
+  }
+}
+check(
+  `tamu ditolak untuk ${MONEY_READS.size} query uang (kas, iuran, sewa)`,
+  moneyLeaked === 0,
+  `${moneyLeaked} lolos`,
+);
 
 r = await sqlAs(null, reads.users);
 check('tamu tidak bisa melihat daftar pengguna', r.code === 403, `code ${r.code}`);

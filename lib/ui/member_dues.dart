@@ -4,6 +4,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
+import 'login_gate.dart';
 import 'forms.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -29,10 +30,34 @@ class MemberDuesPage extends StatefulWidget {
 class _MemberDuesPageState extends State<MemberDuesPage> {
   late Future<_DuesHistory> _future;
 
+  /// Riwayat iuran satu orang = data uang; tamu tidak boleh membacanya.
+  bool _loaded = false;
+
   @override
   void initState() {
     super.initState();
+    Auth.session.addListener(_onAuth);
+    _ensureLoaded();
+  }
+
+  void _ensureLoaded() {
+    if (!Auth.signedIn || _loaded) return;
+    _loaded = true;
     _future = _load();
+  }
+
+  void _onAuth() {
+    if (!mounted) return;
+    setState(() {
+      _loaded = false;
+      _ensureLoaded();
+    });
+  }
+
+  @override
+  void dispose() {
+    Auth.session.removeListener(_onAuth);
+    super.dispose();
   }
 
   Future<_DuesHistory> _load() async {
@@ -69,6 +94,7 @@ class _MemberDuesPageState extends State<MemberDuesPage> {
     final t = ShadTheme.of(context);
     final m = widget.member;
 
+    if (!Auth.signedIn) return const LockedMoney(title: 'Riwayat iuran');
     return PageScaffold(
       title: m.name,
       subtitle: '${m.position}${m.phone != null ? ' • ${m.phone}' : ''}'

@@ -6,6 +6,7 @@ import '../data/auth.dart';
 import '../data/models.dart';
 import 'export.dart';
 import 'fmt.dart';
+import 'login_gate.dart';
 import 'forms.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -76,10 +77,35 @@ class _FinancePageState extends State<FinancePage> {
   String? _period = periodNow();
   late Future<_FinanceData> _future;
 
+  /// Buku kas hanya untuk yang sudah masuk (server menolak tamu), jadi
+  /// muatannya dibuat saat ada sesi — lihat catatan di `payments.dart`.
+  bool _loaded = false;
+
   @override
   void initState() {
     super.initState();
+    Auth.session.addListener(_onAuth);
+    _ensureLoaded();
+  }
+
+  void _ensureLoaded() {
+    if (!Auth.signedIn || _loaded) return;
+    _loaded = true;
     _future = _FinanceData.load(_period);
+  }
+
+  void _onAuth() {
+    if (!mounted) return;
+    setState(() {
+      _loaded = false;
+      _ensureLoaded();
+    });
+  }
+
+  @override
+  void dispose() {
+    Auth.session.removeListener(_onAuth);
+    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -148,6 +174,7 @@ class _FinancePageState extends State<FinancePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!Auth.signedIn) return const LockedMoney(title: 'Kas klub');
     return PageScaffold(
       title: 'Kas klub',
       subtitle: _periodName(_period),

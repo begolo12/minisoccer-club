@@ -27,6 +27,7 @@
     "check:register": "node scripts/register-browser-check.mjs",
     "check:users": "node scripts/users-panel-browser-check.mjs",
     "check:member": "node scripts/member-view-browser-check.mjs",
+    "check:guest": "node scripts/guest-lock-browser-check.mjs",
     "check:visual": "node scripts/_visual-sweep.mjs",
     "sw:manifest": "node scripts/gen-sw-manifest.mjs",
     "preview": "node design/mock/server.mjs",

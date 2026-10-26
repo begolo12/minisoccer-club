@@ -146,6 +146,7 @@ di web).
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `npm run check:visual` | Sapuan visual di **3 ukuran layar** (320×640, 390×844, 1440×900): setiap tab & halaman terbuka, tidak bisa digeser menyamping, tap target ≥ 40px, tidak ada error konsol. `ONLY=hp npm run check:visual` untuk satu ukuran saja |
 | `npm run check:secrets` | Memindai file terlacak **dan** seluruh riwayat git untuk kredensial yang lolos (connection string, token, private key). Gagal keras kalau ada di pohon kerja |
+| `npm run check:guest` | Di **Chrome sungguhan** tanpa akun: server menolak 403 untuk kas/iuran/sewa/patungan/settings, data pertandingan tetap 200; layar Iuran, Kas, dan Sewa menampilkan "Khusus anggota klub" (bukan Rp 0 atau "gagal dimuat"); beranda tidak menampilkan angka kas; setelah masuk sebagai anggota halaman yang sama terbuka |
 | `npm run check:member` | Di **Chrome sungguhan** sebagai akun anggota: menu Lainnya tanpa panel akun admin, Pengaturan tanpa bagian teknis (server, tes koneksi, antrean offline, tautan pendaftaran), tidak ada tombol tulis di tab mana pun, beranda tidak menyuruh tugas pengurus, dan server tetap menolak daftar akun (403) |
 | `npm run check:users` | Di **Chrome sungguhan**: admin membuka **Akun & akses** → daftar memuat ID & status password → panel akun memuat tautan anggota, status masuk, tombol setel password → password baru disalin dari tombol **Salin** dan **benar-benar dipakai masuk** oleh akun itu (akun percobaan, dihapus lagi di akhir) |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
@@ -439,7 +440,8 @@ untuk rilis.
 | Login | Password di-hash bcrypt oleh Postgres (`pgcrypto`), 6–200 karakter, username maks 40 |
 | Sesi | Token HMAC-SHA256, berlaku 12 jam, ditandatangani `AUTH_SECRET`; token ditolak → app otomatis kembali ke layar masuk |
 | Kunci akun | 5× salah password → terkunci 10 menit; maks 30 percobaan / 5 menit per IP |
-| Jalur data | Semua query lewat `/api/sql`. **Tamu tanpa token boleh membaca** (mode publik read-only); menulis wajib `Authorization: Bearer <token>` |
+| Jalur data | Semua query lewat `/api/sql`. Menulis wajib `Authorization: Bearer <token>` |
+| Mode publik | Tanpa akun hanya **data pertandingan**: anggota (nama/posisi/nomor punggung), tim, turnamen, laga, pencetak gol, pengumuman. **Uang klub tertutup**: `payments`, `transactions`, `bookings`, `booking_attendance`, `settings` ditolak 403 untuk tamu (`GUEST_READ_DENY` di `api/_guard.js`) — siapa belum bayar iuran dan berapa saldo kas bukan hal yang boleh dibaca orang yang cuma punya tautannya |
 | Role DB | `app_web`: tanpa DDL, tanpa akses `password_hash` (dibuat `npm run db:harden`) |
 | Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `public`/`member` read-only dan tidak bisa membaca daftar pengguna |
 | Privasi anggota | Nomor HP & alamat tidak untuk tamu; alamat juga tidak untuk role anggota. Dijaga dua lapis: query yang menyebut kolom itu **ditolak**, dan hasil `SELECT *` **disaring** (`api/_privacy.js`). Cache offline dibaca per role, jadi hasil yang dibaca admin tidak bisa dibaca tamu dari perangkat |

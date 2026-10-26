@@ -111,7 +111,11 @@ class _MembersPageState extends State<MembersPage> {
       // Subjudul harus jujur: baris membuka riwayat iuran, ikon pensil yang
       // membuka form edit. Dulu tertulis "ketuk untuk edit" padahal ketukan
       // pada baris membuka halaman lain.
-      subtitle: '${_activeOnly ? "Aktif" : "Semua"} • ketuk untuk riwayat iuran',
+      // Riwayat iuran hanya untuk yang sudah masuk, jadi jangan menjanjikan
+      // ketukan itu kepada tamu.
+      subtitle: Auth.signedIn
+          ? '${_activeOnly ? "Aktif" : "Semua"} • ketuk untuk riwayat iuran'
+          : '${_activeOnly ? "Aktif" : "Semua"} • daftar anggota klub',
       actions: [
         // Tautan pendaftaran dibuka dari sini karena di halaman inilah admin
         // biasanya sedang menambah orang — tidak perlu masuk Pengaturan.

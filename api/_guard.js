@@ -16,6 +16,31 @@ const MAX_LEN = 20_000;
 // Tabel yang tidak boleh ditulis lewat jalur SQL umum.
 const WRITE_DENY = new Set(['users', 'pg_catalog', 'information_schema']);
 
+// Tabel yang TIDAK boleh dibaca tanpa masuk (role `public`).
+//
+// Aplikasi ini memang terbuka tanpa login: jadwal, klasemen, dan pengumuman
+// adalah hal yang wajar dilihat siapa pun yang punya tautannya. Tapi uang
+// klub bukan: siapa belum bayar iuran, berapa saldo kas, berapa biaya sewa
+// lapangan, dan siapa menanggung patungan. Sebelum ini, siapa pun yang tahu
+// alamat aplikasinya bisa membaca semuanya lewat satu `SELECT *` — tanpa
+// akun, tanpa jejak.
+//
+// Yang tetap terbuka untuk tamu: anggota (nama, posisi, nomor punggung —
+// nomor HP dan alamat tetap disaring `_privacy.js`), tim, turnamen, laga,
+// pencetak gol, dan pengumuman. Itu data pertandingan, bukan pembukuan.
+//
+// Ditolak berdasarkan PENYEBUTAN nama tabel, bukan hasil parsing FROM/JOIN:
+// `extract(epoch from x)` dan subquery membuat parsing rapuh, dan tabel ini
+// tidak pernah muncul sebagai nama kolom — jadi penyebutan sederhana sudah
+// cukup dan jauh lebih sulit dilewati.
+const GUEST_READ_DENY = new Set([
+  'payments',
+  'transactions',
+  'bookings',
+  'booking_attendance',
+  'settings',
+]);
+
 const DANGEROUS =
   /\b(pg_[a-z_]+|information_schema|dblink|lo_import|lo_export|set_config|current_setting|grant|revoke|alter|create|drop|truncate|comment\s+on|copy|vacuum|analyze|listen|notify|security\s+definer|execute|prepare|deallocate|call|reset)\b/i;
 
@@ -176,6 +201,14 @@ export function rejectSql(text, session) {
   if (targets.length === 0) {
     if (/\busers\b/i.test(scan) && session?.r !== 'admin') {
       return 'Hanya admin yang bisa melihat pengguna';
+    }
+    // Uang klub hanya untuk yang sudah masuk — termasuk anggota biasa.
+    if (session?.r === 'public') {
+      for (const table of GUEST_READ_DENY) {
+        if (new RegExp(`\\b${table}\\b`, 'i').test(scan)) {
+          return 'Masuk dulu untuk melihat kas, iuran, dan sewa lapangan';
+        }
+      }
     }
     // Daftar pengguna juga tidak untuk tamu, termasuk lewat view/join.
     if (session?.r === 'public' && /\busers\b/i.test(scan)) {

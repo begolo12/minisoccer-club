@@ -6,6 +6,7 @@ import '../data/auth.dart';
 import '../data/models.dart';
 import 'export.dart';
 import 'fmt.dart';
+import 'login_gate.dart';
 import 'forms.dart';
 import 'tournament.dart';
 import 'theme.dart';
@@ -109,10 +110,39 @@ class _PaymentsPageState extends State<PaymentsPage> {
   int? _tournamentId;
   late Future<_PayData> _future;
 
+  /// Sudah pernah memuat data untuk sesi yang sedang aktif.
+  ///
+  /// Iuran adalah data uang: tamu tidak boleh membacanya (server menolak),
+  /// jadi muatan baru dibuat setelah ada sesi. Tanpa penanda ini, halaman
+  /// yang dibuka dalam mode publik akan menyimpan kegagalan 403 sebagai
+  /// hasil dan tetap kosong walau pengguna kemudian masuk.
+  bool _loaded = false;
+
   @override
   void initState() {
     super.initState();
+    Auth.session.addListener(_onAuth);
+    _ensureLoaded();
+  }
+
+  void _ensureLoaded() {
+    if (!Auth.signedIn || _loaded) return;
+    _loaded = true;
     _future = _PayData.load(_tournamentId);
+  }
+
+  void _onAuth() {
+    if (!mounted) return;
+    setState(() {
+      _loaded = false;
+      _ensureLoaded();
+    });
+  }
+
+  @override
+  void dispose() {
+    Auth.session.removeListener(_onAuth);
+    super.dispose();
   }
 
   Future<void> _reload() async {
@@ -163,6 +193,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!Auth.signedIn) return const LockedMoney(title: 'Iuran');
     return PageScaffold(
       title: 'Iuran',
       subtitle: 'Per turnamen',
