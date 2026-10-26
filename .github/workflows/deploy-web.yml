@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Repo ini publik: satu kredensial yang lolos ke sebuah commit langsung
+      # bisa dipakai siapa pun, dan riwayat git tetap menyimpannya walau
+      # filenya dihapus kemudian. Gagal di sini lebih murah daripada rotasi.
+      - run: node scripts/secret-scan.mjs
+
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -25,10 +30,6 @@ jobs:
         with:
           node-version: "22"
 
-      # Repo ini publik: satu kredensial yang lolos ke sebuah commit langsung
-      # bisa dipakai siapa pun, dan riwayat git tetap menyimpannya walau
-      # filenya dihapus kemudian. Gagal di sini lebih murah daripada rotasi.
-      - run: node scripts/secret-scan.mjs
       - run: node --test "api/*.test.mjs"
       - run: flutter pub get
       - run: flutter analyze
