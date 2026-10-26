@@ -191,6 +191,32 @@ class _PaymentsPageState extends State<PaymentsPage> {
     );
   }
 
+  /// Pengingat untuk satu orang, siap tempel di chat WhatsApp-nya.
+  ///
+  /// `ponytail:` yang disalin adalah teksnya, bukan tautan `wa.me` — aplikasi
+  /// belum memakai `url_launcher` dan menambah dependensi hanya untuk membuka
+  /// chat tidak sepadan. Kalau nanti perlu langsung membuka WhatsApp, tambahkan
+  /// `url_launcher` lalu ganti pemanggilan ini.
+  Future<void> _copyOne(_PayData d, DuesRow r) async {
+    final t = d.selected;
+    if (t == null) return;
+    final kurang = t.entryFee - r.paidAmount;
+    final buf = StringBuffer()
+      ..writeln('Halo ${r.member.name},')
+      ..writeln()
+      ..writeln('Iuran ${t.name} belum lunas.');
+    if (kurang > 0) {
+      buf
+        ..writeln('Kurang: ${fmtMoney(kurang)}')
+        ..writeln('Total iuran: ${fmtMoney(t.entryFee)}');
+    }
+    buf
+      ..writeln()
+      ..writeln('Makasih 🙏');
+    if (!mounted) return;
+    await copyText(context, buf.toString(), message: 'Pengingat disalin');
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!Auth.signedIn) return const LockedMoney(title: 'Iuran');
@@ -409,19 +435,37 @@ class _PaymentsPageState extends State<PaymentsPage> {
                     RowItem(
                       title: r.member.name,
                       subtitle: r.member.position,
-                      trailing: Auth.canWrite
-                          ? ShadButton.outline(
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Pengingat per orang. Aplikasi belum punya
+                          // `url_launcher`, jadi yang disalin adalah pesannya —
+                          // tempel di chat WhatsApp orang itu. `ponytail:` kalau
+                          // nanti butuh langsung membuka chat, tambahkan
+                          // url_launcher dan ganti ini jadi wa.me.
+                          iconAction(
+                            context,
+                            Icons.chat_outlined,
+                            () => _copyOne(d, r),
+                            tooltip: 'Salin pengingat untuk ${r.member.name}',
+                          ),
+                          const SizedBox(width: 6),
+                          if (Auth.canWrite)
+                            ShadButton.outline(
                               size: ShadButtonSize.sm,
                               onPressed: () => _record(d, memberId: r.member.id),
                               leading: const Icon(Icons.add, size: 14),
                               child: const Text('Catat'),
                             )
-                          : Text(
+                          else
+                            Text(
                               selected.entryFee > 0 ? fmtMoney(selected.entryFee) : 'Belum bayar',
                               style: ShadTheme.of(context).textTheme.table.copyWith(
                                     color: AppThemes.bad(context),
                                   ),
                             ),
+                        ],
+                      ),
                     ),
                 ],
                 const SectionTitle('Riwayat pembayaran'),

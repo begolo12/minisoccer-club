@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MissingParam, normalize, rejectSql, toPositional } from './_guard.js';
+import { MissingParam, normalize, rejectSql, toPositional, writeTarget } from './_guard.js';
 
 const admin = { r: 'admin' };
 const treasurer = { r: 'treasurer' };
@@ -159,4 +159,48 @@ test('anggota dan bendahara tetap bisa membaca kas & iuran', () => {
       assert.equal(rejectSql(sql, s), null, `${role} harus boleh: ${sql}`);
     }
   }
+});
+
+// ---- jejak audit ----
+
+test('writeTarget menebak tabel dan operasi untuk baris audit', () => {
+  assert.deepEqual(
+    writeTarget("INSERT INTO transactions (kind, amount) VALUES ('income', 1) RETURNING id"),
+    { table: 'transactions', op: 'insert' },
+  );
+  assert.deepEqual(writeTarget('UPDATE payments SET amount = 0 WHERE id = 1'), {
+    table: 'payments',
+    op: 'update',
+  });
+  assert.deepEqual(writeTarget('DELETE FROM bookings WHERE id = 1'), {
+    table: 'bookings',
+    op: 'delete',
+  });
+  // `ON CONFLICT DO UPDATE` bukan UPDATE bertarget.
+  assert.deepEqual(
+    writeTarget("INSERT INTO teams (name) VALUES ('A') ON CONFLICT (name) DO UPDATE SET name = 'A'"),
+    { table: 'teams', op: 'insert' },
+  );
+  // Bukan tulis: tidak ada yang perlu dicatat.
+  assert.equal(writeTarget('SELECT * FROM members'), null);
+});
+
+test('kata "delete" di dalam teks tidak salah dibaca sebagai operasi', () => {
+  // Catatan transaksi yang berisi kata "delete" dulu bisa membuat baris audit
+  // tercatat sebagai DELETE padahal operasinya INSERT.
+  assert.deepEqual(
+    writeTarget("INSERT INTO transactions (kind, amount, note) VALUES ('income', 1, 'delete sewa') RETURNING id"),
+    { table: 'transactions', op: 'insert' },
+  );
+});
+
+test('jejak audit tidak bisa ditulis atau dibaca lewat SQL klien', () => {
+  const admin = { r: 'admin' };
+  const treasurer = { r: 'treasurer' };
+  blocked("INSERT INTO audit_log (actor, role, tbl, op) VALUES ('x','admin','t','insert')");
+  blocked('DELETE FROM audit_log WHERE id = 1');
+  blocked('UPDATE audit_log SET actor = \'x\' WHERE id = 1');
+  // Hanya admin yang boleh membacanya.
+  blocked('SELECT * FROM audit_log', treasurer);
+  allowed('SELECT * FROM audit_log', admin);
 });

@@ -440,3 +440,77 @@ BEGIN
   END IF;
 END
 $$;
+
+-- =====================================================================
+-- Jejak audit (audit_log).
+--
+-- Kenapa: aplikasi ini mencatat uang klub, dan sampai sekarang tidak ada
+-- satu pun cara menjawab "siapa yang mengubah catatan kas ini?". Setiap
+-- baris `transactions`, `payments`, dan `booking_attendance` hanya punya
+-- `created_at` — tidak ada `created_by`, tidak ada `updated_at`, dan
+-- penghapusan tidak meninggalkan apa pun.
+--
+-- Yang dicatat: satu baris per TULISAN yang berhasil (INSERT/UPDATE/DELETE)
+-- lewat /api/sql, berisi siapa (username + role dari token), tabel apa,
+-- operasi apa, dan perkiraan id barisnya. Isi lengkap baris TIDAK disimpan:
+-- salinan data keuangan di tabel kedua akan basi dan bisa dibaca sebagai
+-- kebenaran, sementara yang dicari saat kas terlihat aneh hampir selalu
+-- "kapan dan oleh siapa", bukan "bagaimana bentuk barisnya dulu".
+--
+-- Ditulis dari aplikasi (api/sql.js), bukan trigger Postgres: trigger butuh
+-- session state untuk tahu siapa yang menulis, dan koneksi Neon HTTP tidak
+-- punya itu. Konsekuensinya tulis langsung ke DB (psql, skrip admin) tidak
+-- tercatat di sini — itu memang di luar jangkauan aplikasi.
+--
+-- Tidak ada FOREIGN KEY ke `users`: menghapus akun tidak boleh menghapus
+-- riwayat perbuatannya. `actor` disimpan sebagai teks.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS audit_log (
+  id        BIGSERIAL PRIMARY KEY,
+  at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actor     TEXT NOT NULL,           -- username saat menulis ('tamu' untuk publik)
+  role      TEXT NOT NULL,           -- admin | treasurer | member | public
+  tbl       TEXT NOT NULL,           -- tabel yang ditulis
+  op        TEXT NOT NULL,           -- insert | update | delete
+  row_id    BIGINT,                  -- id baris, kalau RETURNING menyebutkannya
+  detail    TEXT                     -- ringkasan singkat (mis. jumlah baris)
+);
+
+-- Hampir semua pembacaan nanti berbentuk "apa yang terjadi belakangan ini",
+-- dan pembersihan berkala memakai `at`.
+CREATE INDEX IF NOT EXISTS idx_audit_at    ON audit_log(at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_table ON audit_log(tbl, at DESC);
+
+-- Jejak audit hanya untuk admin, dan hanya dibaca (tidak ada UPDATE/DELETE
+-- lewat /api/sql — lihat WRITE_DENY di api/_guard.js). `app_web` perlu INSERT
+-- karena dialah yang menulis catatannya.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_web') THEN
+    GRANT SELECT, INSERT ON audit_log TO app_web;
+    GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO app_web;
+  END IF;
+END
+$$;
+
+-- =====================================================================
+-- Penghitung percobaan login per IP.
+--
+-- Sebelumnya batas ini hidup di `Map` memori instance Vercel: tiap instance
+-- punya hitungan sendiri dan instance baru mulai dari nol, jadi batas "30
+-- percobaan per 5 menit" sebenarnya jauh lebih longgar. Di sini satu baris per
+-- IP, diperbarui dengan `INSERT ... ON CONFLICT DO UPDATE` yang atomik.
+--
+-- Baris lama dibersihkan `api/auth.js` sesekali (2% permintaan); tabel ini
+-- hanya perlu memuat IP yang sedang dalam jendela.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS auth_throttle (
+  ip       TEXT PRIMARY KEY,
+  hits     INT NOT NULL DEFAULT 0,
+  reset_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_throttle_reset ON auth_throttle(reset_at);
+
+-- Ditulis HANYA lewat /api/auth (koneksi owner). `app_web` sengaja tidak
+-- diberi izin apa pun: dari sisi aplikasi tabel ini tidak ada.

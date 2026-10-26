@@ -190,8 +190,8 @@ class _UsersPageState extends State<UsersPage> {
                         toast(ctx, 'Nama pengguna wajib diisi');
                         return;
                       }
-                      if (password.text.length < 6) {
-                        toast(ctx, 'Password minimal 6 karakter');
+                      if (password.text.length < 8) {
+                        toast(ctx, 'Password minimal 8 karakter');
                         return;
                       }
                       setLocal(() => saving = true);
@@ -219,7 +219,7 @@ class _UsersPageState extends State<UsersPage> {
               const SizedBox(height: 10),
               ShadInput(
                 controller: password,
-                placeholder: const Text('Password (min. 6 karakter)'),
+                placeholder: const Text('Password (min. 8 karakter)'),
                 obscureText: true,
               ),
               const SizedBox(height: 10),

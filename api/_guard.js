@@ -14,7 +14,12 @@ import { hiddenColumns, hiddenColumnMessage, mentionsHidden } from './_privacy.j
 const MAX_LEN = 20_000;
 
 // Tabel yang tidak boleh ditulis lewat jalur SQL umum.
-const WRITE_DENY = new Set(['users', 'pg_catalog', 'information_schema']);
+//
+// `audit_log` ada di sini karena jejak audit yang bisa dihapus oleh pihak yang
+// diaudit tidak membuktikan apa pun. Barisnya hanya ditulis `sql.js` sendiri
+// (lewat koneksi yang sama, tetapi bukan dari teks query klien), dan hanya
+// admin yang boleh membacanya.
+const WRITE_DENY = new Set(['users', 'pg_catalog', 'information_schema', 'audit_log']);
 
 // Tabel yang TIDAK boleh dibaca tanpa masuk (role `public`).
 //
@@ -139,6 +144,26 @@ function writeTargets(code) {
   return { targets, ambiguous: false };
 }
 
+/**
+ * Tabel dan operasi yang ditulis sebuah statement, atau null kalau bukan tulis.
+ *
+ * Dipakai `sql.js` untuk mencatat jejak audit (`audit_log`): "apa yang berubah"
+ * saja tidak cukup — yang dicari saat kas terlihat aneh adalah tabel mana, oleh
+ * siapa, dan dengan operasi apa. Parsing-nya memakai `writeTargets` yang sama
+ * dengan penjaga, jadi yang dicatat tidak bisa berbeda dari yang diizinkan.
+ */
+export function writeTarget(text) {
+  if (typeof text !== 'string') return null;
+  const code = normalize(text.trim().replace(/;\s*$/, ''));
+  const { targets } = writeTargets(code.replace(/\bdo\s+update\b/gi, 'do_update'));
+  const table = targets[0];
+  if (!table) return null;
+  // `code` sudah dinormalisasi: string literal dan komentar dibuang, jadi kata
+  // "delete" di dalam catatan transaksi tidak ikut terbaca sebagai operasi.
+  const op = /\b(insert|update|delete)\b/i.exec(code)?.[1]?.toLowerCase() ?? null;
+  return op ? { table, op } : null;
+}
+
 // Kolom data pribadi anggota, dipisah menurut tingkat akses.
 //
 //   * `address` (alamat tinggal) — untuk SEMUA orang kecuali admin dan
@@ -201,6 +226,10 @@ export function rejectSql(text, session) {
   if (targets.length === 0) {
     if (/\busers\b/i.test(scan) && session?.r !== 'admin') {
       return 'Hanya admin yang bisa melihat pengguna';
+    }
+    // Jejak audit menyebut nama orang dan pergerakan uang: admin saja.
+    if (/\baudit_log\b/i.test(scan) && session?.r !== 'admin') {
+      return 'Jejak audit hanya untuk admin';
     }
     // Uang klub hanya untuk yang sudah masuk — termasuk anggota biasa.
     if (session?.r === 'public') {

@@ -50,6 +50,9 @@ const EXPECTED = {
     'id', 'tournament_id', 'group_no', 'round', 'slot', 'home_team_id', 'away_team_id',
     'kickoff', 'score_home', 'score_away', 'status',
   ],
+  // Jejak audit: diisi server (`api/sql.js`), dibaca admin saja. Tanpa token
+  // setiap kolomnya dijawab 403 — lihat pengecualian di `checkColumn`.
+  audit_log: ['id', 'at', 'actor', 'role', 'tbl', 'op', 'row_id', 'detail'],
 };
 
 const EXPECTED_VIEWS = ['v_team_standings'];
@@ -58,6 +61,16 @@ const EXPECTED_VIEWS = ['v_team_standings'];
 // api/_privacy.js). Endpoint menjawab 403 untuk kolom-kolom ini — itu
 // jawaban yang benar, bukan schema yang kurang.
 const PRIVATE_COLUMNS = new Set(['phone', 'address']);
+
+// Tabel yang ditutup untuk tamu (lihat api/_guard.js): tanpa token dijawab 403.
+// Skrip ini jalan tanpa token, jadi 403 di sini adalah jawaban yang benar.
+const GUEST_ONLY_TABLES = new Set([
+  'transactions',
+  'payments',
+  'bookings',
+  'booking_attendance',
+  'settings',
+]);
 
 async function ask(sql) {
   const res = await fetch(`${base}/api/sql`, {
@@ -79,7 +92,13 @@ async function checkColumn(table, column) {
   // bukan schema yang kurang. `users` hanya untuk admin; `phone`/`address`
   // anggota hanya untuk admin/bendahara (lihat api/_privacy.js). Kolomnya
   // diperiksa lewat e2e-check yang punya token.
-  if (status === 403 && (table === 'users' || PRIVATE_COLUMNS.has(column))) return true;
+  if (status === 403 &&
+      (table === 'users' ||
+        table === 'audit_log' ||
+        GUEST_ONLY_TABLES.has(table) ||
+        PRIVATE_COLUMNS.has(column))) {
+    return true;
+  }
   if (status !== 200) {
     const msg = body?.error || `HTTP ${status}`;
     // Tabel tidak ada dan kolom tidak ada sama-sama 400 dari /api/sql.

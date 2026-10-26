@@ -13,7 +13,7 @@
 // juga dihapus dari hasil build.
 //
 //   node scripts/disable-flutter-sw.mjs [direktori-build]
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const root = process.argv[2] ?? 'build/web';
@@ -72,9 +72,17 @@ function tanpaServiceWorkerSettings(text) {
 const patched = tanpaServiceWorkerSettings(source);
 
 if (patched === source) {
-  throw new Error(
-    'Tidak menemukan `serviceWorkerSettings` di pemanggilan _flutter.loader.load — periksa versi Flutter.',
-  );
+  // Sudah pernah ditambal (mis. deploy dari CLI mengunggah build/web yang
+  // sudah lewat skrip ini, lalu Vercel menjalankannya lagi). Baru jadi masalah
+  // kalau stub Flutter masih ada: itu tanda bentuk bootstrap berubah.
+  const stub = await stat(join(root, 'flutter_service_worker.js')).catch(() => null);
+  if (stub) {
+    throw new Error(
+      'Tidak menemukan `serviceWorkerSettings` di pemanggilan _flutter.loader.load — periksa versi Flutter.',
+    );
+  }
+  console.log('service worker Flutter sudah dimatikan sebelumnya; sw.js aplikasi yang dipakai');
+  process.exit(0);
 }
 
 await writeFile(bootstrapPath, patched);

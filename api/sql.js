@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { bearer, verifyToken } from './_auth.js';
-import { MissingParam, rejectSql, toPositional } from './_guard.js';
+import { MissingParam, rejectSql, toPositional, writeTarget } from './_guard.js';
 import { hiddenColumns, scrubRows } from './_privacy.js';
 
 // POST /api/sql  { sql, params }
@@ -38,6 +38,44 @@ const sql = webUrl ? neon(webUrl) : null;
 // turnamen bisa panjang) tapi tetap dibatasi supaya body raksasa tidak
 // di-parse dan dikirim ke Neon sebelum ditolak `_guard` (20.000 karakter).
 const MAX_BODY = 128 * 1024;
+
+/**
+ * Catat satu tulisan ke `audit_log`.
+ *
+ * Sengaja TIDAK pernah melempar: kalau pencatatan gagal (tabel belum
+ * dimigrasi, koneksi putus), catatan kasnya sudah tersimpan dan pengguna tidak
+ * boleh melihat error karena hal yang bukan urusannya. Kegagalannya masuk log
+ * server saja.
+ *
+ * `row_id` diambil dari `RETURNING id` kalau ada — hampir semua tulis di app
+ * memakainya, jadi baris audit bisa ditautkan ke baris nyata tanpa menyimpan
+ * salinan isinya.
+ */
+async function logWrite({ text, viewer, result }) {
+  const target = writeTarget(text);
+  if (!target) return;
+  const first = result?.rows?.[0];
+  const rawId = first && typeof first === 'object' ? first.id : null;
+  // `Number(null)` = 0, jadi null harus dicek lebih dulu — kalau tidak, tulisan
+  // tanpa `RETURNING id` tercatat dengan row_id 0 (baris yang tidak ada).
+  const rowId = rawId == null ? null : Number(rawId);
+  try {
+    await sql(
+      `INSERT INTO audit_log (actor, role, tbl, op, row_id, detail)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        viewer.u ?? 'tamu',
+        viewer.r ?? 'public',
+        target.table,
+        target.op,
+        Number.isFinite(rowId) ? rowId : null,
+        result?.rowCount == null ? null : `${result.rowCount} baris`,
+      ],
+    );
+  } catch (e) {
+    console.error('[audit] gagal mencatat:', e.message);
+  }
+}
 
 export default async function handler(req, res) {
   res.setHeader('cache-control', 'no-store');
@@ -81,6 +119,10 @@ export default async function handler(req, res) {
   try {
     const { text: query, values } = toPositional(text, params);
     const result = await sql(query, values, { fullResults: true });
+    // Jejak audit. Ditulis SETELAH query berhasil, dan kegagalannya tidak
+    // pernah menggagalkan permintaan: pengguna tidak boleh kehilangan catatan
+    // kas hanya karena tabel audit sedang bermasalah.
+    await logWrite({ text, viewer, result });
     // Lapis kedua privasi: hasil query disaring sebelum keluar. Guard hanya
     // bisa menolak query yang MENYEBUT kolom sensitif; `SELECT *` dan
     // `row_to_json(m)` menyebutnya tanpa nama, jadi harus disaring di sini.

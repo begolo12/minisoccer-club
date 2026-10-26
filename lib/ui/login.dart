@@ -402,7 +402,7 @@ class _FormPanel extends StatelessWidget {
               obscureText: !showPass,
               autofillHints: const [AutofillHints.password],
               textInputAction: TextInputAction.done,
-              placeholder: Text(firstRun ? 'Minimal 6 karakter' : 'Password'),
+              placeholder: Text(firstRun ? 'Minimal 8 karakter' : 'Password'),
               onSubmitted: (_) => onSubmit(),
               // Tombol mata tidak boleh mencuri fokus dari field.
               trailing: ExcludeFocus(

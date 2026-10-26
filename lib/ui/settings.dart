@@ -11,6 +11,7 @@ import 'login.dart';
 import 'register.dart';
 import '../core/version.dart';
 import '../data/auth.dart';
+import 'audit.dart';
 import 'fmt.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -142,6 +143,30 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 22),
             const SectionTitle('Data tanpa internet'),
             _OfflinePanel(),
+            const SizedBox(height: 22),
+            const SectionTitle('Jejak audit'),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Mencatat siapa menambah, mengubah, dan menghapus data. '
+                    'Berguna saat angka kas tidak cocok.',
+                    style: t.textTheme.small,
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.outline(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AuditPage()),
+                      ),
+                      child: const Text('Buka jejak audit'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: 22),
           const SectionTitle('Akun'),
@@ -822,8 +847,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _err = null);
-    if (_next.text.length < 6) {
-      setState(() => _err = 'Password baru minimal 6 karakter');
+    if (_next.text.length < 8) {
+      setState(() => _err = 'Password baru minimal 8 karakter');
       return;
     }
     if (_next.text != _again.text) {
@@ -876,7 +901,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             controller: _next,
             obscureText: true,
             enabled: !_saving,
-            placeholder: const Text('Password baru (minimal 6 karakter)'),
+            placeholder: const Text('Password baru (minimal 8 karakter)'),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 10),

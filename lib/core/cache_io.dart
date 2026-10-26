@@ -11,6 +11,21 @@ import 'cache.dart';
 class FileCacheStore implements CacheStore {
   Directory? _dir;
 
+  /// Batas cache di disk.
+  ///
+  /// Sebelum ini setiap kombinasi query+params menghasilkan satu berkas dan
+  /// tidak ada yang pernah menghapusnya: HP yang dipakai setahun akan
+  /// mengumpulkan ribuan berkas JSON, dan pemindaian `listEntries` (dipakai
+  /// penambalan offline) makin lambat di tiap tulis. Batasnya murah — data klub
+  /// setahun jauh di bawah ini — dan yang dibuang selalu entri TERTUA, yang
+  /// paling tidak berguna saat offline.
+  ///
+  /// ponytail: eviction berbasis "kapan disimpan", bukan "kapan terakhir
+  /// dibaca". Kalau nanti ada query yang jarang berubah tapi sering dibaca,
+  /// tambahkan sentuhan mtime di `readRows`.
+  static const _maxFiles = 400;
+  static const _maxBytes = 24 * 1024 * 1024;
+
   Future<Directory> _cacheDir() async {
     final cached = _dir;
     if (cached != null) return cached;
@@ -44,8 +59,42 @@ class FileCacheStore implements CacheStore {
         flush: true,
       );
       await tmp.rename(target.path);
+      await _evict(dir);
     } catch (_) {
       // Cache adalah optimasi: gagal menulis tidak boleh menggagalkan query.
+    }
+  }
+
+  /// Buang entri tertua sampai jumlah dan ukuran kembali di bawah batas.
+  ///
+  /// Dipanggil setelah tulis, bukan di `listEntries`: hanya di sini jumlah
+  /// berkas bertambah. Kegagalan diabaikan — cache yang kebesaran lebih baik
+  /// daripada query yang gagal.
+  Future<void> _evict(Directory dir) async {
+    try {
+      final files = <({File file, DateTime at, int size})>[];
+      await for (final e in dir.list()) {
+        if (e is! File || e.path.endsWith('.tmp')) continue;
+        final st = await e.stat();
+        files.add((file: e, at: st.modified, size: st.size));
+      }
+      var total = files.fold<int>(0, (s, f) => s + f.size);
+      if (files.length <= _maxFiles && total <= _maxBytes) return;
+
+      files.sort((a, b) => a.at.compareTo(b.at));
+      var count = files.length;
+      for (final f in files) {
+        if (count <= _maxFiles && total <= _maxBytes) break;
+        try {
+          await f.file.delete();
+          count--;
+          total -= f.size;
+        } catch (_) {
+          // Berkas sedang dipakai: coba berikutnya.
+        }
+      }
+    } catch (_) {
+      // Direktori tidak terbaca: biarkan apa adanya.
     }
   }
 

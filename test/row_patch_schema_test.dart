@@ -129,6 +129,10 @@ void main() {
       final problems = <String>[];
 
       for (final entry in defaults.entries) {
+        // Tabel khusus server: klien tidak bisa menulisnya (`audit_log` ditolak
+        // api/_guard.js, `auth_throttle` hanya disentuh api/auth.js), jadi
+        // penambal offline tidak pernah membuat baris untuk tabel ini.
+        if (const {'audit_log', 'auth_throttle'}.contains(entry.key)) continue;
         final table = entry.key;
         final autoCols = debugAutoTimestampCols(table);
         final mapped = debugColumnDefaults()[table] ?? const {};
