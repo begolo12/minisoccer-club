@@ -145,6 +145,7 @@ di web).
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `npm run check:visual` | Sapuan visual di **3 ukuran layar** (320×640, 390×844, 1440×900): setiap tab & halaman terbuka, tidak bisa digeser menyamping, tap target ≥ 40px, tidak ada error konsol. `ONLY=hp npm run check:visual` untuk satu ukuran saja |
+| `npm run check:secrets` | Memindai file terlacak **dan** seluruh riwayat git untuk kredensial yang lolos (connection string, token, private key). Gagal keras kalau ada di pohon kerja |
 | `npm run check:member` | Di **Chrome sungguhan** sebagai akun anggota: menu Lainnya tanpa panel akun admin, Pengaturan tanpa bagian teknis (server, tes koneksi, antrean offline, tautan pendaftaran), tidak ada tombol tulis di tab mana pun, beranda tidak menyuruh tugas pengurus, dan server tetap menolak daftar akun (403) |
 | `npm run check:users` | Di **Chrome sungguhan**: admin membuka **Akun & akses** → daftar memuat ID & status password → panel akun memuat tautan anggota, status masuk, tombol setel password → password baru disalin dari tombol **Salin** dan **benar-benar dipakai masuk** oleh akun itu (akun percobaan, dihapus lagi di akhir) |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
@@ -445,9 +446,17 @@ untuk rilis.
 | Parameter | `@nama` → positional hanya di luar string/komentar; parameter yang tidak dikirim ditolak (bukan NULL diam-diam) |
 | Kelola user | Tambah/reset/hapus/ubah/daftar hanya lewat `/api/auth` (admin), bukan lewat SQL. Daftar akun mengirim **status** punya-password, bukan hash-nya — `password_hash` tidak pernah keluar dari server dan tidak bisa dibaca role `app_web` |
 | Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |
+| Rahasia di repo | `npm run check:secrets` memindai **file terlacak** dan **seluruh riwayat git** untuk connection string, token Neon/GitHub/Anthropic/Firebase, private key, dan variabel rahasia yang terisi. Dijalankan otomatis di CI sebelum build; nilai yang cocok disamarkan di log |
 
 APK tidak lagi menyimpan connection string Neon — kredensial DB hanya ada di env
 server. `APP_KEY` lama sudah tidak dipakai.
+
+**Repo ini publik.** Yang tidak boleh pernah masuk: `.env`, `android/key.properties`,
+keystore, dan nilai apa pun untuk `DATABASE_URL`/`AUTH_SECRET`/`ADMIN_PASS`.
+Semuanya sudah masuk `.gitignore` dan dijaga `npm run check:secrets`. Riwayat git
+juga diperiksa karena kredensial yang dihapus di commit berikutnya tetap bisa
+dibaca lewat `git show` — kalau satu terlanjur masuk, rotasi kredensialnya dulu,
+baru bersihkan riwayat dengan `git filter-repo`.
 
 Belum ada: reset password via email, 2FA, dan rate limit lintas instance
 (penghitung per instance). Tambahkan kalau app dipakai di luar klub sendiri.

@@ -55,6 +55,10 @@ jobs:
           test -s android/app/release-keystore.p12
           test -s android/key.properties
 
+      # Repo ini publik: satu kredensial yang lolos ke sebuah commit langsung
+      # bisa dipakai siapa pun, dan riwayat git tetap menyimpannya walau
+      # filenya dihapus kemudian. Gagal di sini lebih murah daripada rotasi.
+      - run: node scripts/secret-scan.mjs
       - run: node --test "api/*.test.mjs"
       - run: flutter pub get
       - run: flutter analyze

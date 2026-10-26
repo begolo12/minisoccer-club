@@ -65,6 +65,10 @@ node_modules/
 *.pfx
 *secret*
 *credential*
+# Pengecualian: PEMINDAI rahasia justru harus ikut repo. Pola di atas
+# menyaring nama berkas yang mengandung "secret", dan itu ikut mengenai
+# `scripts/secret-scan.mjs`.
+!scripts/secret-scan.mjs
 
 # ---------- Artefak kerja lokal ----------
 # Hasil generate tes audit query (`flutter test test/queries_audit_test.dart`)
@@ -97,6 +101,12 @@ design/sweep-prod/
 # Pernah tidak sengaja ter-commit dan membuat repo berisi sampah.
 ftest.txt
 tmpout.txt
+*.log
+
+# Skrip debug sekali pakai (dbg-*.mjs) dan skrip sementara berawalan titik.
+# Dibuat saat menelusuri satu masalah, dan tidak pernah bagian aplikasi.
+dbg-*.mjs
+.tmp-*
 
 # ---------- OS ----------
 .DS_Store

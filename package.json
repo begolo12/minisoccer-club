@@ -10,6 +10,7 @@
     "db:clean": "node scripts/clean-test-data.mjs",
     "dev:api": "node scripts/dev-api.mjs",
     "test": "node --test \"api/*.test.mjs\"",
+    "check:secrets": "node scripts/secret-scan.mjs",
     "check:schema": "node scripts/check-schema.mjs",
     "check:e2e": "node scripts/e2e-check.mjs",
     "check:flow": "node scripts/flow-check.mjs",
