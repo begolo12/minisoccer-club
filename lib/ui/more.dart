@@ -199,7 +199,10 @@ class _MorePageState extends State<MorePage> {
     final t = ShadTheme.of(context);
     return PageScaffold(
       title: 'Lainnya',
-      subtitle: 'Kelola klub & akun',
+      // Anggota tidak mengelola apa pun: bagi mereka ini daftar data klub
+      // plus akun sendiri. Judul "Kelola klub" akan menjanjikan hak yang
+      // tidak mereka punya.
+      subtitle: Auth.canWrite ? 'Kelola klub & akun' : 'Data klub & akun',
       // Tarik untuk menyegarkan: angka di baris ini bisa berubah dari tab
       // lain (iuran baru, booking baru), dan halaman ini tidak punya tombol
       // muat ulang sendiri.
@@ -241,7 +244,7 @@ class _MorePageState extends State<MorePage> {
                     if (ok == true && context.mounted) _reload();
                   },
                 ),
-              const SectionTitle('Kelola klub'),
+              SectionTitle(Auth.canWrite ? 'Kelola klub' : 'Data klub'),
               _Tile(
                 icon: Icons.groups_outlined,
                 title: 'Anggota',
@@ -332,9 +335,13 @@ class _MorePageState extends State<MorePage> {
                   return _Tile(
                     icon: Icons.settings_outlined,
                     title: 'Pengaturan',
-                    subtitle: release == null
-                        ? 'Tema, server, pembaruan'
-                        : 'Versi ${release.version} tersedia — ketuk untuk memasang',
+                    // "server" hanya ada di Pengaturan admin; anggota yang
+                    // membacanya akan mencari bagian yang tidak mereka punya.
+                    subtitle: release != null
+                        ? 'Versi ${release.version} tersedia — ketuk untuk memasang'
+                        : (Auth.isAdmin
+                            ? 'Tema, server, pembaruan'
+                            : 'Tema, akun, pembaruan'),
                     highlight: release != null,
                     onTap: () => _open(context, const SettingsPage()),
                   );

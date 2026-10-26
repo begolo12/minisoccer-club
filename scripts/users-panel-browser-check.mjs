@@ -78,16 +78,58 @@ async function tap(needle, { role = null, last = false, exact = false } = {}) {
   return true;
 }
 
+/// Gulir daftar ke bawah.
+///
+/// Titik gulir di TENGAH jendela, bukan x=195: di layar lebar isi halaman
+/// dipusatkan (maks ±720px), jadi roda di x=195 jatuh di luar kolom dan tidak
+/// menggerakkan apa pun — baris yang dicari tidak pernah masuk layar.
 async function scrollDown(times = 1) {
+  const w = (await evaluate('window.innerWidth')) || 390;
+  const h = (await evaluate('window.innerHeight')) || 844;
   for (let i = 0; i < times; i++) {
-    await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 195, y: 500, deltaX: 0, deltaY: 280, button: 'none' });
+    await send('Input.dispatchMouseEvent', {
+      type: 'mouseWheel', x: Math.round(w / 2), y: Math.round(h / 2),
+      deltaX: 0, deltaY: 280, button: 'none',
+    });
     await sleep(500);
   }
 }
 
+/// Ketuk [needle], gulir dulu kalau elemennya di luar layar.
+///
+/// `tap()` mencocokkan pohon aksesibilitas, yang juga memuat elemen di luar
+/// viewport. Mengklik koordinat di luar layar tidak melakukan apa pun —
+/// itulah yang dulu membuat panel akun "tidak terbuka" padahal barisnya
+/// ditemukan: daftar bertambah panjang dan baris yang dicari berada di bawah
+/// lipatan.
 async function tapScroll(needle, opts = {}) {
-  for (let i = 0; i < 6; i++) {
-    if (await tap(needle, opts)) return true;
+  for (let i = 0; i < 10; i++) {
+    const list = (await nodes()).filter((n) => opts.role == null || n.role === opts.role);
+    const hits = list
+      .filter((n) => textOf(n).includes(needle))
+      .filter((n) => textOf(n).length <= needle.length + 60);
+    if (hits.length) {
+      const score = (n) => (n.role === 'button' || n.role === 'tab' ? 0 : 1000) + textOf(n).length;
+      hits.sort((a, b) => score(a) - score(b));
+      const hit = opts.last ? hits.reduce((a, b) => (a.y >= b.y ? a : b)) : hits[0];
+      const h = await evaluate('window.innerHeight');
+      // Batasnya 0..h, bukan 60..h-60: tombol "Masuk" di bilah status memang
+      // duduk di y≈16, dan menganggapnya "di luar layar" membuat pencarian
+      // menggulir ke atas tanpa pernah menekannya.
+      if (hit.y >= 4 && hit.y <= h - 4) {
+        await clickAt(hit.x, hit.y);
+        return true;
+      }
+      // Di luar layar: geser ke arah yang benar.
+      const dir = hit.y < 4 ? -1 : 1;
+      const w = (await evaluate('window.innerWidth')) || 390;
+      await send('Input.dispatchMouseEvent', {
+        type: 'mouseWheel', x: Math.round(w / 2), y: Math.round(h / 2),
+        deltaX: 0, deltaY: dir * 300, button: 'none',
+      });
+      await sleep(600);
+      continue;
+    }
     await scrollDown();
   }
   return false;
@@ -225,6 +267,7 @@ check('daftar menyebut batas password', /bcrypt|tidak bisa\s+dibaca/i.test(listT
 
 // Buka akun percobaan.
 check('baris akun percobaan bisa dibuka', await tapScroll(tempName));
+check('panel akun benar-benar terbuka', (await screenText()).includes('ID #'), '');
 await sleep(2000);
 await shot('panel');
 

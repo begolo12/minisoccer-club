@@ -49,6 +49,17 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
+    // Halaman ini dipakai semua role, tapi tidak semua isinya urusan semua
+    // orang. Yang teknis (alamat server, tes koneksi, antrean offline,
+    // tautan pembuat akun, diagnostik layar) hanya untuk admin: anggota dan
+    // tamu cukup melihat data klub, dan angka/istilah teknis di sana hanya
+    // membingungkan atau membocorkan hal yang tidak perlu mereka tahu.
+    //
+    // Yang TETAP ada untuk semua: tema (selera perangkat masing-masing),
+    // akun sendiri (ganti password, keluar), dan pembaruan aplikasi — kalau
+    // ini disembunyikan, anggota yang memakai APK lama tidak punya jalan
+    // untuk memperbarui.
+    final admin = Auth.isAdmin;
     return PageScaffold(
       title: 'Pengaturan',
       child: ListView(
@@ -90,46 +101,48 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-          const SizedBox(height: 22),
-          const SectionTitle('Sambungan data'),
-          Panel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Neon Postgres', style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(
-                  kApiBase.isEmpty ? 'Host web ini (same-origin)' : kApiBase,
-                  style: t.textTheme.small,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Kredensial database hanya ada di server. Aplikasi tidak menyimpannya.',
-                  style: t.textTheme.small,
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: ShadButton.outline(
-                    onPressed: () async {
-                      try {
-                        await Db.query('SELECT 1');
-                        if (context.mounted) toast(context, 'Koneksi OK');
-                      } catch (e) {
-                        if (context.mounted) toast(context, 'Gagal: ${errText(e)}');
-                      }
-                    },
-                    child: const Text('Tes koneksi'),
+          if (admin) ...[
+            const SizedBox(height: 22),
+            const SectionTitle('Sambungan data'),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Neon Postgres', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(
+                    kApiBase.isEmpty ? 'Host web ini (same-origin)' : kApiBase,
+                    style: t.textTheme.small,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    'Kredensial database hanya ada di server. Aplikasi tidak menyimpannya.',
+                    style: t.textTheme.small,
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.outline(
+                      onPressed: () async {
+                        try {
+                          await Db.query('SELECT 1');
+                          if (context.mounted) toast(context, 'Koneksi OK');
+                        } catch (e) {
+                          if (context.mounted) toast(context, 'Gagal: ${errText(e)}');
+                        }
+                      },
+                      child: const Text('Tes koneksi'),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 22),
-          const SectionTitle('Data tanpa internet'),
-          _OfflinePanel(),
+            const SizedBox(height: 22),
+            const SectionTitle('Data tanpa internet'),
+            _OfflinePanel(),
+          ],
           const SizedBox(height: 22),
           const SectionTitle('Akun'),
           Panel(
@@ -240,43 +253,45 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
-          const SizedBox(height: 22),
-          const SectionTitle('Pendaftaran anggota'),
-          Panel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Tautan pendaftaran', style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(
-                  'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
-                  'alamat, dan posisi sendiri. Nama depan menjadi username, dan akun '
-                  'langsung dibuat tanpa perlu ditambah manual di menu Anggota.',
-                  style: t.textTheme.small,
-                ),
-                const SizedBox(height: 10),
-                SelectableText(
-                  registrationLink(),
-                  style: t.textTheme.small.copyWith(
-                    fontFamily: AppThemes.display,
-                    fontSize: 13,
-                    letterSpacing: 0.2,
+          if (admin) ...[
+            const SizedBox(height: 22),
+            const SectionTitle('Pendaftaran anggota'),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Tautan pendaftaran', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
+                    'alamat, dan posisi sendiri. Nama depan menjadi username, dan akun '
+                    'langsung dibuat tanpa perlu ditambah manual di menu Anggota.',
+                    style: t.textTheme.small,
                   ),
-                ),
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: ShadButton.outline(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: registrationLink()));
-                      if (context.mounted) toast(context, 'Tautan disalin');
-                    },
-                    child: const Text('Salin tautan'),
+                  const SizedBox(height: 10),
+                  SelectableText(
+                    registrationLink(),
+                    style: t.textTheme.small.copyWith(
+                      fontFamily: AppThemes.display,
+                      fontSize: 13,
+                      letterSpacing: 0.2,
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.outline(
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: registrationLink()));
+                        if (context.mounted) toast(context, 'Tautan disalin');
+                      },
+                      child: const Text('Salin tautan'),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 22),
           const SectionTitle('Pembaruan'),
           _UpdatePanel(),
@@ -289,16 +304,24 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text('Minisoccer Club v$kAppVersion', style: const TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 Text(
-                  'Dibuat dengan Flutter + shadcn UI + Neon Postgres.\n'
-                  'Data tersimpan langsung di database Neon kamu.',
+                  admin
+                      ? 'Dibuat dengan Flutter + shadcn UI + Neon Postgres.\n'
+                          'Data tersimpan langsung di database Neon kamu.'
+                      : 'Aplikasi klub mini soccer: anggota, jadwal, iuran, '
+                          'turnamen, dan kas.',
                   style: t.textTheme.small,
                 ),
-                const SizedBox(height: 10),
-                // Angka nyata dari sistem, bukan klaim: kalau HP 120 Hz masih
-                // tertulis 60 di sini, yang membatasi adalah setelan perangkat
-                // (mode hemat daya / "refresh rate" di Pengaturan Android),
-                // bukan aplikasinya.
-                Text(_screenLine(context), style: t.textTheme.small),
+                // Diagnostik layar hanya untuk admin: angka refresh rate dan
+                // nama teknologi adalah urusan pengurus, bukan anggota yang
+                // cuma ingin melihat jadwal dan iurannya.
+                if (admin) ...[
+                  const SizedBox(height: 10),
+                  // Angka nyata dari sistem, bukan klaim: kalau HP 120 Hz masih
+                  // tertulis 60 di sini, yang membatasi adalah setelan perangkat
+                  // (mode hemat daya / "refresh rate" di Pengaturan Android),
+                  // bukan aplikasinya.
+                  Text(_screenLine(context), style: t.textTheme.small),
+                ],
               ],
             ),
           ),

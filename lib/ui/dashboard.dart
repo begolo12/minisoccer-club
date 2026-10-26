@@ -757,21 +757,59 @@ class _EmptyHero extends StatelessWidget {
     );
   }
 
+  /// Kalimat untuk pembaca yang tidak boleh mengubah apa pun.
+  ///
+  /// `_next` adalah AJAKAN ("Isi pemain ke tim", "Susun turnamen"). Untuk
+  /// anggota biasa ajakan itu salah alamat: mereka tidak bisa membuka form
+  /// tim atau turnamen, jadi yang tersisa hanya perintah tanpa tombol — dan
+  /// itu terbaca seperti tugas yang belum mereka kerjakan. Versi ini
+  /// melaporkan keadaan klub, bukan meminta.
+  ({String pill, String title, String body})
+      get _status {
+    if (members == 0) {
+      return (
+        pill: 'Info klub',
+        title: 'Belum ada anggota',
+        body: 'Daftar anggota klub belum diisi pengurus.',
+      );
+    }
+    if (teamsReady < 2) {
+      return (
+        pill: 'Belum siap bertanding',
+        title: 'Turnamen belum disusun',
+        body: teams == 0
+            ? 'Pengurus belum membuat tim. Turnamen dan laga dibentuk dari tim.'
+            : '$teamsReady dari $teams tim sudah punya pemain. Turnamen disusun '
+                'setelah minimal dua tim berisi pemain.',
+      );
+    }
+    return (
+      pill: 'Belum ada turnamen',
+      title: 'Turnamen belum disusun',
+      body: 'Pengurus belum membuat turnamen. Jadwal, klasemen, dan tagihan '
+          'iuran muncul di sini setelahnya.',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     final n = _next;
+    final s = _status;
+    final pill = Auth.canWrite ? n.pill : s.pill;
+    final title = Auth.canWrite ? n.title : s.title;
+    final body = Auth.canWrite ? n.body : s.body;
     return Panel(
       highlight: true,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Pill(n.pill, color: t.colorScheme.primary),
+          Pill(pill, color: t.colorScheme.primary),
           const SizedBox(height: 8),
-          Text(n.title, style: t.textTheme.h1.copyWith(fontSize: 32)),
+          Text(title, style: t.textTheme.h1.copyWith(fontSize: 32)),
           const SizedBox(height: 4),
-          Text(n.body, style: t.textTheme.small),
+          Text(body, style: t.textTheme.small),
           if (Auth.canWrite) ...[
             const SizedBox(height: 14),
             ShadButton(

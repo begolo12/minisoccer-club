@@ -229,8 +229,14 @@ class _PaymentsPageState extends State<PaymentsPage> {
           child: EmptyState(
             icon: Icons.emoji_events_outlined,
             title: 'Belum ada turnamen',
-            message: 'Iuran ditarik per turnamen. Buat turnamen dulu, lalu catat '
-                'iuran anggota yang ikut.',
+            // Anggota tidak bisa "membuat turnamen dulu" — itu tugas
+            // pengurus. Menyuruhnya berarti memberi instruksi yang tidak
+            // bisa dijalankan dari layar mana pun yang dia punya.
+            message: Auth.canWrite
+                ? 'Iuran ditarik per turnamen. Buat turnamen dulu, lalu catat '
+                    'iuran anggota yang ikut.'
+                : 'Iuran ditarik per turnamen. Tagihanmu muncul di sini setelah '
+                    'pengurus membuat turnamen dan memasukkannya ke tim.',
             // Tamu tetap diberi jalan: melihat turnamen adalah hak baca, dan
             // tanpa tombol apa pun layar ini terasa rusak ("kok kosong?").
             actionLabel: Auth.canWrite ? 'Buat turnamen' : 'Lihat turnamen',
@@ -332,9 +338,13 @@ class _PaymentsPageState extends State<PaymentsPage> {
                 EmptyState(
                   icon: Icons.group_outlined,
                   title: 'Belum ada peserta',
-                  message: 'Tim di turnamen ini belum punya pemain, jadi belum ada '
-                      'yang bisa ditagih. Isi pemain tiap tim, atau tambahkan tim '
-                      'lain ke turnamen ini.',
+                  message: Auth.canWrite
+                      ? 'Tim di turnamen ini belum punya pemain, jadi belum ada '
+                          'yang bisa ditagih. Isi pemain tiap tim, atau tambahkan tim '
+                          'lain ke turnamen ini.'
+                      : 'Tim di turnamen ini belum punya pemain, jadi belum ada '
+                          'tagihan. Daftar peserta muncul setelah pengurus mengisi '
+                          'pemain tiap tim.',
                   actionLabel: Auth.canWrite ? 'Isi pemain tim' : null,
                   onAction: Auth.canWrite
                       ? () async {

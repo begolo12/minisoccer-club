@@ -60,7 +60,7 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Akun & akses** | Khusus admin: daftar akun dengan **ID**, role, anggota tertaut, status, dan tanggal dibuat. Ketuk satu akun → ubah username, role, tautan anggota, aktif/nonaktif, **setel password baru** (ditampilkan sekali + tombol salin), hapus akun. Password lama tidak bisa ditampilkan karena disimpan bcrypt satu arah |
 | **Akun saya** | Untuk role anggota: total iuran, tunggakan, main berikutnya, dan riwayat iuran — jawaban untuk "saya sudah bayar apa?" tanpa mencari nama sendiri di daftar anggota |
-| **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), info server, tes koneksi, keluar |
+| **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), akun sendiri (ganti password, keluar), pembaruan APK. Bagian teknis — alamat server, tes koneksi, antrean offline, tautan pendaftaran, diagnostik layar — **hanya untuk admin** |
 
 Poin klasemen hanya dihitung dari laga berstatus selesai; skor laga yang
 punya sesi selalu sama dengan jumlah sesinya.
@@ -145,6 +145,7 @@ di web).
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
 | `npm run check:features` | 24 pemeriksaan lintas halaman: setiap tab & halaman terbuka tanpa error, satu tulis nyata tersimpan, tidak ada layout meluber |
 | `npm run check:visual` | Sapuan visual di **3 ukuran layar** (320×640, 390×844, 1440×900): setiap tab & halaman terbuka, tidak bisa digeser menyamping, tap target ≥ 40px, tidak ada error konsol. `ONLY=hp npm run check:visual` untuk satu ukuran saja |
+| `npm run check:member` | Di **Chrome sungguhan** sebagai akun anggota: menu Lainnya tanpa panel akun admin, Pengaturan tanpa bagian teknis (server, tes koneksi, antrean offline, tautan pendaftaran), tidak ada tombol tulis di tab mana pun, beranda tidak menyuruh tugas pengurus, dan server tetap menolak daftar akun (403) |
 | `npm run check:users` | Di **Chrome sungguhan**: admin membuka **Akun & akses** → daftar memuat ID & status password → panel akun memuat tautan anggota, status masuk, tombol setel password → password baru disalin dari tombol **Salin** dan **benar-benar dipakai masuk** oleh akun itu (akun percobaan, dihapus lagi di akhir) |
 | `VIEWPORT=mobile npm run check:features` | Pemeriksaan yang sama di layout HP |
 | `npm run check:attendance` | Di **Chrome sungguhan**: booking 300.000 → tandai 3 orang hadir → bagian terbagi tepat 300.000 → tandai setor → muncul di buku kas sebagai pemasukan `patungan` → **putus jaringan** → tulis lagi (antrean) → online → terkirim |
