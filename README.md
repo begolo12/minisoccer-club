@@ -71,10 +71,18 @@ lebar layar, tema bisa diganti (gelap/terang/ikuti sistem) tanpa membuka ulang
 app, tab dimuat saat dibuka dan disegarkan setelah ada perubahan data, tombol
 tulis disembunyikan untuk role anggota.
 
-Keluaran untuk orang luar: buku kas diekspor ke CSV (kronologis + saldo
-berjalan; di web diunduh sebagai berkas, di HP disalin ke clipboard untuk
-ditempel ke Sheets/Excel), daftar tunggakan iuran disalin sebagai pesan
-WhatsApp, dan hasil laga disalin sebagai teks pengumuman.
+Sasaran sentuh minimal 44px di seluruh aplikasi (ikon tetap kecil), dialog
+isian tidak bisa tertutup karena tombol Back Android, aksi yang menghapus
+hasil (atur ulang skor, hapus sesi) minta konfirmasi, judul halaman memakai
+semantik header, dan pemilih chip mengumumkan status terpilih ke pembaca layar.
+Setiap isian punya label yang tetap terlihat setelah diketik (placeholder hanya
+jadi contoh), dan pesan validasi muncul menetap di bawah field yang salah.
+Warna teks kecil di tema terang sudah memenuhi kontras AA (5,1:1).
+
+Keluaran untuk orang luar: buku kas diekspor sebagai berkas tabel (CSV:
+kronologis + saldo berjalan; di web diunduh sebagai berkas, di HP disalin ke
+clipboard untuk ditempel ke aplikasi spreadsheet), daftar tunggakan iuran
+disalin sebagai pesan WhatsApp, dan hasil laga disalin sebagai teks pengumuman.
 
 Catatan: APK sekarang selalu lewat `/api` (token sesi). Connection string DB
 hanya ada di env server, tidak lagi disimpan di HP.
@@ -101,6 +109,22 @@ offline.
 Banner di atas isi menampilkan jumlah perubahan yang belum terkirim, karena
 itulah data yang belum ada di cloud. Pengaturan → **Data offline** menunjukkan
 status, tombol sinkron, dan tombol buang antrean.
+
+### Tulis tidak bisa terjadi dua kali
+
+Timeout 20 detik di klien **bukan** bukti server belum menyimpan: jawabannya
+bisa hilang di jalan padahal barisnya sudah masuk. Dulu tulis seperti itu masuk
+antrean lalu dikirim lagi — INSERT tanpa kunci unik (`members`, `bookings`,
+`transactions`, `announcements`) jadi dobel, dan kas klub mencatat uang yang
+sama dua kali.
+
+Sekarang setiap tulis membawa `writeId` (dibuat **sebelum** percobaan pertama,
+disimpan bersama antreannya). Server mencatatnya di `applied_writes`; kiriman
+ulang dengan id yang sama tidak menjalankan query lagi, tetapi memutar ulang
+hasil pertama. Antrean juga disimpan ke disk **per item** setelah terkirim,
+jadi aplikasi yang dimatikan di tengah sinkron tidak mengirim ulang yang sudah
+sampai. Setelah gagal karena jaringan, percobaan berikutnya diberi jeda
+(5 detik → 5 menit) supaya pindah tab tidak memicu timeout berulang.
 
 ### Web juga bisa dibuka tanpa jaringan
 
@@ -139,7 +163,7 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 258 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline** |
+| `flutter test` | 275 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, dan **tinggi target sentuh judul bagian & chip periode** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
@@ -313,14 +337,16 @@ Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
 
 ```
 lib/
-  core/   api.dart (URL API) · db.dart (akses DB, offline-first) · db_web.dart (HTTP driver)
+  core/   api.dart (URL API) · db.dart (akses DB, offline-first) · db_web.dart (HTTP driver
+          yang menggabungkan query satu gelombang jadi satu permintaan)
           cache.dart + cache_io/stub (cache baca) · row_patch.dart (tambal cache setelah tulis)
           offline.dart (antrean tulis) · outbox_store_* (penyimpanan antrean) · net.dart
   data/   models.dart (model + query) · auth.dart (login, sesi, kelola user)
   ui/     theme (token warna/font + ThemeController), widgets (RowItem, Panel,
           StatStrip, StandingsTable, MatchRow, PeriodChips, PageScaffold,
           AppScrollBehavior), fmt, forms, finance (buku kas), halaman per fitur
-api/sql.js                  Satu-satunya pintu SQL (role terbatas)
+api/sql.js                  Satu-satunya pintu SQL (role terbatas); batch + tulis idempoten
+api/sql.test.mjs            Uji batch, idempoten, pencabutan sesi, batas jawaban
 api/_guard.js               Filter statement + pengikat parameter `@nama`
 api/_guard.test.mjs         Uji filter & parameter (node --test)
 api/_app-queries.test.mjs   Semua query app harus lolos filter untuk role yang berhak
@@ -439,6 +465,8 @@ untuk rilis.
 |---|---|
 | Login | Password di-hash bcrypt oleh Postgres (`pgcrypto`), 6–200 karakter, username maks 40 |
 | Sesi | Token HMAC-SHA256, berlaku 12 jam, ditandatangani `AUTH_SECRET`; token ditolak → app otomatis kembali ke layar masuk |
+| Pencabutan sesi | `users.token_version` ada di dalam token. Ganti password, ubah role, atau nonaktifkan akun menaikkan versi itu, sehingga token lama berhenti berlaku ≤1 menit — bukan menunggu 12 jam. Token yang dipakai setelah password diganti sendiri otomatis diganti yang baru |
+| Batas `/api/sql` | 24 query per permintaan, 5.000 baris per jawaban, dan batas laju per akun/IP. `statement_timeout` dipasang pada role `app_web` |
 | Kunci akun | 5× salah password → terkunci 10 menit; maks 30 percobaan / 5 menit per IP |
 | Jalur data | Semua query lewat `/api/sql`. Menulis wajib `Authorization: Bearer <token>` |
 | Mode publik | Tanpa akun hanya **data pertandingan**: anggota (nama/posisi/nomor punggung), tim, turnamen, laga, pencetak gol, pengumuman. **Uang klub tertutup**: `payments`, `transactions`, `bookings`, `booking_attendance`, `settings` ditolak 403 untuk tamu (`GUEST_READ_DENY` di `api/_guard.js`) — siapa belum bayar iuran dan berapa saldo kas bukan hal yang boleh dibaca orang yang cuma punya tautannya |
