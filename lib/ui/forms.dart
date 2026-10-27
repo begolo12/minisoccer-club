@@ -31,13 +31,25 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
   String? nameError;
   String? jerseyError;
 
-  final ok = await showShadDialog<bool>(
+  // Data awal: dipakai tombol Batal/Back untuk tahu apakah ada yang perlu
+  // ditanyakan. Form baru dianggap kosong kalau semua isian masih kosong.
+  final initialName = member?.name ?? '';
+  final initialPhone = member?.phone ?? '';
+  final initialAddress = member?.address ?? '';
+  final initialJersey = member?.jersey?.toString() ?? '';
+  final initialPosition = member?.position ?? 'Bebas';
+  final initialActive = member?.active ?? true;
+
+  final ok = await showEditorDialog(
     context: context,
-    // Dialog tulis tidak bisa ditutup dari luar: ketukan barrier/back di
-    // tengah simpan menutup dialog tanpa hasil, toast gagalnya terbuang
-    // (guard `ctx.mounted`), dan pengguna mengetik ulang — data bisa ganda.
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        name.text != initialName ||
+        phone.text != initialPhone ||
+        address.text != initialAddress ||
+        jersey.text != initialJersey ||
+        position != initialPosition ||
+        active != initialActive,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
           final jerseyRaw = jersey.text.trim();
@@ -86,7 +98,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
               ? 'Isi data pemain. Bisa dilengkapi nanti.'
               : 'Perbarui data pemain.'),
           actions: [
-            ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ShadButton.outline(onPressed: saving ? null : cancel, child: const Text('Batal')),
             ShadButton(
               onPressed: saving ? null : save,
               child: saving
@@ -256,11 +268,23 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
   var time = TimeOfDay(hour: when.hour, minute: when.minute);
   var saving = false;
   String? teamError;
+  // Nilai awal: laga baru sudah terisi tanggal & dua tim, jadi "ada isian"
+  // berarti pengguna mengubah salah satunya.
+  final initialHome = homeId;
+  final initialAway = awayId;
+  final initialVenue = venue.text;
+  final initialDate = date;
+  final initialTime = time;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        homeId != initialHome ||
+        awayId != initialAway ||
+        venue.text != initialVenue ||
+        date != initialDate ||
+        time != initialTime,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> pickDate() async {
           final first = DateTime.now().subtract(const Duration(days: 365));
@@ -320,7 +344,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
                   'bisa dipindah ke tim lain.'
               : 'Pilih dua tim klub yang akan bertemu.'),
           actions: [
-            ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ShadButton.outline(onPressed: saving ? null : cancel, child: const Text('Batal')),
             SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
@@ -441,11 +465,15 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
   // Ketukan pertama pada 0–0 hanya memunculkan peringatan; ketukan kedua yang
   // menyimpan. Laga yang belum dimainkan hampir tidak pernah berakhir 0–0.
   var confirmZero = false;
+  // Skor awal dari sesi/laga. Mengubah angka lalu menekan Back dulu membuang
+  // koreksi tanpa jejak.
+  final initialHome = home;
+  final initialAway = away;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () => home != initialHome || away != initialAway,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
           if (!match.ongoing && !match.finished && home == 0 && away == 0 && !confirmZero) {
@@ -489,7 +517,7 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
                 child: const Text('Buka lagi'),
               ),
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             ShadButton(
@@ -648,11 +676,18 @@ Future<bool> showPaymentForm(
   var selected = memberId ?? candidates.first.id;
   var saving = false;
   String? amountError;
+  // Nominal sudah terisi dari iuran turnamen; hanya perubahan yang perlu
+  // ditanyakan. Catatan yang diketik selalu dihitung sebagai isian.
+  final initialAmount = amount.text;
+  final initialSelected = selected;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        amount.text != initialAmount ||
+        selected != initialSelected ||
+        note.text.trim().isNotEmpty,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
           // `saving` diset SEBELUM await apa pun: dua ketukan cepat pada
@@ -708,7 +743,7 @@ Future<bool> showPaymentForm(
           title: const Text('Catat iuran'),
           description: const Text('Iuran untuk turnamen ini'),
           actions: [
-            ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ShadButton.outline(onPressed: saving ? null : cancel, child: const Text('Batal')),
             SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
@@ -768,11 +803,21 @@ Future<bool> showTransactionForm(
   var date = transaction?.occurredAt ?? DateTime.now();
   var saving = false;
   String? amountError;
+  final initialAmount = amount.text;
+  final initialNote = note.text;
+  final initialKind = kind;
+  final initialCategory = category;
+  final initialDate = date;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        amount.text != initialAmount ||
+        note.text != initialNote ||
+        kind != initialKind ||
+        category != initialCategory ||
+        date != initialDate,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         final categories = Transaction.categoriesFor(kind);
 
@@ -821,7 +866,7 @@ Future<bool> showTransactionForm(
               : 'Pemasukan atau pengeluaran di luar iuran anggota.'),
           actions: [
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             SaveButton(saving: saving, onPressed: save),
@@ -933,11 +978,23 @@ Future<bool> showBookingForm(BuildContext context) async {
   var postToCash = true;
   var saving = false;
   String? costError;
+  final initialTitle = title.text;
+  final initialCost = cost.text;
+  final initialDate = date;
+  final initialTime = time;
+  final initialDuration = duration;
+  final initialPostToCash = postToCash;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        title.text != initialTitle ||
+        cost.text != initialCost ||
+        date != initialDate ||
+        time != initialTime ||
+        duration != initialDuration ||
+        postToCash != initialPostToCash,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
           setLocal(() => saving = true);
@@ -1019,7 +1076,7 @@ Future<bool> showBookingForm(BuildContext context) async {
           title: const Text('Sewa lapangan'),
           description: const Text('Catat jadwal sewa biar nggak bentrok.'),
           actions: [
-            ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ShadButton.outline(onPressed: saving ? null : cancel, child: const Text('Batal')),
             SaveButton(saving: saving, onPressed: save),
           ],
           child: Column(
@@ -1105,11 +1162,13 @@ Future<bool> showAnnouncementForm(
   var saving = false;
   String? titleError;
   String? bodyError;
+  final initialTitle = title.text;
+  final initialBody = body.text;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () => title.text != initialTitle || body.text != initialBody,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
           final missingTitle = title.text.trim().isEmpty;
@@ -1143,7 +1202,7 @@ Future<bool> showAnnouncementForm(
               ? 'Perbaiki teksnya. Tanggal terbit tidak berubah.'
               : 'Info singkat untuk semua anggota.'),
           actions: [
-            ShadButton.outline(onPressed: saving ? null : () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ShadButton.outline(onPressed: saving ? null : cancel, child: const Text('Batal')),
             // Label seragam "Simpan": "Kirim" menyiratkan data dikirim ke
             // orang lain, padahal hanya disimpan di klub.
             SaveButton(saving: saving, onPressed: save),
@@ -1217,7 +1276,11 @@ class _WriteDialogState extends State<_WriteDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(canPop: false, child: widget.child);
+  Widget build(BuildContext context) =>
+      // PopScope dipegang `showEditorDialog` (satu pemilik): kalau di sini juga
+      // dipasang `canPop: false`, Back berhenti di lapisan ini dan konfirmasi
+      // "buang isian?" milik showEditorDialog tidak pernah dijalankan.
+      widget.child;
 }
 
 /// Teks error di bawah kolom yang salah.

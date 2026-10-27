@@ -177,10 +177,12 @@ class _UsersPageState extends State<UsersPage> {
     var role = 'member';
     var saving = false;
 
-    final ok = await showShadDialog<bool>(
+    final ok = await showEditorDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
+      // Password awal sudah terisi dan tidak bisa dibaca lagi setelah hilang —
+      // menutup form berarti password itu ikut hilang.
+      draft: () => true,
+      builder: (ctx, cancel) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Tambah akun'),
           description: const Text(
@@ -189,7 +191,7 @@ class _UsersPageState extends State<UsersPage> {
           ),
           actions: [
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             ShadButton(

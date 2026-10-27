@@ -624,11 +624,13 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
     var home = session?.scoreHome ?? 0;
     var away = session?.scoreAway ?? 0;
     var saving = false;
+    final initialHome = home;
+    final initialAway = away;
 
-    final ok = await showShadDialog<bool>(
+    final ok = await showEditorDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
+      draft: () => home != initialHome || away != initialAway,
+      builder: (ctx, cancel) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: Text('Sesi $nextNo'),
           description: Text(session == null
@@ -664,7 +666,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 child: const Text('Hapus'),
               ),
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             ShadButton(
