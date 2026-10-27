@@ -481,7 +481,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       const SizedBox(width: 12),
                       Pill('$drew seri'),
                       const SizedBox(width: 12),
-                      Pill('$lost kalah', color: AppThemes.bad(context)),
+                      Pill('$lost kalah', color: lost > 0 ? AppThemes.bad(context) : null),
                     ],
                   ),
                   const SizedBox(height: 10),
