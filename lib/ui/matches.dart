@@ -567,7 +567,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                               if (await attempt(context, () => MatchEvent.delete(e.id), fail: 'Gagal menghapus')) {
                                 _reload();
                               }
-                            }, tooltip: 'Hapus catatan'),
+                            }, tooltip: 'Hapus catatan', bordered: false),
                           ],
                         ],
                       ),

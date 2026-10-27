@@ -761,6 +761,7 @@ class _TeamCard extends StatelessWidget {
                         }
                       },
                       tooltip: 'Keluarkan dari tim',
+                      bordered: false,
                     )
                   : null,
             ),

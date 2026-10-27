@@ -426,3 +426,16 @@ Keputusan yang menolak temuan:
   tagihannya hanya bisa dihitung untuk satu turnamen, jadi "semua turnamen"
   bukan keadaan yang bisa ditampilkan. Chip pemilih turnamen sudah menjadi
   satu-satunya daftar.
+
+Keputusan lain di ronde yang sama:
+
+- **Baris turnamen vs kartu turnamen terakhir dibiarkan berbeda.** Bentuknya
+  memang beda karena fungsinya beda: baris hanya menjawab "kapan dan di mana"
+  untuk turnamen yang belum dimainkan, sedangkan kartu membuka daftar hasil
+  per pertandingan. Menyeragamkan keduanya berarti memindahkan hasil ke
+  halaman detail (kehilangan satu ketukan) atau memuat hasil untuk turnamen
+  yang belum punya hasil sama sekali.
+- **Tombol hapus di dalam baris tanpa bingkai.** Delapan kotak × bertepi di
+  detail laga dan detail tim membuat "hapus" jadi elemen paling menonjol di
+  halaman berisi skor dan nama. Area sentuhnya tetap 46dp; hanya garisnya yang
+  hilang (`iconAction(..., bordered: false)`).

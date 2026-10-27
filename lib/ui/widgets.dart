@@ -1230,6 +1230,10 @@ Widget iconAction(
   IconData icon,
   VoidCallback onTap, {
   String? tooltip,
+  // Baris data yang panjang (detail laga, pemain per tim) memakai `false`:
+  // delapan kotak × bertepi membuat "hapus" jadi elemen paling menonjol di
+  // halaman yang isinya justru skor dan nama.
+  bool bordered = true,
 }) {
   final t = ShadTheme.of(context);
   final color = t.colorScheme.mutedForeground;
@@ -1250,10 +1254,12 @@ Widget iconAction(
           child: Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(
-              border: Border.all(color: t.colorScheme.border),
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: bordered
+                ? BoxDecoration(
+                    border: Border.all(color: t.colorScheme.border),
+                    borderRadius: BorderRadius.circular(8),
+                  )
+                : null,
             child: Icon(icon, size: 18, color: color),
           ),
         ),
