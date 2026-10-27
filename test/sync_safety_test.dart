@@ -17,7 +17,11 @@ class FakeServer {
 
   final List<(String, Map<String, Object?>)> received = [];
 
-  Future<List<Map<String, dynamic>>> query(String sql, Map<String, Object?> params) async {
+  Future<List<Map<String, dynamic>>> query(
+    String sql,
+    Map<String, Object?> params, {
+    String? writeId,
+  }) async {
     if (offline) throw Exception('Tidak bisa menghubungi server');
     for (final t in reject) {
       if (sql.toLowerCase().contains(t.toLowerCase())) {
@@ -33,7 +37,11 @@ class FakeServer {
     return const [];
   }
 
-  Future<int> execute(String sql, Map<String, Object?> params) async {
+  Future<int> execute(
+    String sql,
+    Map<String, Object?> params, {
+    String? writeId,
+  }) async {
     if (offline) throw Exception('Tidak bisa menghubungi server');
     for (final t in reject) {
       if (sql.toLowerCase().contains(t.toLowerCase())) {
@@ -146,8 +154,10 @@ void main() {
       // Tiru Unauthorized: bukan kegagalan jaringan, tapi harus dicoba lagi
       // nanti (setelah pengguna masuk).
       final result = await Outbox.flush(
-        query: (sql, params) async => throw Exception('Sesi habis, silakan login ulang'),
-        execute: (sql, params) async => throw Exception('Sesi habis, silakan login ulang'),
+        query: (sql, params, {String? writeId}) async =>
+            throw Exception('Sesi habis, silakan login ulang'),
+        execute: (sql, params, {String? writeId}) async =>
+            throw Exception('Sesi habis, silakan login ulang'),
         isRetryable: (e) => e.toString().contains('Sesi habis'),
         isAuthExpired: (e) => e.toString().contains('Sesi habis'),
       );

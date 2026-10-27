@@ -2,6 +2,7 @@
 library;
 
 import '../core/db.dart';
+import '../core/db_web.dart' show ApiException;
 import '../core/net.dart' as net;
 import '../core/offline.dart';
 import '../core/row_patch.dart';
@@ -94,7 +95,7 @@ class Member {
     int? jersey,
     required bool active,
   }) =>
-      Db.execute(
+      Db.executeExpect(
         '''UPDATE members SET name=@name, phone=@phone, address=@address,
            position=@position, jersey=@jersey, active=@active WHERE id=@id''',
         params: {
@@ -103,8 +104,38 @@ class Member {
         },
       );
 
-  static Future<void> delete(int id) =>
-      Db.execute('DELETE FROM members WHERE id=@id', params: {'id': id});
+  /// Hapus anggota — hanya kalau belum ada jejak keuangannya.
+  ///
+  /// `payments.member_id` memakai ON DELETE CASCADE, jadi menghapus anggota
+  /// ikut menghapus seluruh riwayat iurannya dan mengubah saldo kas. Anggota
+  /// yang berhenti cukup dinonaktifkan (`active = false`): namanya tetap
+  /// muncul di riwayat, totalnya tetap bisa diaudit.
+  ///
+  /// Pemeriksaan ini juga dijaga trigger di database
+  /// (`members_protect_finance`), jadi jalur antrean offline tidak bisa
+  /// melewatinya.
+  static Future<void> delete(int id) async {
+    if (await hasFinance(id)) {
+      throw ApiException(
+        'Anggota ini punya riwayat iuran atau patungan. Nonaktifkan saja — '
+        'menghapusnya akan menghapus catatan uang klub.',
+      );
+    }
+    await Db.executeExpect('DELETE FROM members WHERE id=@id', params: {'id': id});
+  }
+
+  /// True kalau anggota punya catatan uang (iuran, kas, atau patungan).
+  static Future<bool> hasFinance(int id) async {
+    final rows = await Db.query(
+      '''SELECT (EXISTS (SELECT 1 FROM payments WHERE member_id=@id)
+              OR EXISTS (SELECT 1 FROM transactions WHERE member_id=@id)
+              OR EXISTS (SELECT 1 FROM booking_attendance WHERE member_id=@id)) AS has''',
+      params: {'id': id},
+    );
+    if (rows.isEmpty) return false;
+    final v = rows.first['has'];
+    return v == true || v == 't' || v == 1;
+  }
 
   static Future<int> countActive() async {
     final rows = await Db.query('SELECT count(*)::int AS c FROM members WHERE active');
@@ -901,13 +932,38 @@ class Transaction {
   String get categoryLabel => categoriesFor(kind)[category] ?? category;
 
   static Future<List<Transaction>> all({String? period}) async {
+    // Rentang tanggal, BUKAN `to_char(occurred_at, 'YYYY-MM')`: fungsi pada
+    // kolom membuat `idx_tx_occurred_id` tidak terpakai, dan kolomnya harus
+    // dibaca ulang untuk setiap baris. Batas bawah inklusif, batas atas
+    // eksklusif — sama seperti `Payment.inMonth`.
+    var where = '';
+    var params = const <String, Object?>{};
+    if (period != null) {
+      final next = _nextMonth(period);
+      if (next != null) {
+        where = 'WHERE occurred_at >= @from AND occurred_at < @to';
+        params = {'from': '$period-01', 'to': '$next-01'};
+      }
+    }
     final rows = await Db.query(
       '''SELECT * FROM transactions
-         ${period == null ? '' : "WHERE to_char(occurred_at, 'YYYY-MM') = @p"}
+         $where
          ORDER BY occurred_at DESC, id DESC''',
-      params: period == null ? const {} : {'p': period},
+      params: params,
     );
     return rows.map(Transaction.fromMap).toList();
+  }
+
+  /// '2026-10' → '2026-11'; null kalau bentuknya tidak dikenali.
+  static String? _nextMonth(String period) {
+    final parts = period.split('-');
+    if (parts.length != 2) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (y == null || m == null || m < 1 || m > 12) return null;
+    final ny = m == 12 ? y + 1 : y;
+    final nm = m == 12 ? 1 : m + 1;
+    return '$ny-${nm.toString().padLeft(2, '0')}';
   }
 
   static Future<int?> insert({
@@ -937,7 +993,7 @@ class Transaction {
     required double amount,
     required DateTime occurredAt,
     String? note,
-  }) => Db.execute(
+  }) => Db.executeExpect(
         '''UPDATE transactions SET kind=@kind, category=@category,
              amount=@amount, occurred_at=@date, note=@note WHERE id=@id''',
         params: {
@@ -1175,6 +1231,12 @@ class Booking {
     try {
       await Db.execute(txSql, params: txParams);
     } catch (e) {
+      // Hanya kegagalan jaringan yang pantas masuk antrean. Dulu SEMUA error
+      // masuk sini — termasuk penolakan server (400/403) — sehingga item itu
+      // gagal permanen di antrean sambil memberi pesan "dikirim otomatis".
+      // Penolakan server tidak akan pernah berhasil dengan diulang.
+      if (!net.isNetworkFailure(e) && e is! Unauthorized) rethrow;
+
       // Sesi habis ikut di sini (Db melempar setelah memicu masuk ulang):
       // tulisannya tetap diantrekan supaya tidak hilang setelah login lagi.
       String why;
@@ -1622,7 +1684,7 @@ class Announcement {
 
   /// Ubah judul/isi. Tanpa ini salah ketik berarti hapus lalu buat ulang —
   /// dan pengumuman lama yang sudah dibaca anggota ikut hilang.
-  Future<void> update({required String title, required String body}) => Db.execute(
+  Future<void> update({required String title, required String body}) => Db.executeExpect(
         'UPDATE announcements SET title=@t, body=@b WHERE id=@id',
         params: {'id': id, 't': title, 'b': body},
       );

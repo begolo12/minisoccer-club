@@ -86,4 +86,94 @@ void main() {
     expect(params['at'], '2026-10-19T13:00:00.000Z');
     expect(params['id'], 3);
   });
+
+  test('query bersamaan digabung jadi satu permintaan', () async {
+    var requests = 0;
+    useClient(MockClient((req) async {
+      requests++;
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final queries = body['queries'] as List;
+      return http.Response(
+        jsonEncode({
+          'results': [
+            for (final q in queries)
+              {'rows': [{'sql': (q as Map)['sql']}], 'rowCount': 1},
+          ],
+        }),
+        200,
+      );
+    }));
+
+    final results = await Future.wait([
+      Db.query('SELECT 1'),
+      Db.query('SELECT 2'),
+      Db.query('SELECT 3'),
+    ]);
+
+    expect(requests, 1, reason: 'tiga query satu gelombang = satu round-trip');
+    expect(results[0].first['sql'], 'SELECT 1');
+    expect(results[1].first['sql'], 'SELECT 2');
+    expect(results[2].first['sql'], 'SELECT 3');
+  });
+
+  test('satu item batch ditolak tidak menggagalkan item lain', () async {
+    useClient(MockClient((req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final queries = body['queries'] as List;
+      return http.Response(
+        jsonEncode({
+          'results': [
+            for (final q in queries)
+              (q as Map)['sql'] == 'SELECT rusak'
+                  ? {'error': 'Query ditolak'}
+                  : {'rows': [{'ok': 1}], 'rowCount': 1},
+          ],
+        }),
+        200,
+      );
+    }));
+
+    final good = Db.query('SELECT baik');
+    final bad = Db.query('SELECT rusak');
+
+    await expectLater(
+      bad,
+      throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Query ditolak')),
+    );
+    expect((await good).first['ok'], 1);
+  });
+
+  test('tulis membawa writeId supaya server bisa menolak duplikat', () async {
+    Map<String, dynamic>? sent;
+    useClient(MockClient((req) async {
+      sent = jsonDecode(req.body) as Map<String, dynamic>;
+      return http.Response('{"rows":[],"rowCount":1}', 200);
+    }));
+
+    await Db.execute("INSERT INTO members (name) VALUES ('A')");
+
+    final id = sent!['writeId'];
+    expect(id, isA<String>());
+    expect((id as String).length, greaterThanOrEqualTo(8));
+  });
+
+  test('baca tidak membawa writeId', () async {
+    Map<String, dynamic>? sent;
+    useClient(MockClient((req) async {
+      sent = jsonDecode(req.body) as Map<String, dynamic>;
+      return http.Response('{"rows":[],"rowCount":0}', 200);
+    }));
+
+    await Db.query('SELECT 1');
+    expect(sent!.containsKey('writeId'), isFalse);
+  });
+
+  test('UPDATE yang mengenai 0 baris tidak dilaporkan berhasil', () async {
+    useClient(MockClient((_) async => http.Response('{"rows":[],"rowCount":0}', 200)));
+
+    await expectLater(
+      Db.executeExpect("UPDATE members SET name='A' WHERE id=1"),
+      throwsA(isA<StaleRowException>()),
+    );
+  });
 }

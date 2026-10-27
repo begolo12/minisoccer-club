@@ -11,7 +11,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:minisoccer_club/core/db_web.dart' show useClient;
+import 'package:minisoccer_club/core/db_web.dart' show ApiException, useClient;
 import 'package:minisoccer_club/core/offline.dart';
 import 'package:minisoccer_club/data/models.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -57,7 +57,7 @@ void main() {
     Outbox.resetForTest();
   });
 
-  test('leg kas yang ditolak server masuk antrean + dilempar sebagai parsial', () async {
+  test('leg kas yang ditolak server TIDAK masuk antrean', () async {
     useClient(MockClient((req) async {
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       final sql = (body['sql'] as String).trim();
@@ -70,6 +70,9 @@ void main() {
       return http.Response('{"rows":[],"rowCount":0}', 200);
     }));
 
+    // Penolakan server bukan gangguan jaringan: mengulanginya tidak akan
+    // pernah berhasil. Dulu item ini masuk antrean dan memberi pesan
+    // "dikirim otomatis" — janji yang tidak pernah ditepati.
     await expectLater(
       Booking.insert(
         title: 'Sewa A',
@@ -77,11 +80,37 @@ void main() {
         durationMin: 90,
         cost: 150000,
       ),
-      throwsA(isA<BookingPartialException>()),
+      throwsA(isA<ApiException>()),
+    );
+
+    expect(Outbox.pending.value, 0,
+        reason: 'tulis yang ditolak server tidak boleh menumpuk di antrean');
+  });
+
+  test('leg kas yang putus jaringan diantrekan tanpa menggagalkan booking', () async {
+    useClient(MockClient((req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final sql = (body['sql'] as String).trim();
+      if (sql.startsWith('INSERT INTO bookings')) {
+        return http.Response('{"rows":[{"id":7}],"rowCount":1}', 200);
+      }
+      if (sql.startsWith('INSERT INTO transactions')) {
+        throw http.ClientException('Tidak bisa menghubungi server');
+      }
+      return http.Response('{"rows":[],"rowCount":0}', 200);
+    }));
+
+    // `Db` sendiri yang menangani kegagalan jaringan: leg kas masuk antrean
+    // dan pemanggil tidak perlu tahu. Form boleh langsung ditutup.
+    await Booking.insert(
+      title: 'Sewa A',
+      startsAt: DateTime(2026, 11, 1, 20),
+      durationMin: 90,
+      cost: 150000,
     );
 
     expect(Outbox.pending.value, 1,
-        reason: 'leg kas yang gagal diantrekan, bukan hilang diam-diam');
+        reason: 'leg kas yang gagal karena jaringan diantrekan, bukan hilang');
     expect(Outbox.items.single.params['booking'], 7,
         reason: 'antrean memakai id booking ASLI (bukan sementara) supaya '
             'sinkron berikutnya langsung sah');

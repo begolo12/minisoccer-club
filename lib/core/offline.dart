@@ -28,6 +28,7 @@ class PendingWrite {
     required this.params,
     required this.createdAt,
     this.tempId,
+    this.writeId,
     this.failed = false,
     this.lastError,
   });
@@ -36,6 +37,11 @@ class PendingWrite {
   final String sql;
   final Map<String, Object?> params;
   final DateTime createdAt;
+
+  /// Idempoten: id ini dikirim ke server. Kalau percobaan sebelumnya sempat
+  /// sampai dan hanya jawabannya yang hilang (timeout), server memutar ulang
+  /// hasil pertama alih-alih menjalankan INSERT kedua kalinya.
+  final String? writeId;
 
   /// Id sementara (negatif) untuk `INSERT ... RETURNING id`. Dipetakan ke id
   /// asli saat sinkron, lalu dipakai menulis ulang tulis berikutnya.
@@ -52,6 +58,7 @@ class PendingWrite {
         params: params,
         createdAt: createdAt,
         tempId: tempId,
+        writeId: writeId,
         failed: failed ?? this.failed,
         lastError: lastError ?? this.lastError,
       );
@@ -62,6 +69,7 @@ class PendingWrite {
         'params': jsonSafeParams(params),
         'created_at': createdAt.toIso8601String(),
         if (tempId != null) 'temp_id': tempId,
+        if (writeId != null) 'write_id': writeId,
         if (failed) 'failed': true,
         if (lastError != null) 'last_error': lastError,
       };
@@ -75,6 +83,7 @@ class PendingWrite {
       params: (m['params'] as Map?)?.cast<String, Object?>() ?? const {},
       createdAt: DateTime.tryParse((m['created_at'] as String?) ?? '') ?? DateTime.now(),
       tempId: (m['temp_id'] as num?)?.toInt(),
+      writeId: m['write_id'] as String?,
       failed: m['failed'] == true,
       lastError: m['last_error'] as String?,
     );
@@ -149,6 +158,29 @@ class Outbox {
   static int _seq = 0;
   static bool _flushing = false;
   static bool _loaded = false;
+
+  /// Jeda sebelum percobaan sinkron berikutnya, setelah gagal jaringan.
+  static DateTime? _retryAfter;
+  static int _retryStep = 0;
+  static const _retryDelays = [5, 15, 60, 180, 300];
+
+  static void _scheduleRetry() {
+    final secs = _retryDelays[_retryStep.clamp(0, _retryDelays.length - 1)];
+    _retryAfter = DateTime.now().add(Duration(seconds: secs));
+    if (_retryStep < _retryDelays.length - 1) _retryStep++;
+  }
+
+  static void _clearRetry() {
+    _retryAfter = null;
+    _retryStep = 0;
+  }
+
+  /// Tandai satu tulis ditolak permanen, di tempatnya.
+  static void _markFailed(PendingWrite w, String message) {
+    final i = _queue.indexOf(w);
+    if (i < 0) return;
+    _queue[i] = w.copyWith(failed: true, lastError: message);
+  }
 
   /// True selama pembacaan antrean dari disk belum berhasil dan isi berkas
   /// BELUM DIKETAHUI. Selama bernilai true, `_persist()` menolak menulis:
@@ -253,7 +285,15 @@ class Outbox {
 
   /// Masukkan tulis ke antrean. Return id sementara untuk
   /// `INSERT ... RETURNING id`, atau null untuk tulis biasa.
-  static Future<int?> enqueue(String sql, Map<String, Object?> params) async {
+  ///
+  /// [writeId] wajib diteruskan kalau tulis ini sudah pernah dicoba ke server
+  /// dan jawabannya hilang di jalan. Dengan id yang sama, percobaan kedua
+  /// diputar ulang hasilnya di server — bukan dijalankan ulang.
+  static Future<int?> enqueue(
+    String sql,
+    Map<String, Object?> params, {
+    String? writeId,
+  }) async {
     await load();
     final op = parseWrite(sql, params);
     final tempId = (op?.returnsId ?? false) ? _nextTempId-- : null;
@@ -263,6 +303,7 @@ class Outbox {
       params: params,
       createdAt: DateTime.now(),
       tempId: tempId,
+      writeId: writeId,
     ));
     pending.value = _queue.length;
     await _persist();
@@ -311,9 +352,13 @@ class Outbox {
   /// dirujuk langsung di sini tanpa impor melingkar — pemanggil yang
   /// menentukannya.
   static Future<SyncResult> flush({
-    required Future<List<Map<String, dynamic>>> Function(String, Map<String, Object?>)
-        query,
-    required Future<int> Function(String, Map<String, Object?>) execute,
+    required Future<List<Map<String, dynamic>>> Function(
+      String,
+      Map<String, Object?>, {
+      String? writeId,
+    }) query,
+    required Future<int> Function(String, Map<String, Object?>, {String? writeId})
+        execute,
     bool Function(Object)? isRetryable,
     bool Function(Object)? isAuthExpired,
   }) async {
@@ -323,22 +368,28 @@ class Outbox {
     if (_flushing || _queue.isEmpty) {
       return SyncResult(remaining: _queue.length, failed: failedCount);
     }
+    // Backoff setelah gagal jaringan. Tanpa ini, `sync()` dipanggil di setiap
+    // pindah tab dan setiap app kembali ke depan; saat sinyal benar-benar
+    // hilang, tiap percobaan menahan sampai timeout 20 detik dan membuat
+    // aplikasi terasa membeku.
+    final wait = _retryAfter;
+    if (wait != null && DateTime.now().isBefore(wait)) {
+      return SyncResult(remaining: _queue.length, failed: failedCount, offline: true);
+    }
     _flushing = true;
     syncing.value = true;
     var sent = 0;
     var offline = false;
     var authExpired = false;
-    final keep = <PendingWrite>[];
+    final work = List<PendingWrite>.of(_queue);
 
     try {
-      for (var i = 0; i < _queue.length; i++) {
-        final w = _queue[i];
+      for (var i = 0; i < work.length; i++) {
+        final w = work[i];
         // Yang sudah ditolak permanen tidak dikirim lagi; tetap disimpan
         // supaya pengguna bisa memutuskan.
-        if (w.failed) {
-          keep.add(w);
-          continue;
-        }
+        if (w.failed) continue;
+
         final params = _rewrite(w.params);
         final op = parseWrite(w.sql, params);
 
@@ -348,17 +399,16 @@ class Outbox {
         // Lebih jujur: tandai gagal dengan sebab yang bisa dimengerti.
         final orphan = _unresolvedIds(params);
         if (orphan != null) {
-          keep.add(w.copyWith(
-            failed: true,
-            lastError: 'Data induknya gagal dikirim, jadi perubahan ini tidak '
-                'bisa diterapkan.',
-          ));
+          _markFailed(
+            w,
+            'Data induknya gagal dikirim, jadi perubahan ini tidak bisa diterapkan.',
+          );
           continue;
         }
 
         try {
           if (op != null && op.returnsId && w.tempId != null) {
-            final rows = await query(w.sql, params);
+            final rows = await query(w.sql, params, writeId: w.writeId);
             final id = rows.isNotEmpty ? rows.first['id'] : null;
             if (id is num) {
               _idMap[w.tempId!] = id.toInt();
@@ -367,42 +417,44 @@ class Outbox {
               if (parsed != null) _idMap[w.tempId!] = parsed;
             }
           } else {
-            final affected = await execute(w.sql, params);
+            final affected = await execute(w.sql, params, writeId: w.writeId);
             // UPDATE/DELETE yang mengenai 0 baris berarti barisnya sudah tidak
             // ada di cloud (mis. dihapus admin lain saat kita offline).
             // Melaporkannya "terkirim" membuat pengguna mengira perubahannya
             // tersimpan padahal tidak.
             final isUpdateOrDelete = op != null && (op.isUpdate || op.isDelete);
             if (isUpdateOrDelete && affected == 0) {
-              keep.add(w.copyWith(
-                failed: true,
-                lastError: 'Data ini sudah tidak ada di server, jadi '
-                    'perubahannya tidak bisa diterapkan.',
-              ));
+              _markFailed(
+                w,
+                'Data ini sudah tidak ada di server, jadi '
+                'perubahannya tidak bisa diterapkan.',
+              );
               continue;
             }
           }
+          // Sukses: keluarkan dari antrean SEKARANG, lalu simpan ke disk
+          // SEKARANG. Kalau aplikasi dimatikan di tengah sisa antrean, tulis
+          // ini tidak dikirim ulang saat dibuka lagi.
+          _queue.remove(w);
           sent++;
+          pending.value = _queue.length;
+          await _persist();
         } catch (e) {
           if (retryable(e)) {
             // Masih offline / sesi habis: sisanya dicoba lain waktu.
-            keep.add(w);
-            keep.addAll(_queue.skip(i + 1));
             offline = isNetworkFailure(e);
             authExpired = authExpiredTest(e);
+            if (offline) _scheduleRetry();
             break;
           }
           // Server menolak tulis ini (data induk hilang, nilai tidak sah).
-          keep.add(w.copyWith(failed: true, lastError: '$e'));
+          _markFailed(w, '$e');
         }
       }
-      _queue
-        ..clear()
-        ..addAll(keep);
-      // Urutkan ulang supaya urutan asli tetap terjaga setelah ada yang gagal.
-      _queue.sort((a, b) => a.seq.compareTo(b.seq));
+      // Urutan asli tetap terjaga karena `_queue` tidak pernah diacak.
       pending.value = _queue.length;
       await _persist();
+      if (sent > 0 && !offline) _clearRetry();
     } finally {
       _flushing = false;
       syncing.value = false;
@@ -486,6 +538,8 @@ class Outbox {
     _flushing = false;
     _loaded = true;
     _loadFailed = false;
+    _retryAfter = null;
+    _retryStep = 0;
     loadError = null;
     pending.value = 0;
     syncing.value = false;
@@ -504,6 +558,8 @@ class Outbox {
     _flushing = false;
     _loaded = false;
     _loadFailed = false;
+    _retryAfter = null;
+    _retryStep = 0;
     loadError = null;
     pending.value = 0;
     syncing.value = false;

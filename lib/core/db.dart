@@ -14,6 +14,17 @@ class Unauthorized implements Exception {
   String toString() => 'Sesi berakhir. Masuk lagi untuk melanjutkan — perubahan yang belum terkirim tetap tersimpan.';
 }
 
+/// Baris yang hendak diubah sudah tidak ada di server.
+///
+/// Terjadi saat admin lain menghapus baris itu (atau membatalkan sewa) lebih
+/// dulu. Lebih jujur memberi tahu daripada melaporkan "tersimpan" padahal
+/// tidak ada yang berubah.
+class StaleRowException implements Exception {
+  @override
+  String toString() =>
+      'Data ini sudah tidak ada di server — mungkin dihapus pengurus lain. Muat ulang lalu coba lagi.';
+}
+
 /// Akses DB dari UI. Semua platform lewat `/api/sql` (Vercel Function),
 /// jadi tidak ada kredensial Postgres di HP maupun browser.
 ///
@@ -67,9 +78,14 @@ class Db {
     Map<String, Object?> params = const {},
   }) async {
     final write = _isWrite(sql);
+    // Idempoten: id dibuat SEBELUM percobaan pertama, lalu dipakai lagi kalau
+    // tulis ini berakhir di antrean. Tanpa id yang sama, tulis yang sebenarnya
+    // sudah sampai (hanya jawabannya yang hilang karena timeout) dijalankan
+    // dua kali saat sinkron dan buku kas mencatat uang yang sama dua kali.
+    final writeId = write ? driver.newWriteId() : null;
     final key = cacheKey(sql, params, scope: cacheScope);
     try {
-      final rows = await driver.query(sql, params: params);
+      final rows = await driver.query(sql, params: params, writeId: writeId);
       if (write) {
         writes.value++;
       } else {
@@ -93,7 +109,7 @@ class Db {
       if (!net.isNetworkFailure(e)) rethrow;
 
       if (write) {
-        final tempId = await Outbox.enqueue(sql, params);
+        final tempId = await Outbox.enqueue(sql, params, writeId: writeId);
         await _patchCache(sql, params, tempId);
         writes.value++;
         _markOffline();
@@ -113,17 +129,19 @@ class Db {
     String sql, {
     Map<String, Object?> params = const {},
   }) async {
+    final write = _isWrite(sql);
+    final writeId = write ? driver.newWriteId() : null;
     try {
-      final n = await driver.execute(sql, params: params);
-      if (_isWrite(sql)) writes.value++;
+      final n = await driver.execute(sql, params: params, writeId: writeId);
+      if (write) writes.value++;
       _markOnline();
       return n;
     } on Unauthorized {
       await _expire();
       rethrow;
     } catch (e) {
-      if (!_isWrite(sql) || !net.isNetworkFailure(e)) rethrow;
-      await Outbox.enqueue(sql, params);
+      if (!write || !net.isNetworkFailure(e)) rethrow;
+      await Outbox.enqueue(sql, params, writeId: writeId);
       await _patchCache(sql, params, null);
       writes.value++;
       _markOffline();
@@ -251,8 +269,10 @@ class Db {
     if (Outbox.pending.value == 0) return const SyncResult();
 
     final result = await Outbox.flush(
-      query: (sql, params) => driver.query(sql, params: params),
-      execute: (sql, params) => driver.execute(sql, params: params),
+      query: (sql, params, {String? writeId}) =>
+          driver.query(sql, params: params, writeId: writeId),
+      execute: (sql, params, {String? writeId}) =>
+          driver.execute(sql, params: params, writeId: writeId),
       // Sesi kedaluwarsa BUKAN alasan membuang tulisan pengguna: pengguna
       // tinggal masuk lagi, lalu antrean dikirim. Hanya penolakan server
       // yang menandai tulis gagal permanen.
@@ -310,6 +330,20 @@ class Db {
 
   /// Buang tulis yang ditolak permanen.
   static Future<void> dropFailedWrites() => Outbox.removeFailed();
+
+  /// Jalankan UPDATE/DELETE yang WAJIB mengenai baris.
+  ///
+  /// `execute` mengembalikan 0 kalau barisnya sudah tidak ada di cloud (mis.
+  /// dihapus admin lain). Tanpa pemeriksaan ini, menyunting baris yang sudah
+  /// hilang tampak berhasil dan pengguna mengira perubahannya tersimpan.
+  static Future<void> executeExpect(
+    String sql, {
+    Map<String, Object?> params = const {},
+    int expect = 1,
+  }) async {
+    final n = await execute(sql, params: params);
+    if (n < expect) throw StaleRowException();
+  }
 
   static bool _isWrite(String sql) {
     final head = sql.trimLeft().toUpperCase();

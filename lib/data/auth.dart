@@ -55,9 +55,6 @@ class Auth {
     role = r;
     token = t;
     Db.authToken = t;
-    // Scope cache ikut role yang dipulihkan — cache lama dari role lain
-    // tidak boleh dipakai (lihat `Db.cacheScope`).
-    Db.cacheScope = r ?? 'signed-in';
     // Id anggota ikut dipulihkan: disimpan terpisah karena hanya sebagian
     // akun yang punya (anggota klub yang mendaftar sendiri).
     final m = await SecureStore.read('auth_member');
@@ -65,8 +62,14 @@ class Auth {
     // Id akun juga: dipakai untuk mengenali baris "kamu" di daftar pengguna.
     final uid = await SecureStore.read('auth_uid');
     userId = uid == null ? null : int.tryParse(uid);
+    // Scope cache ikut AKUN (bukan hanya role): dua admin di satu perangkat
+    // tidak saling membaca cache. Lihat `Db.cacheScope`.
+    Db.cacheScope = _scope(r, userId);
     session.value = true;
   }
+
+  /// Kunci cache lokal untuk satu akun. Tamu memakai `public`.
+  static String _scope(String? role, int? id) => '${role ?? 'signed-in'}:${id ?? 0}';
 
   /// Apakah belum ada user sama sekali? (perlu buat admin pertama)
   static Future<bool> needsBootstrap() async {
@@ -131,10 +134,10 @@ class Auth {
     Db.authToken = null;
     Db.cacheScope = 'public';
     session.value = false;
-    // Sama seperti saat login: cache role lama dibuang, supaya data yang
-    // hanya boleh dilihat anggota (nomor HP) tidak tinggal di perangkat
-    // setelah keluar.
-    await Db.clearOfflineCache();
+    // Cache TIDAK dibuang. Data terbaca tetap tersedia saat perangkat sedang
+    // tanpa sinyal, dan cache sudah dipisah per akun (`_scope`) sehingga
+    // isinya tidak bisa dibaca akun lain maupun tamu. Yang dibuang hanya
+    // token dan identitas sesi.
     await SecureStore.delete('auth_user');
     await SecureStore.delete('auth_role');
     await SecureStore.delete('auth_token');
@@ -162,16 +165,12 @@ class Auth {
     memberId = member;
     Auth.userId = userId;
     Db.authToken = t;
-    // Scope cache ikut role: admin melihat nomor HP dan alamat anggota,
-    // anggota hanya nomor HP, tamu tidak. Cache tiap role terpisah, jadi
-    // hasil yang dibaca admin tidak bisa dibaca tamu dari cache lokal.
-    Db.cacheScope = r ?? 'signed-in';
+    // Scope cache ikut AKUN: admin melihat nomor HP dan alamat anggota,
+    // anggota hanya nomor HP, tamu tidak. Cache tiap akun terpisah, jadi
+    // hasil yang dibaca admin tidak bisa dibaca tamu maupun admin lain dari
+    // cache lokal.
+    Db.cacheScope = _scope(r, userId);
     session.value = true;
-    // Cache dibaca per role (lihat `Db.cacheScope`). Ganti role berarti isi
-    // cache yang lama tidak boleh dipakai: kalau admin membaca daftar
-    // anggota lengkap dengan nomor HP, lalu keluar, cache itu masih ada
-    // dan mode publik bisa membacanya.
-    await Db.clearOfflineCache();
     await SecureStore.write('auth_user', u);
     if (r != null) await SecureStore.write('auth_role', r);
     if (t != null) await SecureStore.write('auth_token', t);
@@ -294,11 +293,22 @@ class Auth {
 
   /// Ganti password akun sendiri. Password lama diminta supaya token yang
   /// bocor tidak bisa dipakai mengunci pemilik akun.
+  ///
+  /// Server menaikkan `token_version` (sesi di perangkat lain langsung
+  /// berhenti) dan mengembalikan token baru untuk perangkat ini — tanpa itu
+  /// orang yang baru mengganti password malah terlempar ke layar masuk.
   static Future<void> changePassword({
     required String current,
     required String next,
-  }) =>
-      _post({'action': 'change', 'current': current, 'next': next});
+  }) async {
+    final body = await _post({'action': 'change', 'current': current, 'next': next});
+    final t = body['token'];
+    if (t is String && t.isNotEmpty) {
+      token = t;
+      Db.authToken = t;
+      await SecureStore.write('auth_token', t);
+    }
+  }
 
   // ---------- Kelola pengguna (admin) ----------
 

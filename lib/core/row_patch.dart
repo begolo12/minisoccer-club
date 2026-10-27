@@ -491,6 +491,9 @@ const _autoTimestamps = <String, List<String>>{
   'announcements': ['created_at'],
   'teams': ['created_at'],
   'tournaments': ['created_at'],
+  // Server-only (tidak pernah ditambal klien), tetapi default-nya tetap harus
+  // dikenali supaya `row_patch_schema_test` bisa membandingkan schema utuh.
+  'applied_writes': ['created_at'],
 };
 
 /// Penanda `CURRENT_DATE` — dihitung saat baris ditambal, bukan saat compile.

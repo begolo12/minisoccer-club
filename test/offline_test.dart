@@ -14,7 +14,11 @@ class FakeServer {
   bool offline = false;
   final Set<String> reject = {};
 
-  Future<List<Map<String, dynamic>>> query(String sql, Map<String, Object?> params) async {
+  Future<List<Map<String, dynamic>>> query(
+    String sql,
+    Map<String, Object?> params, {
+    String? writeId,
+  }) async {
     if (offline) throw Exception('Tidak bisa menghubungi server');
     if (reject.any((r) => sql.contains(r))) {
       throw Exception('Query gagal dijalankan');
@@ -29,7 +33,11 @@ class FakeServer {
     return const [];
   }
 
-  Future<int> execute(String sql, Map<String, Object?> params) async {
+  Future<int> execute(
+    String sql,
+    Map<String, Object?> params, {
+    String? writeId,
+  }) async {
     if (offline) throw Exception('Tidak bisa menghubungi server');
     if (reject.any((r) => sql.contains(r))) {
       throw Exception('Query gagal dijalankan');
