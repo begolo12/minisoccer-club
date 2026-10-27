@@ -439,3 +439,18 @@ Keputusan lain di ronde yang sama:
   detail laga dan detail tim membuat "hapus" jadi elemen paling menonjol di
   halaman berisi skor dan nama. Area sentuhnya tetap 46dp; hanya garisnya yang
   hilang (`iconAction(..., bordered: false)`).
+
+## Aturan yang dipilih sekali, dipakai di mana-mana
+
+- **Warna uang.** Nominal uang selalu amber (`AppThemes.money`). Hijau dan merah
+  hanya menandai *keadaan*: lunas, tunggakan, defisit, gagal. Arah uang dibaca
+  dari tanda `+`/`−` dan ikon panah, bukan dari warna. Sebelumnya pemasukan
+  hijau, pengeluaran netral, dan angka yang sama amber di Beranda.
+- **`StatStrip` bergaris, `Panel` berisi.** Dua bentuk, dua peran: strip adalah
+  deret angka tanpa isi (tidak perlu latar), panel adalah satu objek yang bisa
+  diketuk. Bukan dua gaya untuk hal yang sama.
+- **Satu tingkat garis per daftar.** Daftar nama memakai `RowItem` bergaris di
+  atas latar halaman; panel bertepi yang berisi chip bertepi dianggap salah
+  (lihat "Pemain per tim" di ronde ini).
+- **Aksi hapus di dalam baris tanpa bingkai**, aksi hapus di kepala halaman
+  berbingkai. Kepala halaman adalah tempat aksi halaman; baris adalah data.

@@ -1261,8 +1261,8 @@ class _CashBlock extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 6),
             child: StatStrip(
               children: [
-                StatTile(label: 'Masuk', value: fmtMoney(cash.income)),
-                StatTile(label: 'Keluar', value: fmtMoney(cash.expense)),
+                StatTile(label: 'Masuk', value: fmtMoney(cash.income), color: AppThemes.money(context)),
+                StatTile(label: 'Keluar', value: fmtMoney(cash.expense), color: AppThemes.money(context)),
                 StatTile(
                   label: 'Saldo',
                   value: fmtMoney(cash.balance),
