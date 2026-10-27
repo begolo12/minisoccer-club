@@ -306,9 +306,11 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
           : '',
     );
     var saving = false;
-  final ok = await showShadDialog<bool>(
+    final initialFee = fee.text;
+  final ok = await showEditorDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
+      draft: () => fee.text != initialFee,
+      builder: (ctx, cancel) => StatefulBuilder(
         builder: (ctx, setLocal) {
           Future<void> save() async {
             setLocal(() => saving = true);
@@ -328,7 +330,7 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
             description: const Text('Nominal per anggota untuk turnamen ini.'),
             actions: [
               ShadButton.outline(
-                onPressed: saving ? null : () => Navigator.pop(ctx, false),
+                onPressed: saving ? null : cancel,
                 child: const Text('Batal'),
               ),
               SaveButton(saving: saving, onPressed: save),
@@ -843,12 +845,29 @@ Future<int?> showTournamentForm(BuildContext context) async {
   var time = const TimeOfDay(hour: 20, minute: 0);
   var saving = false;
   int? createdId;
+  // Form sudah terisi default; yang perlu ditanyakan hanya kalau pengguna
+  // mengubah salah satunya.
+  final initialName = name.text;
+  final initialMinutes = minutes.text;
+  final initialBreak = breakMin.text;
+  final initialSelected = selected.length;
+  final initialGroups = groups;
+  final initialDate = date;
+  final initialTime = time;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    // Form tulis: barrier tidak boleh menutup dialog di tengah simpan.
-    barrierDismissible: false,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        name.text != initialName ||
+        venue.text.isNotEmpty ||
+        fee.text.isNotEmpty ||
+        minutes.text != initialMinutes ||
+        breakMin.text != initialBreak ||
+        selected.length != initialSelected ||
+        groups != initialGroups ||
+        date != initialDate ||
+        time != initialTime,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         // Durasi dijepit, bukan dipercaya: kolom angka ini bisa diisi 0 atau
         // negatif, dan jadwal yang lahir dari situ menyusut/k mundur —
@@ -916,7 +935,7 @@ Future<int?> showTournamentForm(BuildContext context) async {
               '${total ~/ 60}j ${total % 60}m total'),
           actions: [
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             ShadButton(
@@ -1119,10 +1138,13 @@ Future<Object?> showScoreForm(
   // dikonfirmasi sekali lagi, karena satu ketukan tidak boleh mengubah
   // klasemen menjadi seri.
   var confirmZero = false;
+  final initialHome = h;
+  final initialAway = a;
 
-  final result = await showShadDialog<Object>(
+  final result = await showEditorDialog(
     context: context,
-    builder: (ctx) => StatefulBuilder(
+    draft: () => h != initialHome || a != initialAway,
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         final t = ShadTheme.of(ctx);
         final done = home != null && away != null;
@@ -1135,7 +1157,7 @@ Future<Object?> showScoreForm(
                 onPressed: () => Navigator.pop(ctx, 'reset'),
                 child: const Text('Atur ulang'),
               ),
-            ShadButton.outline(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+            ShadButton.outline(onPressed: cancel, child: const Text('Batal')),
             ShadButton(
               onPressed: () {
                 if (!done && h == 0 && a == 0 && !confirmZero) {
@@ -1227,10 +1249,16 @@ Future<bool> showTournamentTeamsForm(
   var picked = {...selected};
   var groupCount = groups.clamp(1, groupCap(picked.length));
   var saving = false;
+  final initialPicked = {...picked};
+  final initialGroups = groupCount;
 
-  final ok = await showShadDialog<bool>(
+  final ok = await showEditorDialog(
     context: context,
-    builder: (ctx) => StatefulBuilder(
+    draft: () =>
+        groupCount != initialGroups ||
+        picked.length != initialPicked.length ||
+        !picked.containsAll(initialPicked),
+    builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         final cap = groupCap(picked.length);
         if (groupCount > cap) groupCount = cap;
@@ -1272,7 +1300,7 @@ Future<bool> showTournamentTeamsForm(
           ),
           actions: [
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             ShadButton(

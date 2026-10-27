@@ -185,6 +185,56 @@ Future<bool> confirm(
   return ok ?? false;
 }
 
+/// Dialog tulis yang tidak membuang isian diam-diam.
+///
+/// Back sistem pada dialog dulu langsung menutupnya — padahal alasan tersering
+/// menekan Back di tengah form adalah ingin menutup keyboard, dan semua yang
+/// sudah diketik hilang tanpa jejak. Sekarang Back dan tombol Batal lewat jalur
+/// yang sama: kalau [draft] bernilai true, minta konfirmasi dulu.
+///
+/// [draft] dipanggil saat tombol ditekan, bukan saat build: controller hanya
+/// menyimpan teks tanpa memicu rebuild, jadi nilai yang disimpan di build
+/// pertama akan selalu basi.
+///
+/// Pemanggil wajib memakai `cancel` untuk tombol Batal. `Navigator.pop` biasa
+/// melewati [PopScope], jadi tombol yang memanggilnya akan membuang isian tanpa
+/// bertanya — persis yang ingin dicegah.
+Future<T?> showEditorDialog<T>({
+  required BuildContext context,
+  required bool Function() draft,
+  required Widget Function(BuildContext ctx, VoidCallback cancel) builder,
+}) async {
+  return showShadDialog<T>(
+    context: context,
+    // Barrier dimatikan di sini, bukan di tiap pemanggil: ketukan di luar form
+    // juga membuang isian, jadi ia harus lewat jalur konfirmasi yang sama.
+    barrierDismissible: false,
+    builder: (ctx) => PopScope<Object?>(
+      // `canPop: false`: Back tidak pernah menembus dialog. Tanpa ini Back bisa
+      // ikut memundurkan halaman di belakangnya — pengguna keluar dari form
+      // sekaligus meninggalkan halaman tempat ia mengedit.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _leaveEditor(ctx, draft);
+      },
+      child: builder(ctx, () => _leaveEditor(ctx, draft)),
+    ),
+  );
+}
+
+Future<void> _leaveEditor(BuildContext ctx, bool Function() draft) async {
+  if (draft() &&
+      !await confirm(
+        ctx,
+        'Buang isian?',
+        'Isian yang sudah diketik belum disimpan.',
+        confirmLabel: 'Buang',
+      )) {
+    return;
+  }
+  if (ctx.mounted) Navigator.pop(ctx);
+}
+
 /// Toast pendek gaya shadcn. Jatuh ke SnackBar kalau Sonner tidak terpasang.
 ///
 /// Pesan yang menandai kegagalan tampil lebih lama: penjelasan error tidak

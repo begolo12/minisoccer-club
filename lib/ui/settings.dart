@@ -249,14 +249,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: ShadButton.outline(
-                      onPressed: () => showShadDialog<bool>(
-                        context: context,
-                        // Menutup dialog di tengah simpan membuat hasilnya
-                        // tidak pernah tampil; pengguna bisa mengira
-                        // passwordnya sudah berganti.
-                        barrierDismissible: false,
-                        builder: (_) => const _PasswordDialog(),
-                      ),
+                      onPressed: () async {
+                        // Baru bertanya kalau ada yang diketik; form password
+                        // kosong ditutup seperti dialog biasa.
+                        var typed = false;
+                        await showEditorDialog<bool>(
+                          context: context,
+                          draft: () => typed,
+                          builder: (_, cancel) => _PasswordDialog(
+                            onCancel: cancel,
+                            onTyped: () => typed = true,
+                          ),
+                        );
+                      },
                       child: const Text('Ganti password'),
                     ),
                   ),
@@ -823,7 +828,13 @@ String _screenLine(BuildContext context) {
 
 /// Dialog ganti password akun sendiri.
 class _PasswordDialog extends StatefulWidget {
-  const _PasswordDialog();
+  const _PasswordDialog({required this.onCancel, required this.onTyped});
+
+  /// Wajib lewat sini, bukan Navigator.pop, supaya PopScope sempat bertanya.
+  final VoidCallback onCancel;
+
+  /// Dipanggil begitu ada isian; PopScope tidak bisa membaca controller.
+  final VoidCallback onTyped;
 
   @override
   State<_PasswordDialog> createState() => _PasswordDialogState();
@@ -874,7 +885,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       description: const Text('Masukkan password lama, lalu password baru.'),
       actions: [
         ShadButton.outline(
-          onPressed: _saving ? null : () => Navigator.pop(context, false),
+          onPressed: _saving ? null : widget.onCancel,
           child: const Text('Batal'),
         ),
         ShadButton(
@@ -895,6 +906,9 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             autofocus: true,
             placeholder: const Text('Password lama'),
             textInputAction: TextInputAction.next,
+            onChanged: (v) {
+              if (v.isNotEmpty) widget.onTyped();
+            },
           ),
           const SizedBox(height: 10),
           ShadInput(
@@ -903,6 +917,9 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             enabled: !_saving,
             placeholder: const Text('Password baru (minimal 8 karakter)'),
             textInputAction: TextInputAction.next,
+            onChanged: (v) {
+              if (v.isNotEmpty) widget.onTyped();
+            },
           ),
           const SizedBox(height: 10),
           ShadInput(
@@ -911,6 +928,9 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             enabled: !_saving,
             placeholder: const Text('Ulangi password baru'),
             textInputAction: TextInputAction.done,
+            onChanged: (v) {
+              if (v.isNotEmpty) widget.onTyped();
+            },
             onSubmitted: (_) => _save(),
           ),
           if (_err != null) ...[

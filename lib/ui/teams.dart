@@ -59,16 +59,17 @@ class _TeamsPageState extends State<TeamsPage> {
     final name = TextEditingController(text: 'Tim ${String.fromCharCode(65 + next)}');
     // Guard dobel-ketuk: dua Team.insert membuat dua "Tim A".
     var saving = false;
-    final ok = await showShadDialog<bool>(
+    final initial = name.text;
+    final ok = await showEditorDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
+      draft: () => name.text != initial,
+      builder: (ctx, cancel) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Tim baru'),
           description: const Text('Satu tim berisi 7-8 pemain. Tambah pemain setelah tim dibuat.'),
           actions: [
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             SaveButton(
@@ -307,15 +308,16 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
   Future<void> _rename() async {
     final c = TextEditingController(text: _name);
     var saving = false;
-    final ok = await showShadDialog<bool>(
+    final initial = c.text;
+    final ok = await showEditorDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
+      draft: () => c.text != initial,
+      builder: (ctx, cancel) => StatefulBuilder(
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Nama tim'),
           actions: [
             ShadButton.outline(
-              onPressed: saving ? null : () => Navigator.pop(ctx, false),
+              onPressed: saving ? null : cancel,
               child: const Text('Batal'),
             ),
             SaveButton(
