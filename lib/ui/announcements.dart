@@ -72,7 +72,7 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   decoration: BoxDecoration(
                     border: Border(
-                      bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7)),
+                      bottom: BorderSide(color: t.colorScheme.border),
                     ),
                   ),
                   child: Column(

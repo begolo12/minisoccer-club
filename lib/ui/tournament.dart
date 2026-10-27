@@ -513,7 +513,7 @@ class _MatchTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7))),
+            border: Border(bottom: BorderSide(color: t.colorScheme.border)),
           ),
           child: Row(
             children: [

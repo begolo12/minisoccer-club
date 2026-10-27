@@ -449,7 +449,7 @@ class RowItem extends StatelessWidget {
     );
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7))),
+        border: Border(bottom: BorderSide(color: t.colorScheme.border)),
       ),
       child: onTap == null
           ? row
@@ -1291,17 +1291,22 @@ Widget iconAction(
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        // 40px, bukan 34: pedoman sentuh Android/iOS meminta ~44px, dan
-        // tombol ikon berjajar (ubah/hapus) paling sering salah ketuk di HP
-        // kecil. Tampilannya tetap ringkas karena garis tepinya tipis.
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            border: Border.all(color: t.colorScheme.border),
-            borderRadius: BorderRadius.circular(8),
+        // Kotak terlihat 40px, area sentuh 46px: pedoman Android/iOS meminta
+        // ~44px, dan tombol ikon berjajar (ubah/hapus) paling sering salah
+        // ketuk di HP kecil. Padding 3px sekaligus memberi jarak visual 12px
+        // antar dua tombol yang dipisah SizedBox(6) — cukup jauh antara
+        // "ubah" dan "hapus" tanpa mengubah tampilan.
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              border: Border.all(color: t.colorScheme.border),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: color),
           ),
-          child: Icon(icon, size: 18, color: color),
         ),
       ),
     ),
