@@ -205,6 +205,8 @@ Buang yang redundan: `idx_payments_member`, `idx_attendance_booking`,
 | 4.16 Bahasa | jargon (`vs`, `Username`, `password`, `offline`, `CSV`, `Top skor`, `Installer`) diganti |
 | 4.9–4.10 Form | validasi inline + label persisten lewat widget bersama `FieldLabel`; semua dialog isian (anggota, laga, iuran, transaksi, sewa, pengumuman, akun, turnamen, kata sandi) |
 | 4.1 Tombol teks | `visualDensity: VisualDensity.standard` — tema memasang density compact yang diam-diam memotong 8px dari `minimumSize` 44 (tombol "Masuk" di bilah mode publik terukur 36px) |
+| 2.3b Cache web | localStorage dibatasi 400 entri / 3 juta karakter; entri tertua dibuang, dan saat kuota penuh tulisan dicoba sekali lagi setelah dipangkas |
+| Integrasi main | jejak audit (`audit_log`) tetap tercatat di jalur batch/idempoten; `auth_throttle` membatasi login lintas instance; `showEditorDialog` jadi satu pemilik PopScope; `/api/health` publik |
 
 **Verifikasi terakhir**
 
@@ -216,7 +218,9 @@ flutter build web        sukses (release, no-cdn)
 db:init                  dua kali berturut-turut, 92 statement (idempoten)
 check:schema             Schema produksi cocok
 check:secrets            tidak ada kredensial (termasuk riwayat git)
-CI Build APK             menunggu run untuk commit b6a4643 (lihat Actions)
+CI Build APK             sukses untuk 6bdda00 (run 125) dan 2dac02b (run 126):
+                         secret scan, 65 tes Node, analyze, 282 tes Flutter,
+                         2 APK (universal + per-ABI), verifikasi sertifikat
 visual sweep (3 ukuran)  52/52 (build pra-label) • hp 19/20 sesudahnya, satu-
                          satunya fail = tap target "Semua", lalu diperbaiki dan
                          diverifikasi 0 target kecil di Chrome + 2 widget test

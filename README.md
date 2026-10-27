@@ -134,6 +134,11 @@ dihapus), jadi tanpa penanganan khusus, membuka atau memuat ulang halaman saat
 jaringan mati hanya menampilkan halaman error browser — padahal antrean
 tersimpan di localStorage. `web/sw.js` menutup celah itu:
 
+Cache baca juga dibatasi di kedua platform — Android: 400 berkas / 24 MB,
+web: 400 entri / 3 juta karakter. Entri **tertua** dibuang lebih dulu; di web,
+kuota penuh dipangkas lalu tulisan dicoba sekali lagi, supaya cache tidak
+berhenti diperbarui diam-diam dan halaman tidak terus menampilkan data basi.
+
 | Permintaan | Perlakuan |
 |---|---|
 | Navigasi & aset (canvaskit, `main.dart.js`, font) | cache-first, diperbarui di latar |
@@ -474,7 +479,7 @@ untuk rilis.
 | Mode publik | Tanpa akun hanya **data pertandingan**: anggota (nama/posisi/nomor punggung), tim, turnamen, laga, pencetak gol, pengumuman. **Uang klub tertutup**: `payments`, `transactions`, `bookings`, `booking_attendance`, `settings` ditolak 403 untuk tamu (`GUEST_READ_DENY` di `api/_guard.js`) — siapa belum bayar iuran dan berapa saldo kas bukan hal yang boleh dibaca orang yang cuma punya tautannya |
 | Role DB | `app_web`: tanpa DDL, tanpa akses `password_hash` (dibuat `npm run db:harden`) |
 | Filter query | Satu statement, hanya SELECT/INSERT/UPDATE/DELETE/WITH; komentar & string dinormalisasi dulu, target tulis harus terbaca, `users` hanya lewat `/api/auth`; `public`/`member` read-only dan tidak bisa membaca daftar pengguna |
-| Privasi anggota | Nomor HP & alamat tidak untuk tamu; alamat juga tidak untuk role anggota. Dijaga dua lapis: query yang menyebut kolom itu **ditolak**, dan hasil `SELECT *` **disaring** (`api/_privacy.js`). Cache offline dibaca per role, jadi hasil yang dibaca admin tidak bisa dibaca tamu dari perangkat |
+| Privasi anggota | Nomor HP & alamat tidak untuk tamu; alamat juga tidak untuk role anggota. Dijaga dua lapis: query yang menyebut kolom itu **ditolak**, dan hasil `SELECT *` **disaring** (`api/_privacy.js`). Cache offline dibaca per **akun** (`role:id`), jadi hasil yang dibaca admin tidak bisa dibaca tamu maupun admin lain dari perangkat yang sama |
 | Parameter | `@nama` → positional hanya di luar string/komentar; parameter yang tidak dikirim ditolak (bukan NULL diam-diam) |
 | Kelola user | Tambah/reset/hapus/ubah/daftar hanya lewat `/api/auth` (admin), bukan lewat SQL. Daftar akun mengirim **status** punya-password, bukan hash-nya — `password_hash` tidak pernah keluar dari server dan tidak bisa dibaca role `app_web` |
 | Header | CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: no-referrer` |
