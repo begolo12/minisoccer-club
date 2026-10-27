@@ -292,6 +292,9 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
     var saving = false;
   final ok = await showShadDialog<bool>(
       context: context,
+      // Sama seperti form tulis lain: barrier tidak boleh membuang nominal
+      // yang sedang diketik.
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
           Future<void> save() async {
@@ -307,7 +310,7 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
             }
           }
 
-          return ShadDialog(
+          return _WriteShell(ShadDialog(
             title: const Text('Iuran turnamen'),
             description: const Text('Nominal per anggota untuk turnamen ini.'),
             actions: [
@@ -317,8 +320,15 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
               ),
               SaveButton(saving: saving, onPressed: save),
             ],
-            child: MoneyField(controller: fee, autofocus: true),
-          );
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const FieldLabel('Iuran per anggota'),
+                MoneyField(controller: fee, autofocus: true),
+              ],
+            ),
+          ), [fee]);
         },
       ),
     );
@@ -581,8 +591,10 @@ class _MatchTile extends StatelessWidget {
                       onTap: () => _openScore(context),
                       borderRadius: BorderRadius.circular(7),
                       child: SizedBox(
-                        width: 30,
-                        height: 30,
+                        // Area sentuh 44px; ikonnya tetap kecil supaya
+                        // baris jadwal tidak terlihat penuh tombol.
+                        width: AppThemes.minTap,
+                        height: AppThemes.minTap,
                         child: Icon(Icons.check, size: 16, color: t.colorScheme.foreground),
                       ),
                     ),
@@ -887,7 +899,7 @@ Future<int?> showTournamentForm(BuildContext context) async {
           }
         }
 
-        return ShadDialog(
+        return _WriteShell(ShadDialog(
           title: const Text('Turnamen baru'),
           description: Text('$count tim • $groupCount grup • $matches laga • '
               '${total ~/ 60}j ${total % 60}m total'),
@@ -907,17 +919,21 @@ Future<int?> showTournamentForm(BuildContext context) async {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                FieldLabel('Nama turnamen', required: true),
                 ShadInput(controller: name, placeholder: const Text('Nama turnamen'), autofocus: true, textInputAction: TextInputAction.next),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                FieldLabel('Lokasi'),
                 ShadInput(controller: venue, placeholder: const Text('Lokasi (opsional)'), textInputAction: TextInputAction.next),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                FieldLabel('Iuran per anggota'),
                 // Iuran per anggota untuk turnamen ini. Beda tiap turnamen
                 // karena biaya pendaftaran dan jumlah pemainnya berbeda.
                 MoneyField(
                   controller: fee,
                   placeholder: const Text('Iuran per anggota (opsional)'),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                FieldLabel('Tanggal & jam mulai'),
                 Row(
                   children: [
                     Expanded(
@@ -948,7 +964,8 @@ Future<int?> showTournamentForm(BuildContext context) async {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                FieldLabel('Menit tiap laga & jeda'),
                 Row(
                   children: [
                     Expanded(
@@ -970,7 +987,8 @@ Future<int?> showTournamentForm(BuildContext context) async {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
+                FieldLabel('Jumlah grup'),
                 ShadSelect<int>(
                   placeholder: const Text('Jumlah grup'),
                   initialValue: groups,
@@ -1008,8 +1026,11 @@ Future<int?> showTournamentForm(BuildContext context) async {
                                 groups = groupCap(selected.length);
                               }
                             }),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: ConstrainedBox(
+                              // `visualDensity: compact` mengecilkan kotak
+                              // centang sampai ~32px; barisnya sendiri tetap
+                              // 44px supaya bisa disentuh sambil berdiri.
+                              constraints: const BoxConstraints(minHeight: AppThemes.minTap),
                               child: Row(
                                 children: [
                                   Checkbox(
@@ -1071,11 +1092,43 @@ Future<int?> showTournamentForm(BuildContext context) async {
               ],
             ),
           ),
-        );
+        ), [name, venue, fee, minutes, breakMin]);
       },
     ),
   );
   return (ok ?? false) ? createdId : null;
+}
+
+/// Dialog tulis yang tidak bisa ditutup lewat Back atau ketukan di luar.
+///
+/// Barrier yang bisa diketuk membuang pengisian yang sedang berjalan tanpa
+/// hasil apa pun — skor yang sudah diatur harus dimasukkan ulang. Tombol
+/// Batal di dalam dialog tetap menutup seperti biasa.
+///
+/// [controllers] dimiliki widget ini, bukan pemanggil: `dispose` baru jalan
+/// setelah dialog benar-benar dilepas dari pohon widget, jadi kolom isian
+/// tidak pernah memakai controller yang sudah dibuang saat animasi tutup.
+class _WriteShell extends StatefulWidget {
+  const _WriteShell(this.child, [this.controllers = const []]);
+
+  final Widget child;
+  final List<TextEditingController> controllers;
+
+  @override
+  State<_WriteShell> createState() => _WriteShellState();
+}
+
+class _WriteShellState extends State<_WriteShell> {
+  @override
+  void dispose() {
+    for (final c in widget.controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(canPop: false, child: widget.child);
 }
 
 /// Dialog skor. Return `(home, away)`, string `'reset'`, atau null kalau batal.
@@ -1099,17 +1152,29 @@ Future<Object?> showScoreForm(
 
   final result = await showShadDialog<Object>(
     context: context,
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         final t = ShadTheme.of(ctx);
         final done = home != null && away != null;
-        return ShadDialog(
+        return _WriteShell(ShadDialog(
           title: Text(title),
           description: Text(subtitle),
           actions: [
             if (canReset)
               ShadButton.ghost(
-                onPressed: () => Navigator.pop(ctx, 'reset'),
+                onPressed: () async {
+                  // Mengatur ulang menghapus skor yang sudah masuk klasemen,
+                  // jadi harus disetujui dulu — bukan satu ketukan.
+                  final reset = await confirm(
+                    ctx,
+                    'Atur ulang skor?',
+                    'Skor laga ini dihapus dan klasemen dihitung ulang tanpa '
+                        'hasil ini. Catatan gol tidak terhapus.',
+                    confirmLabel: 'Atur ulang',
+                  );
+                  if (reset && ctx.mounted) Navigator.pop(ctx, 'reset');
+                },
                 child: const Text('Atur ulang'),
               ),
             ShadButton.outline(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
@@ -1180,7 +1245,7 @@ Future<Object?> showScoreForm(
               ),
             ],
           ),
-        );
+        ));
       },
     ),
   );
@@ -1207,6 +1272,9 @@ Future<bool> showTournamentTeamsForm(
 
   final ok = await showShadDialog<bool>(
     context: context,
+    // Memilih ulang tim menghapus jadwal yang ada; ketukan di luar tidak
+    // boleh membuang pilihan yang sedang diatur.
+    barrierDismissible: false,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         final cap = groupCap(picked.length);
@@ -1241,7 +1309,7 @@ Future<bool> showTournamentTeamsForm(
         }
 
         final t = ShadTheme.of(ctx);
-        return ShadDialog(
+        return _WriteShell(ShadDialog(
           title: const Text('Kelola tim'),
           description: Text(
             '$count tim • $groupCount grup • $matches laga. '
@@ -1262,6 +1330,7 @@ Future<bool> showTournamentTeamsForm(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FieldLabel('Jumlah grup'),
               ShadSelect<int>(
                 placeholder: const Text('Jumlah grup'),
                 initialValue: groupCount,
@@ -1272,7 +1341,8 @@ Future<bool> showTournamentTeamsForm(
                 selectedOptionBuilder: (c, v) => Text('$v grup'),
                 onChanged: saving ? null : (v) => setLocal(() => groupCount = v ?? 1),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Tim & grupnya'),
               SizedBox(
                 height: 260,
                 child: Material(
@@ -1310,7 +1380,7 @@ Future<bool> showTournamentTeamsForm(
               ),
             ],
           ),
-        );
+        ));
       },
     ),
   );

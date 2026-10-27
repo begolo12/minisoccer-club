@@ -6,6 +6,7 @@ import '../data/models.dart';
 import 'fmt.dart';
 import 'money_input.dart';
 import 'teams.dart';
+import 'theme.dart';
 import 'widgets.dart';
 
 /// Kumpulan form (bottom-sheet style dialog) yang dipakai lintas halaman.
@@ -25,6 +26,10 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
   var position = member?.position ?? 'Bebas';
   var active = member?.active ?? true;
   var saving = false;
+  // Error ditampilkan di bawah kolomnya sendiri, bukan hanya lewat toast:
+  // toast hilang sendiri sementara kolom yang salah tetap harus dicari.
+  String? nameError;
+  String? jerseyError;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -35,16 +40,18 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
-          if (name.text.trim().isEmpty) {
-            toast(ctx, 'Nama tidak boleh kosong');
-            return;
-          }
-          final jerseyValue = int.tryParse(jersey.text.trim());
-          if (jersey.text.trim().isNotEmpty &&
-              (jerseyValue == null || jerseyValue < 0 || jerseyValue > 99)) {
-            toast(ctx, 'Nomor punggung 0–99');
-            return;
-          }
+          final jerseyRaw = jersey.text.trim();
+          final jerseyValue = int.tryParse(jerseyRaw);
+          final missingName = name.text.trim().isEmpty;
+          // Nomor punggung 0–99: nomor di luar itu tidak dipakai di sepak
+          // bola, dan lebih sering berasal dari salah ketik.
+          final badJersey = jerseyRaw.isNotEmpty &&
+              (jerseyValue == null || jerseyValue < 0 || jerseyValue > 99);
+          setLocal(() {
+            nameError = missingName ? 'Nama tidak boleh kosong' : null;
+            jerseyError = badJersey ? 'Nomor punggung harus 0–99' : null;
+          });
+          if (missingName || badJersey) return;
           setLocal(() => saving = true);
           try {
             if (member == null) {
@@ -73,7 +80,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
           }
         }
 
-        return ShadDialog(
+        return _WriteDialog(ShadDialog(
           title: Text(member == null ? 'Tambah anggota' : 'Edit anggota'),
           description: Text(member == null
               ? 'Isi data pemain. Bisa dilengkapi nanti.'
@@ -90,48 +97,93 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadInput(controller: name, placeholder: const Text('Nama lengkap'), autofocus: true, textCapitalization: TextCapitalization.words, textInputAction: TextInputAction.next),
-              const SizedBox(height: 10),
-              ShadInput(controller: phone, placeholder: const Text('No. HP (opsional)'), keyboardType: TextInputType.phone),
-              const SizedBox(height: 10),
-              ShadInput(controller: address, placeholder: const Text('Alamat (opsional)'), textCapitalization: TextCapitalization.words),
-              const SizedBox(height: 10),
+              FieldLabel('Nama lengkap', required: true),
+              Semantics(
+                // Error diumumkan dari field-nya: pembaca layar yang fokus ke
+                // isian ini langsung mendengar apa yang kurang, tanpa mencari
+                // teks error terpisah di bawahnya.
+                label: nameError == null ? 'Nama lengkap' : 'Nama lengkap, $nameError',
+                child: ShadInput(
+                  controller: name,
+                  placeholder: const Text('mis. Budi Santoso'),
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (_) => setLocal(() => nameError = null),
+                ),
+              ),
+              if (nameError != null) _ErrorText(nameError!),
+              const SizedBox(height: 12),
+              FieldLabel('Nomor HP'),
+              ShadInput(
+                controller: phone,
+                placeholder: const Text('081234567890'),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 12),
+              FieldLabel('Alamat'),
+              ShadInput(
+                controller: address,
+                placeholder: const Text('Alamat tinggal'),
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    // Placeholder saja tidak cukup untuk pembaca layar:
-                    // setelah dipilih, kontrol hanya mengumumkan nilainya
-                    // ("Bek") tanpa nama fieldnya.
-                    child: Semantics(
-                      label: 'Posisi bermain',
-                      child: ShadSelect<String>(
-                        placeholder: const Text('Posisi'),
-                        initialValue: position,
-                        options: const ['Kiper', 'Bek', 'Gelandang', 'Penyerang', 'Bebas']
-                            .map((p) => ShadOption(value: p, child: Text(p)))
-                            .toList(),
-                        selectedOptionBuilder: (c, v) => Text(v),
-                        onChanged: (v) => setLocal(() => position = v ?? 'Bebas'),
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Placeholder saja tidak cukup untuk pembaca layar:
+                        // setelah dipilih, kontrol hanya mengumumkan nilainya
+                        // ("Bek") tanpa nama fieldnya.
+                        FieldLabel('Posisi'),
+                        Semantics(
+                          label: 'Posisi bermain',
+                          child: ShadSelect<String>(
+                            placeholder: const Text('Pilih posisi'),
+                            initialValue: position,
+                            options: const ['Kiper', 'Bek', 'Gelandang', 'Penyerang', 'Bebas']
+                                .map((p) => ShadOption(value: p, child: Text(p)))
+                                .toList(),
+                            selectedOptionBuilder: (c, v) => Text(v),
+                            onChanged: (v) => setLocal(() => position = v ?? 'Bebas'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
                   SizedBox(
                     width: 96,
-                    child: ShadInput(
-                      controller: jersey,
-                      placeholder: const Text('No.'),
-                      keyboardType: TextInputType.number,
-                      // Hanya angka, dan dibatasi 2 digit: menempel "-5" atau
-                      // "9999" tidak boleh tersimpan apa adanya.
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(2),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        FieldLabel('No. punggung'),
+                        Semantics(
+                          label: jerseyError == null
+                              ? 'Nomor punggung'
+                              : 'Nomor punggung, $jerseyError',
+                          child: ShadInput(
+                            controller: jersey,
+                            placeholder: const Text('No.'),
+                            keyboardType: TextInputType.number,
+                            // Hanya angka, dan dibatasi 2 digit: menempel "-5"
+                            // atau "9999" tidak boleh tersimpan apa adanya.
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(2),
+                            ],
+                            onChanged: (_) => setLocal(() => jerseyError = null),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
+              if (jerseyError != null) _ErrorText(jerseyError!),
               if (member != null) ...[
                 const SizedBox(height: 14),
                 ShadSwitch(
@@ -142,7 +194,7 @@ Future<bool> showMemberForm(BuildContext context, {Member? member}) async {
               ],
             ],
           ),
-        );
+        ), [name, phone, address, jersey]);
       },
     ),
   );
@@ -203,6 +255,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
   var date = DateTime(when.year, when.month, when.day);
   var time = TimeOfDay(hour: when.hour, minute: when.minute);
   var saving = false;
+  String? teamError;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -228,10 +281,13 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
 
         Future<void> save() async {
           if (homeId == awayId) {
-            toast(ctx, 'Pilih dua tim yang berbeda');
+            setLocal(() => teamError = 'Pilih dua tim yang berbeda');
             return;
           }
-          setLocal(() => saving = true);
+          setLocal(() {
+            teamError = null;
+            saving = true;
+          });
           try {
             final at = DateTime(date.year, date.month, date.day, time.hour, time.minute);
             if (editing) {
@@ -257,7 +313,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
           }
         }
 
-        return ShadDialog(
+        return _WriteDialog(ShadDialog(
           title: Text(editing ? 'Ubah jadwal' : 'Jadwal tanding'),
           description: Text(editing
               ? 'Ganti tanggal, lokasi, atau tim. Hasil yang sudah dikunci tidak '
@@ -270,24 +326,28 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FieldLabel('Tim yang bertanding', required: true),
               Row(
                 children: [
                   Expanded(
                     child: Semantics(
-                      label: 'Tim pertama',
+                      label: teamError == null ? 'Tim pertama' : 'Tim pertama, $teamError',
                       child: ShadSelect<int>(
                         placeholder: const Text('Tim 1'),
                         initialValue: homeId,
                         options: teams.map((t) => ShadOption(value: t.id, child: Text(t.name))).toList(),
                         selectedOptionBuilder: (c, v) =>
                             Text(teams.firstWhere((t) => t.id == v).name),
-                        onChanged: (v) => setLocal(() => homeId = v ?? homeId),
+                        onChanged: (v) => setLocal(() {
+                          homeId = v ?? homeId;
+                          teamError = null;
+                        }),
                       ),
                     ),
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8),
-                    child: Text('vs'),
+                    child: Text('lawan'),
                   ),
                   Expanded(
                     child: Semantics(
@@ -298,15 +358,25 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
                         options: teams.map((t) => ShadOption(value: t.id, child: Text(t.name))).toList(),
                         selectedOptionBuilder: (c, v) =>
                             Text(teams.firstWhere((t) => t.id == v).name),
-                        onChanged: (v) => setLocal(() => awayId = v ?? awayId),
+                        onChanged: (v) => setLocal(() {
+                          awayId = v ?? awayId;
+                          teamError = null;
+                        }),
                       ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
-              ShadInput(controller: venue, placeholder: const Text('Lokasi (opsional)'), textInputAction: TextInputAction.done),
-              const SizedBox(height: 10),
+              if (teamError != null) _ErrorText(teamError!),
+              const SizedBox(height: 12),
+              FieldLabel('Lokasi'),
+              ShadInput(
+                controller: venue,
+                placeholder: const Text('Lokasi (opsional)'),
+                textInputAction: TextInputAction.done,
+              ),
+              const SizedBox(height: 12),
+              FieldLabel('Jadwal'),
               Row(
                 children: [
                   Expanded(
@@ -337,7 +407,7 @@ Future<bool> showMatchForm(BuildContext context, {Match? match}) async {
               ),
             ],
           ),
-        );
+        ), [venue]);
       },
     ),
   );
@@ -394,8 +464,8 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
         }
 
         final t = ShadTheme.of(ctx);
-        return ShadDialog(
-          title: Text('${match.homeName} vs ${match.awayName}'),
+        return _WriteDialog(ShadDialog(
+          title: Text('${match.homeName} lawan ${match.awayName}'),
           description: Text(fromSessions
               ? 'Skor mengikuti ${sessions.length} sesi. Ubah rinciannya di daftar sesi.'
               : 'Atur skor akhir, lalu selesaikan pertandingan.'),
@@ -511,7 +581,7 @@ Future<bool> showFinishMatch(BuildContext context, Match match) async {
               ),
             ],
           ),
-        );
+        ));
       },
     ),
   );
@@ -577,6 +647,7 @@ Future<bool> showPaymentForm(
   final note = TextEditingController();
   var selected = memberId ?? candidates.first.id;
   var saving = false;
+  String? amountError;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -590,10 +661,13 @@ Future<bool> showPaymentForm(
           setLocal(() => saving = true);
           final amt = parseFormattedMoney(amount.text);
           if (amt <= 0) {
-            setLocal(() => saving = false);
-            toast(ctx, 'Nominal harus diisi angka lebih dari 0');
+            setLocal(() {
+              saving = false;
+              amountError = 'Nominal harus diisi angka lebih dari 0';
+            });
             return;
           }
+          setLocal(() => amountError = null);
           try {
             // Cek duplikat hanya kalau server terjangkau.
             //
@@ -630,7 +704,7 @@ Future<bool> showPaymentForm(
           }
         }
 
-        return ShadDialog(
+        return _WriteDialog(ShadDialog(
           title: const Text('Catat iuran'),
           description: const Text('Iuran untuk turnamen ini'),
           actions: [
@@ -640,6 +714,7 @@ Future<bool> showPaymentForm(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FieldLabel('Anggota yang membayar', required: true),
               Semantics(
                 label: 'Anggota yang membayar',
                 child: ShadSelect<int>(
@@ -651,17 +726,27 @@ Future<bool> showPaymentForm(
                   onChanged: (v) => setLocal(() => selected = v ?? selected),
                 ),
               ),
-              const SizedBox(height: 10),
-              MoneyField(
-                controller: amount,
-                autofocus: true,
+              const SizedBox(height: 12),
+              FieldLabel('Nominal iuran', required: true),
+              Semantics(
+                label: amountError == null ? 'Nominal iuran' : 'Nominal iuran, $amountError',
+                child: MoneyField(
+                  controller: amount,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                ),
+              ),
+              if (amountError != null) _ErrorText(amountError!),
+              const SizedBox(height: 12),
+              FieldLabel('Catatan'),
+              ShadInput(
+                controller: note,
+                placeholder: const Text('Catatan (opsional)'),
                 textInputAction: TextInputAction.done,
               ),
-              const SizedBox(height: 10),
-              ShadInput(controller: note, placeholder: const Text('Catatan (opsional)'), textInputAction: TextInputAction.done),
             ],
           ),
-        );
+        ), [amount, note]);
       },
     ),
   );
@@ -682,6 +767,7 @@ Future<bool> showTransactionForm(
   var category = transaction?.category ?? Transaction.expenseCategories.keys.first;
   var date = transaction?.occurredAt ?? DateTime.now();
   var saving = false;
+  String? amountError;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -696,8 +782,10 @@ Future<bool> showTransactionForm(
           setLocal(() => saving = true);
           final amt = parseFormattedMoney(amount.text);
           if (amt <= 0) {
-            setLocal(() => saving = false);
-            toast(ctx, 'Nominal harus diisi angka lebih dari 0');
+            setLocal(() {
+              saving = false;
+              amountError = 'Nominal harus diisi angka lebih dari 0';
+            });
             return;
           }
           try {
@@ -726,7 +814,7 @@ Future<bool> showTransactionForm(
           }
         }
 
-        return ShadDialog(
+        return _WriteDialog(ShadDialog(
           title: Text(editing ? 'Koreksi transaksi' : 'Catat transaksi'),
           description: Text(editing
               ? 'Ubah nominal, kategori, atau tanggal catatan ini.'
@@ -741,6 +829,7 @@ Future<bool> showTransactionForm(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FieldLabel('Jenis', required: true),
               Semantics(
                 label: 'Jenis transaksi',
                 child: ShadSelect<String>(
@@ -758,7 +847,8 @@ Future<bool> showTransactionForm(
                   }),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Kategori', required: true),
               Semantics(
                 label: 'Kategori',
                 child: ShadSelect<String>(
@@ -772,13 +862,19 @@ Future<bool> showTransactionForm(
                   onChanged: (v) => setLocal(() => category = v ?? category),
                 ),
               ),
-              const SizedBox(height: 10),
-              MoneyField(
-                controller: amount,
-                autofocus: true,
-                textInputAction: TextInputAction.done,
+              const SizedBox(height: 12),
+              FieldLabel('Nominal', required: true),
+              Semantics(
+                label: amountError == null ? 'Nominal transaksi' : 'Nominal transaksi, $amountError',
+                child: MoneyField(
+                  controller: amount,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                ),
               ),
-              const SizedBox(height: 10),
+              if (amountError != null) _ErrorText(amountError!),
+              const SizedBox(height: 12),
+              FieldLabel('Tanggal'),
               Row(
                 children: [
                   Expanded(
@@ -811,14 +907,15 @@ Future<bool> showTransactionForm(
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Catatan'),
               ShadInput(
                 controller: note,
                 placeholder: const Text('Catatan (opsional)'),
               ),
             ],
           ),
-        );
+        ), [amount, note]);
       },
     ),
   );
@@ -835,6 +932,7 @@ Future<bool> showBookingForm(BuildContext context) async {
   // saldo di Kas klub tidak berbeda dengan "Total sewa" di halaman ini.
   var postToCash = true;
   var saving = false;
+  String? costError;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -845,14 +943,21 @@ Future<bool> showBookingForm(BuildContext context) async {
           setLocal(() => saving = true);
           // Biaya sewa: kosong = 0 (boleh, sewa bisa gratis), tapi angka yang
           // tidak terbaca atau negatif harus ditolak. Sebelumnya nilai negatif
-          // tersimpan apa adanya dan input tak terbaca jadi 0 diam-diam.
+          // tersimpan apa adanya dan input tak terbaca jadi 0 diam-diam —
+          // sewa tercatat gratis padahal nominalnya ada.
           final raw = cost.text.trim();
           final parsed = parseFormattedMoney(raw);
-          if (parsed < 0) {
-            setLocal(() => saving = false);
-            toast(ctx, 'Biaya harus angka 0 atau lebih');
+          final unreadable = raw.isNotEmpty && !RegExp(r'[0-9]').hasMatch(raw);
+          if (unreadable || parsed < 0) {
+            setLocal(() {
+              saving = false;
+              costError = unreadable
+                  ? 'Biaya harus angka, misal 150.000'
+                  : 'Biaya harus angka 0 atau lebih';
+            });
             return;
           }
+          setLocal(() => costError = null);
           final start = DateTime(date.year, date.month, date.day, time.hour, time.minute);
 
           // Form ini menjanjikan "biar nggak bentrok", jadi bentroknya harus
@@ -910,7 +1015,7 @@ Future<bool> showBookingForm(BuildContext context) async {
           }
         }
 
-        return ShadDialog(
+        return _WriteDialog(ShadDialog(
           title: const Text('Sewa lapangan'),
           description: const Text('Catat jadwal sewa biar nggak bentrok.'),
           actions: [
@@ -920,8 +1025,10 @@ Future<bool> showBookingForm(BuildContext context) async {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FieldLabel('Judul', required: true),
               ShadInput(controller: title, placeholder: const Text('Judul, misal Sewa lapangan A'), autofocus: true, textInputAction: TextInputAction.next),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Tanggal & jam'),
               Row(
                 children: [
                   Expanded(
@@ -948,7 +1055,8 @@ Future<bool> showBookingForm(BuildContext context) async {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Durasi'),
               Semantics(
                 label: 'Durasi sewa',
                 child: ShadSelect<int>(
@@ -961,11 +1069,16 @@ Future<bool> showBookingForm(BuildContext context) async {
                   onChanged: (v) => setLocal(() => duration = v ?? duration),
                 ),
               ),
-              const SizedBox(height: 10),
-              MoneyField(
-                controller: cost,
-                placeholder: const Text('Biaya (opsional)'),
+              const SizedBox(height: 12),
+              FieldLabel('Biaya'),
+              Semantics(
+                label: costError == null ? 'Biaya sewa' : 'Biaya sewa, $costError',
+                child: MoneyField(
+                  controller: cost,
+                  placeholder: const Text('Biaya (opsional)'),
+                ),
               ),
+              if (costError != null) _ErrorText(costError!),
               const SizedBox(height: 12),
               ShadCheckbox(
                 value: postToCash,
@@ -974,7 +1087,7 @@ Future<bool> showBookingForm(BuildContext context) async {
               ),
             ],
           ),
-        );
+        ), [title, cost]);
       },
     ),
   );
@@ -990,6 +1103,8 @@ Future<bool> showAnnouncementForm(
   final title = TextEditingController(text: announcement?.title ?? '');
   final body = TextEditingController(text: announcement?.body ?? '');
   var saving = false;
+  String? titleError;
+  String? bodyError;
 
   final ok = await showShadDialog<bool>(
     context: context,
@@ -997,10 +1112,13 @@ Future<bool> showAnnouncementForm(
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
-          if (title.text.trim().isEmpty || body.text.trim().isEmpty) {
-            toast(ctx, 'Judul & isi wajib diisi');
-            return;
-          }
+          final missingTitle = title.text.trim().isEmpty;
+          final missingBody = body.text.trim().isEmpty;
+          setLocal(() {
+            titleError = missingTitle ? 'Judul wajib diisi' : null;
+            bodyError = missingBody ? 'Isi pengumuman wajib diisi' : null;
+          });
+          if (missingTitle || missingBody) return;
           setLocal(() => saving = true);
           try {
             if (editing) {
@@ -1019,7 +1137,7 @@ Future<bool> showAnnouncementForm(
           }
         }
 
-        return ShadDialog(
+        return _WriteDialog(ShadDialog(
           title: Text(editing ? 'Ubah pengumuman' : 'Pengumuman baru'),
           description: Text(editing
               ? 'Perbaiki teksnya. Tanggal terbit tidak berubah.'
@@ -1033,12 +1151,35 @@ Future<bool> showAnnouncementForm(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ShadInput(controller: title, placeholder: const Text('Judul'), autofocus: true, textCapitalization: TextCapitalization.sentences, textInputAction: TextInputAction.next),
-              const SizedBox(height: 10),
-              ShadInput(controller: body, placeholder: const Text('Isi pengumuman'), maxLines: 4, minLines: 4),
+              FieldLabel('Judul', required: true),
+              Semantics(
+                label: titleError == null ? 'Judul pengumuman' : 'Judul pengumuman, $titleError',
+                child: ShadInput(
+                  controller: title,
+                  placeholder: const Text('Judul'),
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (_) => setLocal(() => titleError = null),
+                ),
+              ),
+              if (titleError != null) _ErrorText(titleError!),
+              const SizedBox(height: 12),
+              FieldLabel('Isi pengumuman', required: true),
+              Semantics(
+                label: bodyError == null ? 'Isi pengumuman' : 'Isi pengumuman, $bodyError',
+                child: ShadInput(
+                  controller: body,
+                  placeholder: const Text('Isi pengumuman'),
+                  maxLines: 4,
+                  minLines: 4,
+                  onChanged: (_) => setLocal(() => bodyError = null),
+                ),
+              ),
+              if (bodyError != null) _ErrorText(bodyError!),
             ],
           ),
-        );
+        ), [title, body]);
       },
     ),
   );
@@ -1046,3 +1187,57 @@ Future<bool> showAnnouncementForm(
 }
 
 String? _nullIfEmpty(String s) => s.trim().isEmpty ? null : s.trim();
+
+/// Dialog isian yang tidak bisa ditutup lewat Back atau ketukan di luar.
+///
+/// Barrier yang bisa diketuk membuang isian yang sedang diketik — pada form
+/// anggota itu berarti nama, HP, dan alamat diulang dari awal. Tombol Batal di
+/// dalam dialog tetap menutup seperti biasa.
+///
+/// [controllers] dimiliki widget ini: `dispose` baru jalan setelah dialog
+/// dilepas dari pohon widget, jadi kolom isian tidak pernah memakai controller
+/// yang sudah dibuang selama animasi tutup.
+class _WriteDialog extends StatefulWidget {
+  const _WriteDialog(this.child, [this.controllers = const []]);
+
+  final Widget child;
+  final List<TextEditingController> controllers;
+
+  @override
+  State<_WriteDialog> createState() => _WriteDialogState();
+}
+
+class _WriteDialogState extends State<_WriteDialog> {
+  @override
+  void dispose() {
+    for (final c in widget.controllers) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(canPop: false, child: widget.child);
+}
+
+/// Teks error di bawah kolom yang salah.
+///
+/// Toast hanya sempat terbaca dua detik dan tidak menunjuk kolom mana yang
+/// bermasalah; teks ini menetap sampai kolomnya diperbaiki.
+class _ErrorText extends StatelessWidget {
+  const _ErrorText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Text(
+        text,
+        style: t.textTheme.small.copyWith(fontSize: 11.5, color: AppThemes.bad(context)),
+      ),
+    );
+  }
+}

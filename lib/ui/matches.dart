@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/soft.dart';
@@ -277,7 +278,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
   Future<void> _share(Match m) async {
     final finished = m.status == 'finished';
     final head = finished ? 'HASIL' : (m.ongoing ? 'SEDANG BERLANGSUNG' : 'JADWAL LAGA');
-    final score = finished || m.ongoing ? '${m.goalsFor}–${m.goalsAgainst}' : 'vs';
+    final score = finished || m.ongoing ? '${m.goalsFor}–${m.goalsAgainst}' : '–';
     final text = [
       '⚽ $head',
       '${m.homeName} $score ${m.awayName}',
@@ -297,7 +298,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
     final m = _match;
     final finished = m.status == 'finished';
     return PageScaffold(
-      title: '${m.homeName} vs ${m.awayName}',
+      title: '${m.homeName} lawan ${m.awayName}',
       // Ubah jadwal & hapus ada di kepala halaman, bukan di dalam kartu skor:
       // di 320px dua tombol ikon tambahan di kartu membuat baris aksi pecah
       // ke baris kedua sendirian.
@@ -348,7 +349,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
-                        finished || m.ongoing ? '${m.goalsFor}–${m.goalsAgainst}' : 'VS',
+                        finished || m.ongoing ? '${m.goalsFor}–${m.goalsAgainst}' : '–',
                         style: t.textTheme.h1Large.copyWith(
                           fontSize: 44,
                           color: finished
@@ -553,7 +554,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 children: [
                   for (final e in events)
                     RowItem(
-                      leading: Icon(_icon(e.type), size: 16, color: _color(e.type, t)),
+                      leading: Icon(_icon(e.type), size: 16, color: _color(e.type, context)),
                       title: e.memberName,
                       subtitle: MatchEvent.typeLabels[e.type] ?? e.type,
                       trailing: Row(
@@ -591,12 +592,17 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
         _ => Icons.square_rounded,
       };
 
-  Color _color(String type, ShadThemeData t) => switch (type) {
-        'goal' => t.colorScheme.primary,
-        'yellow' => const Color(0xFFFACC15),
-        'red' => t.colorScheme.destructive,
-        _ => t.colorScheme.mutedForeground,
-      };
+  // Butuh context: kuning kartu punya versi khusus tema terang, karena
+  // kuning aslinya di atas latar putih hampir tidak terlihat.
+  Color _color(String type, BuildContext context) {
+    final t = ShadTheme.of(context);
+    return switch (type) {
+      'goal' => t.colorScheme.primary,
+      'yellow' => AppThemes.cardYellow(context),
+      'red' => t.colorScheme.destructive,
+      _ => t.colorScheme.mutedForeground,
+    };
+  }
 
   Future<bool> _sessionForm(BuildContext context, {MatchSession? session}) async {
     // Daftar sesi dipakai untuk menentukan nomor sesi berikutnya. Saat offline
@@ -634,6 +640,19 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 onPressed: saving
                     ? null
                     : () async {
+                        // Sesi adalah sumber skor laga, jadi menghapusnya
+                        // langsung mengubah hasil dan klasemen. Dulu satu
+                        // ketukan cukup dan skor lama hilang tanpa bisa
+                        // dibatalkan.
+                        if (!await confirm(
+                          ctx,
+                          'Hapus sesi $nextNo?',
+                          'Skor sesi ini dihapus dan skor laga ikut berubah. '
+                              'Catatan gol tetap ada.',
+                        )) {
+                          return;
+                        }
+                        if (!ctx.mounted) return;
                         setLocal(() => saving = true);
                         final ok = await attempt(
                           ctx,
@@ -734,6 +753,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
     if (groups.isEmpty) groups.add(('Pemain', all));
 
     var minute = '';
+    var minuteError = '';
     var recorded = 0;
     var last = '';
     // Satu tim sekaligus: 8 pemain sudah memenuhi tinggi dialog, dan daftar
@@ -747,6 +767,9 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
           Future<void> add(Member member, String type) async {
+            // Menit di luar 1–120 bukan sekadar salah ketik: "900" yang
+            // dimaksud "9" menaruh kejadian di babak yang tidak pernah ada.
+            if (minuteError.isNotEmpty) return;
             try {
               await MatchEvent.insert(
                 matchId: m.id,
@@ -761,6 +784,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                 // yang tidak terlihat sampai riwayat dibuka.
                 minuteCtrl.clear();
                 minute = '';
+                minuteError = '';
                 last = '${MatchEvent.typeLabels[type] ?? type} ${member.name}';
               });
             } catch (e) {
@@ -784,6 +808,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                FieldLabel('Menit kejadian'),
                 Row(
                   children: [
                     SizedBox(
@@ -792,7 +817,20 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                         controller: minuteCtrl,
                         placeholder: const Text('Menit'),
                         keyboardType: TextInputType.number,
-                        onChanged: (v) => minute = v,
+                        // Huruf dan tanda minus tidak bisa masuk sama sekali,
+                        // lalu rentangnya diperiksa saat mengetik supaya
+                        // pesannya muncul sebelum tombol pemain ditekan.
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(3),
+                        ],
+                        onChanged: (v) => setLocal(() {
+                          minute = v;
+                          final n = int.tryParse(v);
+                          minuteError = v.isEmpty || (n != null && n >= 1 && n <= 120)
+                              ? ''
+                              : 'Menit 1–120';
+                        }),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -810,6 +848,17 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                     ),
                   ],
                 ),
+                if (minuteError.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Semantics(
+                      label: 'Menit, $minuteError',
+                      child: Text(
+                        minuteError,
+                        style: t.textTheme.small.copyWith(color: AppThemes.bad(ctx)),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 4),
                 Text(
                   'Catatan ini tidak mengubah skor — skor laga diisi lewat sesi.',
@@ -861,8 +910,9 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
 
 /// Satu baris papan catat: nama pemain + empat tombol kejadian.
 ///
-/// Tombol dibuat 34px dan ikonnya berbeda bentuk (bola, tangan, kotak) supaya
-/// bisa ditekan cepat tanpa membaca, termasuk saat mencatat sambil menonton.
+/// Tombol dibuat 44px (area sentuh minimum) dan ikonnya berbeda bentuk
+/// (bola, tangan, kotak) supaya bisa ditekan cepat tanpa membaca, termasuk
+/// saat mencatat sambil menonton.
 class _EventPadRow extends StatelessWidget {
   const _EventPadRow({required this.member, required this.onTap});
 
@@ -898,7 +948,7 @@ class _EventPadRow extends StatelessWidget {
           ),
           _PadButton(
             icon: Icons.square_outlined,
-            color: const Color(0xFFFACC15),
+            color: AppThemes.cardYellow(context),
             label: 'Kartu kuning ${member.name}',
             onTap: () => onTap('yellow'),
           ),
@@ -940,11 +990,11 @@ class _PadButton extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(8),
-            // 40px mengikuti pedoman sentuh yang sama dengan iconAction:
-            // tombol ini ditekan cepat sambil menonton, bukan dibaca pelan.
+            // 44px = area sentuh minimum: tombol ini ditekan cepat sambil
+            // menonton, sering satu tangan dan kadang dengan sarung tangan.
             child: SizedBox(
-              width: 40,
-              height: 40,
+              width: AppThemes.minTap,
+              height: AppThemes.minTap,
               child: Icon(icon, size: 17, color: color),
             ),
           ),
@@ -977,7 +1027,7 @@ class _PadTab extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
-          height: 34,
+          height: AppThemes.minTap,
           child: Center(
             child: Text(
               label,

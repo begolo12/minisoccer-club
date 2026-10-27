@@ -8,6 +8,7 @@ import '../core/registration.dart';
 import '../data/auth.dart';
 import 'fmt.dart';
 import 'theme.dart';
+import 'widgets.dart';
 
 /// Formulir pendaftaran anggota yang bisa dibuka tanpa masuk.
 ///
@@ -175,7 +176,7 @@ class _RegisterPageState extends State<RegisterPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Label('Nama lengkap', required: true),
+          FieldLabel('Nama lengkap', required: true),
           Semantics(
             // Error validasi diumumkan dari FIELD-nya: pembaca layar yang
             // fokus ke isian langsung mendengar apa yang kurang, tanpa harus
@@ -197,7 +198,7 @@ class _RegisterPageState extends State<RegisterPage> {
           if (_touched && _nameErr != null) _ErrorText(_nameErr!),
           const SizedBox(height: 18),
 
-          _Label('Nomor HP', required: true),
+          FieldLabel('Nomor HP', required: true),
           Semantics(
             label: _touched && _phoneErr != null ? 'Nomor HP, $_phoneErr' : 'Nomor HP',
             child: ShadInput(
@@ -210,11 +211,11 @@ class _RegisterPageState extends State<RegisterPage> {
             onChanged: (_) => setState(() {}),
           ),
           ),
-          _Hint('Dipakai juga sebagai password awal. Bisa diganti setelah masuk.'),
+          _Hint('Dipakai juga sebagai kata sandi awal. Bisa diganti setelah masuk.'),
           if (_touched && _phoneErr != null) _ErrorText(_phoneErr!),
           const SizedBox(height: 18),
 
-          _Label('Alamat', required: true),
+          FieldLabel('Alamat', required: true),
           Semantics(
             label: _touched && _addressErr != null ? 'Alamat, $_addressErr' : 'Alamat',
             child: ShadInput(
@@ -230,7 +231,7 @@ class _RegisterPageState extends State<RegisterPage> {
           if (_touched && _addressErr != null) _ErrorText(_addressErr!),
           const SizedBox(height: 18),
 
-          _Label('Posisi bermain', required: true),
+          FieldLabel('Posisi bermain', required: true),
           const SizedBox(height: 2),
           // Radio, bukan dropdown: di HP semua pilihan langsung terlihat dan
           // cukup satu ketukan. Dropdown menyembunyikan pilihan di balik satu
@@ -430,13 +431,13 @@ class _SuccessCardState extends State<_SuccessCard> {
             style: t.textTheme.small,
           ),
           const SizedBox(height: 16),
-          _CredentialRow(label: 'Username', value: result.username),
+          _CredentialRow(label: 'Nama pengguna', value: result.username),
           const SizedBox(height: 8),
-          _CredentialRow(label: 'Password awal', value: result.password),
+          _CredentialRow(label: 'Kata sandi awal', value: result.password),
           const SizedBox(height: 14),
           Text(
-            'Segera ganti password setelah masuk, lewat menu Pengaturan → '
-            'Ganti password. Nomor HP mudah diketahui orang lain.',
+            'Segera ganti kata sandi setelah masuk, lewat menu Pengaturan → '
+            'Ganti kata sandi. Nomor HP mudah diketahui orang lain.',
             style: t.textTheme.small,
           ),
           if (onDone != null) ...[
@@ -507,39 +508,6 @@ class _CredentialRow extends StatelessWidget {
   }
 }
 
-/// Label isian. Tanda bintang merah menandai wajib isi, seperti pada formulir
-/// daring pada umumnya.
-class _Label extends StatelessWidget {
-  const _Label(this.text, {this.required = false});
-
-  final String text;
-  final bool required;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      // Text.rich (bukan RichText) supaya labelnya ikut masuk ke pohon
-      // aksesibilitas: pembaca layar dan uji otomatis memakai jalur yang sama,
-      // dan RichText biasa tidak mengekspos teksnya.
-      child: Text.rich(
-        TextSpan(
-          text: text,
-          style: t.textTheme.large.copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
-          children: [
-            if (required)
-              TextSpan(
-                text: ' *',
-                style: TextStyle(color: AppThemes.bad(context), fontWeight: FontWeight.w700),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _Hint extends StatelessWidget {
   const _Hint(this.text);
 
@@ -597,7 +565,7 @@ Future<void> showRegistrationLinkDialog(BuildContext context) async {
       title: const Text('Tautan pendaftaran'),
       description: const Text(
         'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
-        'alamat, dan posisi sendiri. Nama depan menjadi username, dan akunnya '
+        'alamat, dan posisi sendiri. Nama depan menjadi nama pengguna, dan akunnya '
         'langsung dibuat.',
       ),
       actions: [

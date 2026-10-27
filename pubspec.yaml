@@ -1,13 +1,18 @@
 name: minisoccer_club
 description: "Aplikasi manajemen klub mini soccer."
 publish_to: 'none'
-version: 1.15.8+45
+version: 1.16.0+46
 
 environment:
   sdk: ^3.13.5
 
 dependencies:
   flutter:
+    sdk: flutter
+  # Tanggal & pemilih waktu Material mengikuti bahasa aplikasi. Tanpa ini,
+  # `locale: id_ID` hanya mengubah teks kita sendiri: date picker tetap
+  # berbahasa Inggris ("Select date"), dan itu terlihat seperti bug.
+  flutter_localizations:
     sdk: flutter
   shadcn_ui: ^0.57.2
   flutter_secure_storage: ^9.2.4

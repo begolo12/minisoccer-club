@@ -416,6 +416,7 @@ class _MainColumn extends StatelessWidget {
           SectionTitle(
             'Turnamen terakhir',
             action: TextButton(
+              style: AppThemes.sectionAction(),
               onPressed: () async {
                 await Navigator.push(
                   context,
@@ -536,6 +537,7 @@ class _MainColumn extends StatelessWidget {
               SectionTitle(
                 'Pengumuman',
                 action: TextButton(
+                  style: AppThemes.sectionAction(),
                   onPressed: () async {
                     await Navigator.push(
                       context,
@@ -625,7 +627,7 @@ class _NextTournamentHero extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           ShadButton(
-            height: 40,
+            height: AppThemes.minTap,
             backgroundColor: t.colorScheme.primary,
             foregroundColor: t.colorScheme.primaryForeground,
             hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -698,7 +700,7 @@ class _LastTournamentHero extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           ShadButton(
-            height: 40,
+            height: AppThemes.minTap,
             backgroundColor: t.colorScheme.primary,
             foregroundColor: t.colorScheme.primaryForeground,
             hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -837,7 +839,7 @@ class _EmptyHero extends StatelessWidget {
           if (Auth.canWrite) ...[
             const SizedBox(height: 14),
             ShadButton(
-              height: 40,
+              height: AppThemes.minTap,
               backgroundColor: t.colorScheme.primary,
               foregroundColor: t.colorScheme.primaryForeground,
               hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -925,6 +927,13 @@ class _LastTournamentCardState extends State<_LastTournamentCard> {
   }
 
   void _toggle() => setState(() => _open = !_open);
+
+  /// Hasil gagal dimuat hanya bisa dicoba lagi dari sini: kartu ini memegang
+  /// future-nya sendiri, jadi "Muat ulang" beranda tidak menyentuhnya selama
+  /// turnamen dan generasinya tidak berubah.
+  void _retryMatches() => setState(() {
+        _matches = TournamentMatch.forTournament(widget.tournament.id);
+      });
 
   Future<void> _openDetail() async {
     await Navigator.push(
@@ -1016,8 +1025,21 @@ class _LastTournamentCardState extends State<_LastTournamentCard> {
               builder: (context, snap) {
                 if (snap.hasError) {
                   return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-                    child: Text('Gagal memuat hasil: ${snap.error}', style: t.textTheme.small),
+                    padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Gagal memuat hasil: ${errText(snap.error!)}',
+                            style: t.textTheme.small,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _retryMatches,
+                          child: const Text('Coba lagi'),
+                        ),
+                      ],
+                    ),
                   );
                 }
                 final all = snap.data;
@@ -1216,7 +1238,7 @@ class _LockedCash extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               ShadButton.outline(
-                height: 36,
+                height: AppThemes.minTap,
                 onPressed: () async {
                   if (await openLogin(context)) await onChanged();
                 },
@@ -1250,6 +1272,7 @@ class _CashBlock extends StatelessWidget {
         SectionTitle(
           'Kas bulan ini',
           action: TextButton(
+            style: AppThemes.sectionAction(),
             onPressed: () => _open(context),
             child: const Text('Buka'),
           ),
@@ -1307,11 +1330,20 @@ class _CashBlock extends StatelessWidget {
 /// sekali. Sebelumnya ketiga query itu tetap dijalankan di setiap muat
 /// beranda — tiga perjalanan ke server untuk data yang tidak pernah dilihat.
 class _RailData {
-  const _RailData({required this.scorers, required this.standings, required this.bookings});
+  const _RailData({
+    required this.scorers,
+    required this.standings,
+    required this.bookings,
+    required this.failures,
+  });
 
   final List<ScorerRow> scorers;
   final List<Standing> standings;
   final List<Booking> bookings;
+
+  /// Sumber yang gagal dimuat. Sebagian gagal = bagian lain tetap tampil,
+  /// dan nama sumbernya disebut supaya tidak terbaca sebagai "belum ada data".
+  final List<String> failures;
 
   static Future<_RailData> load() async {
     // Sewa lapangan memuat biaya, jadi termasuk data uang: tamu tidak
@@ -1324,11 +1356,47 @@ class _RailData {
           () => money ? Booking.upcoming() : Future.value(const <Booking>[]),
           fallback: const <Booking>[]),
     ]);
-    settle(r);
+    final failures = settle(r);
     return _RailData(
       scorers: r[0].value! as List<ScorerRow>,
       standings: r[1].value! as List<Standing>,
       bookings: r[2].value! as List<Booking>,
+      failures: failures,
+    );
+  }
+}
+
+/// Kerangka kolom samping selama datanya diambil. Tanpa ini kolom kanan
+/// kosong beberapa ratus milidetik, dan di layar lebar itu terbaca sebagai
+/// "tidak ada klasemen" — bukan "sedang dimuat".
+class _RailSkeleton extends StatelessWidget {
+  const _RailSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    Widget block(double width, double height) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: t.colorScheme.muted,
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final w in const [92.0, 68.0, 80.0]) ...[
+          block(w, 11),
+          const SizedBox(height: 10),
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: block(double.infinity, 40),
+            ),
+          const SizedBox(height: 14),
+        ],
+      ],
     );
   }
 }
@@ -1347,7 +1415,9 @@ class _RailColumn extends StatefulWidget {
 }
 
 class _RailColumnState extends State<_RailColumn> {
-  late final Future<_RailData> _future = _RailData.load();
+  late Future<_RailData> _future = _RailData.load();
+
+  void _retry() => setState(() => _future = _RailData.load());
 
   @override
   Widget build(BuildContext context) {
@@ -1355,10 +1425,28 @@ class _RailColumnState extends State<_RailColumn> {
       future: _future,
       builder: (context, snap) {
         final d = snap.data;
-        // Selama memuat, kolom samping dibiarkan kosong: kerangka palsu di sini
-        // hanya menambah pekerjaan render tanpa menambah informasi.
-        if (d == null) return const SizedBox.shrink();
-        return _rail(context, d);
+        // Kolom ini hanya ada di layar lebar, dan isinya (klasemen, pencetak
+        // gol, sewa) tidak muncul di tempat lain. Dulu kegagalan memuatnya
+        // menghasilkan kotak kosong: pengguna mengira klub belum punya
+        // klasemen. Sekarang kegagalan disebut, dengan tombol coba lagi.
+        if (snap.hasError) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 18),
+            child: DegradedNotice(
+              failures: ['Klasemen, pencetak gol & sewa: ${errText(snap.error!)}'],
+              onRetry: _retry,
+            ),
+          );
+        }
+        if (d == null) return const _RailSkeleton();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (d.failures.isNotEmpty)
+              DegradedNotice(failures: d.failures, onRetry: _retry),
+            _rail(context, d),
+          ],
+        );
       },
     );
   }
@@ -1431,7 +1519,7 @@ class _RailColumnState extends State<_RailColumn> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SectionTitle('Top skor'),
+              const SectionTitle('Pencetak gol'),
               if (d.scorers.isEmpty)
                 Text('Belum ada gol tercatat.', style: t.textTheme.muted)
               else
@@ -1466,6 +1554,7 @@ class _RailColumnState extends State<_RailColumn> {
                 SectionTitle(
                   'Sewa lapangan',
                   action: TextButton(
+                    style: AppThemes.sectionAction(),
                     onPressed: () async {
                       await Navigator.push(
                         context,
@@ -1580,7 +1669,7 @@ class _FixtureStrip extends StatelessWidget {
                 if (Auth.canWrite) ...[
                   Expanded(
                     child: ShadButton(
-                      height: 40,
+                      height: AppThemes.minTap,
                       backgroundColor: t.colorScheme.primary,
                       foregroundColor: t.colorScheme.primaryForeground,
                       hoverBackgroundColor: t.colorScheme.primary.withValues(alpha: 0.88),
@@ -1600,7 +1689,7 @@ class _FixtureStrip extends StatelessWidget {
                 ],
                 Expanded(
                   child: ShadButton.outline(
-                    height: 40,
+                    height: AppThemes.minTap,
                     onPressed: () => _open(context),
                     leading: const Icon(Icons.scoreboard, size: 16),
                     child: Text(Auth.canWrite ? 'Detail' : 'Lihat detail'),
@@ -1667,10 +1756,10 @@ class _QuickAction extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          // 40px, bukan 38: sweep visual menandai tombol ini di bawah
-          // pedoman sentuh ~40px, dan aksi cepat paling sering ditekan
-          // sambil berdiri/lari — justru yang paling butuh target lega.
-          height: 40,
+          // Aksi cepat paling sering ditekan sambil berdiri/lari, jadi
+          // targetnya memakai AppThemes.minTap — bukan lagi 40px yang masih
+          // di bawah pedoman sentuh Android/iOS.
+          height: AppThemes.minTap,
           padding: const EdgeInsets.symmetric(horizontal: 9),
           decoration: BoxDecoration(
             border: Border.all(color: t.colorScheme.border),

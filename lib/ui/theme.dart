@@ -64,6 +64,37 @@ class AppThemes {
   static const display = 'BarlowCondensed';
   static const body = 'Inter';
 
+  /// Ukuran minimum area sentuh.
+  ///
+  /// Pedoman Android (48dp) dan Apple (44pt) bertemu di 44. Aplikasi ini
+  /// dipakai di lapangan, sering satu tangan dan kadang dengan sarung tangan:
+  /// tombol 30px yang terlihat rapi di desktop menjadi salah tekan di sana.
+  /// Ikonnya boleh tetap kecil — yang 44px adalah area yang bisa disentuh.
+  static const minTap = 44.0;
+
+  /// Kuning kartu (kartu wasit di papan catat).
+  ///
+  /// #FACC15 di atas kartu putih hanya 1,53:1, jadi ikonnya praktis hilang di
+  /// tema terang. Versi gelap dipakai khusus untuk tema terang; tema gelap
+  /// tetap memakai kuning aslinya.
+  static Color cardYellow(BuildContext context) =>
+      ShadTheme.of(context).brightness == Brightness.dark
+          ? const Color(0xFFFACC15)
+          : const Color(0xFF8A6A00);
+
+  /// Gaya tombol teks di judul bagian ("Semua", "Buka").
+  ///
+  /// Ditaruh di LEVEL WIDGET, bukan hanya di tema: pengukuran di Chrome
+  /// menunjukkan tombol tanpa gaya eksplisit tetap setinggi teksnya (~29px)
+  /// walau tema meminta 44 — gaya widget adalah precedence tertinggi dan
+  /// tidak bisa ditimpa apa pun di bawahnya.
+  static ButtonStyle sectionAction() => TextButton.styleFrom(
+        minimumSize: const Size(0, minTap),
+        visualDensity: VisualDensity.standard,
+        tapTargetSize: MaterialTapTargetSize.padded,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+      );
+
   /// Angka rata kolom: dipakai semua nominal dan tabel.
   static const tabular = [FontFeature.tabularFigures()];
 
@@ -108,7 +139,10 @@ class AppThemes {
           secondary: const Color(0xFFE7EDE6),
           secondaryForeground: const Color(0xFF0C120E),
           muted: const Color(0xFFE7EDE6),
-          mutedForeground: const Color(0xFF5F6F65),
+          // #57665D di atas #E7EDE6 = 5,1:1 (AA). Nilai lama #5F6F65 hanya
+          // 4,47:1 — teks kecil seperti placeholder dan keterangan di dalam
+          // kolom abu-abu gagal ambang 4,5:1.
+          mutedForeground: const Color(0xFF57665D),
           accent: const Color(0xFFE7EDE6),
           accentForeground: const Color(0xFF0C120E),
           destructive: dangerLight,
@@ -124,7 +158,7 @@ class AppThemes {
   /// Peran teks. Skor/angka besar pakai [display]; sisanya Inter.
   static ShadTextTheme _text({required bool dark}) {
     final fg = dark ? chalk : const Color(0xFF0C120E);
-    final muted = dark ? const Color(0xFF8FA096) : const Color(0xFF5F6F65);
+    final muted = dark ? const Color(0xFF8FA096) : const Color(0xFF57665D);
     return ShadTextTheme(
       family: body,
       h1Large: TextStyle(

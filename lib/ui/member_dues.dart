@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
+import '../core/soft.dart';
 import '../data/auth.dart';
 import '../data/models.dart';
 import 'fmt.dart';
@@ -61,25 +62,33 @@ class _MemberDuesPageState extends State<MemberDuesPage> {
   }
 
   Future<_DuesHistory> _load() async {
-    // Ketiga bacaan dijalankan bersama: halaman ini dibuka untuk satu orang,
-    // jadi menunggunya berurutan hanya menambah waktu tunggu tanpa manfaat.
-    final results = await Future.wait<Object?>([
-      Payment.forMember(widget.member.id),
-      Payment.unpaidForMember(widget.member.id),
-      BookingAttendance.forMember(widget.member.id),
-      Payment.pendingTournamentIds(widget.member.id),
+    // Empat bacaan dijalankan bersama dan masing-masing boleh gagal sendiri:
+    // satu query gagal tidak boleh membuang riwayat yang sudah terbaca.
+    // Semua gagal = server/jaringan mati; `settle` melempar untuk itu supaya
+    // layar error penuh dengan tombol coba lagi yang tampil.
+    final r = await Future.wait<Soft<Object?>>([
+      soft('Riwayat iuran', () => Payment.forMember(widget.member.id),
+          fallback: const <Payment>[]),
+      soft('Tunggakan', () => Payment.unpaidForMember(widget.member.id),
+          fallback: const <Tournament>[]),
+      soft('Patungan lapangan', () => BookingAttendance.forMember(widget.member.id),
+          fallback: const <BookingAttendance>[]),
+      soft('Iuran di antrean', () => Payment.pendingTournamentIds(widget.member.id),
+          fallback: const <int>{}),
     ]);
-    final pending = results[3] as Set<int>;
+    final failures = settle(r);
+    final pending = r[3].value! as Set<int>;
     return _DuesHistory(
-      payments: (results[0] as List).cast<Payment>(),
+      payments: (r[0].value! as List).cast<Payment>(),
       // Iuran yang masih di antrean belum ada di server, dan daftar tunggakan
       // adalah query ringkasan yang tidak ditambal di cache — tanpa saringan
       // ini orang yang baru dibayar tetap tampil menunggak.
-      unpaid: (results[1] as List)
+      unpaid: (r[1].value! as List)
           .cast<Tournament>()
           .where((t) => !pending.contains(t.id))
           .toList(),
-      attendance: (results[2] as List).cast<BookingAttendance>(),
+      attendance: (r[2].value! as List).cast<BookingAttendance>(),
+      failures: failures,
     );
   }
 
@@ -106,6 +115,8 @@ class _MemberDuesPageState extends State<MemberDuesPage> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              if (d.failures.isNotEmpty)
+                DegradedNotice(failures: d.failures, onRetry: _reload),
               StatStrip(
                 children: [
                   StatTile(
@@ -212,11 +223,15 @@ class _DuesHistory {
     required this.payments,
     required this.unpaid,
     required this.attendance,
+    required this.failures,
   });
 
   final List<Payment> payments;
   final List<Tournament> unpaid;
   final List<BookingAttendance> attendance;
+
+  /// Sumber yang gagal dimuat; bagian yang berhasil tetap ditampilkan.
+  final List<String> failures;
 
   double get totalPaid => payments.fold<double>(0, (s, p) => s + p.amount);
 

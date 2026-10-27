@@ -77,7 +77,7 @@ class _UsersPageState extends State<UsersPage> {
     }
     return PageScaffold(
       title: 'Akun & akses',
-      subtitle: 'Hanya admin — id, password, dan hak akses',
+      subtitle: 'Hanya admin — nomor akun, kata sandi, dan hak akses',
       actions: [
         iconAction(context, Icons.person_add_alt, () async {
           if (await _create(context)) _reload();
@@ -120,7 +120,7 @@ class _UsersPageState extends State<UsersPage> {
                     roleLabels[u.role] ?? u.role,
                     if (u.memberId != null) 'anggota #${u.memberId}',
                     if (!u.active) 'nonaktif',
-                    if (!u.hasPassword) 'password belum diset',
+                    if (!u.hasPassword) 'kata sandi belum diset',
                   ].join(' • '),
                   // Satu pintu: semua ubahan ada di panel akun. Lima tombol
                   // ikon berjajar tidak muat di layar 320px dan paling
@@ -133,9 +133,9 @@ class _UsersPageState extends State<UsersPage> {
                 ),
               const SizedBox(height: 14),
               Text(
-                'Password disimpan terenkripsi satu arah (bcrypt) dan tidak bisa '
+                'Kata sandi disimpan dalam bentuk teracak satu arah dan tidak bisa '
                 'dibaca lagi — termasuk oleh admin. Untuk memberi akses, setel '
-                'password baru lalu kirimkan ke pemiliknya.',
+                'kata sandi baru lalu kirimkan ke pemiliknya.',
                 style: t.textTheme.small,
               ),
             ],
@@ -174,7 +174,7 @@ class _UsersPageState extends State<UsersPage> {
         builder: (ctx, setLocal) => ShadDialog(
           title: const Text('Tambah akun'),
           description: const Text(
-            'Password awal terisi otomatis dan bisa diganti. Salin dulu sebelum '
+            'Kata sandi awal terisi otomatis dan bisa diganti. Salin dulu sebelum '
             'menyimpan — setelah tersimpan tidak bisa dibaca lagi.',
           ),
           actions: [
@@ -191,7 +191,7 @@ class _UsersPageState extends State<UsersPage> {
                         return;
                       }
                       if (password.text.length < 6) {
-                        toast(ctx, 'Password minimal 6 karakter');
+                        toast(ctx, 'Kata sandi minimal 6 karakter');
                         return;
                       }
                       setLocal(() => saving = true);
@@ -211,18 +211,21 @@ class _UsersPageState extends State<UsersPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              FieldLabel('Nama pengguna', required: true),
               ShadInput(
                 controller: username,
                 placeholder: const Text('Nama pengguna'),
                 autocorrect: false,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Kata sandi', required: true),
               ShadInput(
                 controller: password,
-                placeholder: const Text('Password (min. 6 karakter)'),
+                placeholder: const Text('Kata sandi (min. 6 karakter)'),
                 obscureText: true,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              FieldLabel('Hak akses', required: true),
               ShadSelect<String>(
                 placeholder: const Text('Hak akses'),
                 initialValue: role,
@@ -294,9 +297,10 @@ class _AccountPanelState extends State<_AccountPanel> {
     _role = widget.user.role;
     _memberId = widget.user.memberId;
     _active = widget.user.active;
-    // Daftar anggota untuk pemilih tautan. Dimuat sekali saat panel dibuka;
-    // kalau gagal (offline), pemilihnya kosong tapi sisa panel tetap jalan.
-    _members = Member.all().catchError((_) => <Member>[]);
+    // Daftar anggota untuk pemilih tautan. Kegagalannya TIDAK ditelan: tanpa
+    // daftar, "Tidak tertaut" akan terbaca sebagai fakta padahal daftarnya
+    // tidak pernah terbaca. Panelnya tetap jalan (lihat cabang error di bawah).
+    _members = Member.all();
   }
 
   @override
@@ -347,9 +351,9 @@ class _AccountPanelState extends State<_AccountPanel> {
     final next = suggestPassword();
     if (!await confirm(
       context,
-      'Setel password baru?',
-      'Password lama ${widget.user.username} langsung tidak berlaku. '
-          'Password baru akan ditampilkan sekali untuk disalin.',
+      'Setel kata sandi baru?',
+      'Kata sandi lama ${widget.user.username} langsung tidak berlaku. '
+          'Kata sandi baru akan ditampilkan sekali untuk disalin.',
       confirmLabel: 'Setel',
     )) {
       return;
@@ -358,7 +362,7 @@ class _AccountPanelState extends State<_AccountPanel> {
     final ok = await attempt(
       context,
       () => AppUser.setPassword(widget.user.id, next),
-      fail: 'Gagal menyetel password',
+      fail: 'Gagal menyetel kata sandi',
     );
     if (!ok || !mounted) return;
     setState(() => _freshPassword = next);
@@ -392,7 +396,7 @@ class _AccountPanelState extends State<_AccountPanel> {
     return ShadDialog(
       title: Text('Akun ${u.username}'),
       description: Text(
-        'ID #${u.id}${u.createdAt == null ? '' : ' • dibuat ${fmtDate(u.createdAt!)}'}',
+        'Nomor akun #${u.id}${u.createdAt == null ? '' : ' • dibuat ${fmtDate(u.createdAt!)}'}',
       ),
       actions: [
         ShadButton.outline(
@@ -433,7 +437,44 @@ class _AccountPanelState extends State<_AccountPanel> {
             FutureBuilder<List<Member>>(
               future: _members,
               builder: (c, snap) {
-                final list = snap.data ?? const <Member>[];
+                if (snap.hasError) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Id tautan tetap ditampilkan: itu data akun, bukan
+                      // hasil daftar anggota yang gagal dimuat.
+                      _InfoLine(
+                        label: 'Anggota tertaut',
+                        // Id dari akun tetap pasti. Kalau akun belum punya
+                        // tautan, nilai itu TIDAK boleh ditulis "tidak
+                        // tertaut" di sini — justru daftar anggotanya yang
+                        // gagal dibaca, jadi keadaannya belum diketahui.
+                        value: _memberId == null ? '—' : '#$_memberId',
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Gagal memuat daftar anggota: ${errText(snap.error!)}',
+                              style: ShadTheme.of(c).textTheme.small,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() => _members = Member.all()),
+                            child: const Text('Coba lagi'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+                final list = snap.data;
+                // Belum termuat bukan "tidak tertaut": menulisnya di sini
+                // berarti mengklaim hasil query yang belum selesai.
+                if (list == null) {
+                  return const _InfoLine(label: 'Anggota tertaut', value: 'Memuat…');
+                }
                 if (list.isEmpty) {
                   return _InfoLine(
                     label: 'Anggota tertaut',
@@ -500,13 +541,13 @@ class _AccountPanelState extends State<_AccountPanel> {
               style: t.textTheme.small,
             ),
             const Divider(height: 20),
-            Text('Password', style: t.textTheme.large),
+            Text('Kata sandi', style: t.textTheme.large),
             const SizedBox(height: 4),
             Text(
               u.hasPassword
-                  ? 'Tersimpan sebagai hash satu arah — isinya tidak bisa '
+                  ? 'Tersimpan dalam bentuk teracak satu arah — isinya tidak bisa '
                       'ditampilkan, hanya bisa diganti.'
-                  : 'Akun ini belum punya password. Setel satu supaya bisa masuk.',
+                  : 'Akun ini belum punya kata sandi. Setel satu supaya bisa masuk.',
               style: t.textTheme.small,
             ),
             const SizedBox(height: 8),
@@ -532,7 +573,7 @@ class _AccountPanelState extends State<_AccountPanel> {
                       () => copyText(
                         context,
                         '${u.username} / ${_freshPassword!}',
-                        message: 'Username & password disalin',
+                        message: 'Nama pengguna & kata sandi disalin',
                       ),
                       tooltip: 'Salin',
                     ),
@@ -548,7 +589,7 @@ class _AccountPanelState extends State<_AccountPanel> {
             ],
             ShadButton.outline(
               onPressed: _saving ? null : _setPassword,
-              child: const Text('Setel password baru'),
+              child: const Text('Setel kata sandi baru'),
             ),
             if (!widget.isSelf) ...[
               const SizedBox(height: 18),

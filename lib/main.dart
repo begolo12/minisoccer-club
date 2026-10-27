@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import 'core/db.dart';
@@ -62,6 +63,11 @@ class _AppState extends State<App> {
             themeMode: mode,
             locale: const Locale('id', 'ID'),
             supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
             scrollBehavior: const AppScrollBehavior(),
             home: ShadSonner(child: Bootstrap(initialTab: widget.initialTab)),
           ),

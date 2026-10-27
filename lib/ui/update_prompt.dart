@@ -133,10 +133,10 @@ class _InstallDialogState extends State<_InstallDialog> {
       final outcome = await installApk(path);
       if (!mounted) return;
       Navigator.of(context).pop(switch (outcome) {
-        InstallOutcome.started => 'Installer terbuka. Ketuk "Pasang" untuk menyelesaikan.',
+        InstallOutcome.started => 'Pemasang aplikasi terbuka. Ketuk "Pasang" untuk menyelesaikan.',
         InstallOutcome.needsPermission =>
           'Izinkan "Pasang aplikasi tak dikenal" untuk Minisoccer, lalu ulangi.',
-        InstallOutcome.failed => 'Installer tidak bisa dibuka. Unduh manual dari GitHub.',
+        InstallOutcome.failed => 'Pemasang aplikasi tidak bisa dibuka. Unduh manual dari GitHub.',
       });
     } catch (e) {
       if (!mounted) return;

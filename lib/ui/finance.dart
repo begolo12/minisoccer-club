@@ -164,9 +164,9 @@ class _FinancePageState extends State<FinancePage> {
       context,
       title: 'Ekspor buku kas',
       description: _period == null
-          ? 'Semua catatan kas (${rows.length - 1} baris), CSV siap dibuka di Excel/Sheets.'
+          ? 'Semua catatan kas (${rows.length - 1} baris), tabel siap dibuka di aplikasi spreadsheet.'
           : 'Buku kas ${periodLabel(_period!)} (${rows.length - 1} baris), '
-              'CSV siap dibuka di Excel/Sheets.',
+              'tabel siap dibuka di aplikasi spreadsheet.',
       filename: 'kas-${_period ?? 'semua'}.csv',
       csv: buildCsv(rows),
     );

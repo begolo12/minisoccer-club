@@ -379,7 +379,7 @@ class _FormPanel extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           _Field(
-            label: 'Username',
+            label: 'Nama pengguna',
             child: ShadInput(
               controller: user,
               focusNode: userFocus,
@@ -387,7 +387,7 @@ class _FormPanel extends StatelessWidget {
               autocorrect: false,
               autofillHints: const [AutofillHints.username],
               textInputAction: TextInputAction.next,
-              placeholder: const Text('mis. admin'),
+              placeholder: const Text('mis. budi'),
               onSubmitted: (_) {
                 if (pass.text.isNotEmpty) onSubmit();
               },
@@ -395,14 +395,14 @@ class _FormPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _Field(
-            label: 'Password',
+            label: 'Kata sandi',
             child: ShadInput(
               controller: pass,
               enabled: !busy,
               obscureText: !showPass,
               autofillHints: const [AutofillHints.password],
               textInputAction: TextInputAction.done,
-              placeholder: Text(firstRun ? 'Minimal 6 karakter' : 'Password'),
+              placeholder: Text(firstRun ? 'Minimal 6 karakter' : 'Kata sandi'),
               onSubmitted: (_) => onSubmit(),
               // Tombol mata tidak boleh mencuri fokus dari field.
               trailing: ExcludeFocus(
@@ -430,13 +430,17 @@ class _FormPanel extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   onPressed: busy ? null : onRetryCheck,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, AppThemes.minTap),
+                    visualDensity: VisualDensity.standard,
+                  ),
                   child: const Text('Coba periksa lagi'),
                 ),
               ),
           ],
           const SizedBox(height: 20),
           ShadButton(
-            height: 42,
+            height: AppThemes.minTap,
             onPressed: busy ? null : onSubmit,
             child: busy
                 ? const SizedBox(
@@ -459,8 +463,9 @@ class _FormPanel extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             firstRun
-                ? 'Password disimpan dalam bentuk teracak. Tidak ada yang bisa membacanya.'
-                : 'Lupa password? Minta admin menyetel password baru lewat Lainnya → Akun & akses.',
+                ? 'Kata sandi disimpan dalam bentuk teracak. Tidak ada yang bisa membacanya.'
+                : 'Lupa kata sandi? Minta admin klub menyetel kata sandi baru lewat '
+                'Lainnya → Akun & akses.',
             textAlign: TextAlign.start,
             style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.5),
           ),
@@ -473,9 +478,10 @@ class _FormPanel extends StatelessWidget {
               child: TextButton(
                 onPressed: busy ? null : onRegister,
                 style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 32),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, AppThemes.minTap),
+                  visualDensity: VisualDensity.standard,
+                  tapTargetSize: MaterialTapTargetSize.padded,
                 ),
                 child: const Text('Belum punya akun? Daftar di sini'),
               ),

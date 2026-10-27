@@ -113,7 +113,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         toast(context, '${result.sent} perubahan terkirim');
       }
       if (result.failed > 0 && mounted) {
-        toast(context, '${result.failed} perubahan ditolak server — buka Pengaturan');
+        toast(context, '${result.failed} perubahan ditolak saat dikirim — buka Pengaturan');
       }
     } catch (_) {
       // Masih offline / sesi habis: banner tetap menampilkan sisa antrean.
@@ -332,33 +332,43 @@ class _RailItem extends StatelessWidget {
     final t = ShadTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
-      child: Material(
-        color: selected ? t.colorScheme.primary.withValues(alpha: 0.10) : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: onTap,
+      child: Semantics(
+        button: true,
+        // Item aktif hanya dibedakan oleh warna latar dan ketebalan huruf;
+        // tanpa selected pembaca layar tidak menyebut tab mana yang terbuka.
+        selected: selected,
+        child: Material(
+          color: selected ? t.colorScheme.primary.withValues(alpha: 0.10) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            // Vertikal 10 (bukan 9): item rail diukur sweep dan 38px ada di
-            // bawah pedoman sentuh 40px.
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Row(
-              children: [
-                Icon(
-                  selected ? selectedIcon : icon,
-                  size: 18,
-                  color: selected ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              // Lantai minTap: isi item hanya ~38px, dan rail adalah navigasi
+              // utama di layar lebar — target di bawah 44px paling terasa di
+              // sini. Padding horizontal tetap, jadi tampilannya tidak melebar.
+              constraints: const BoxConstraints(minHeight: AppThemes.minTap),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(
+                      selected ? selectedIcon : icon,
+                      size: 18,
+                      color: selected ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                        color: selected ? t.colorScheme.foreground : t.colorScheme.mutedForeground,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? t.colorScheme.foreground : t.colorScheme.mutedForeground,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -409,7 +419,13 @@ class _StatusStrip extends StatelessWidget {
                   onPressed: onLogin,
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    minimumSize: const Size(0, 32),
+                    // 32px membuat "Masuk" — satu-satunya aksi di bilah ini —
+                    // lebih kecil dari target sentuh minimum.
+                    minimumSize: const Size(0, AppThemes.minTap),
+                    // Tema memasang visualDensity compact, yang memotong 8px
+                    // dari tinggi tombol: 44 jadi 36 di layar. Standard
+                    // mengembalikan ukuran yang diminta.
+                    visualDensity: VisualDensity.standard,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: const Text('Masuk'),

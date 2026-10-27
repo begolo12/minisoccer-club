@@ -271,12 +271,14 @@ class _MorePageState extends State<MorePage> {
               _Tile(
                 icon: Icons.stadium_outlined,
                 title: 'Sewa lapangan',
-                subtitle: c?.moneyLocked == true
-                    ? 'Masuk untuk melihat jadwal & biaya'
-                    : c?.nextBooking == null
-                        ? 'Belum ada jadwal sewa'
-                        : 'Berikutnya ${fmtShortDate(c!.nextBooking!.startsAt)} '
-                            '${fmtTime(c.nextBooking!.startsAt)}',
+                subtitle: c == null
+                    ? 'Jadwal sewa & biaya'
+                    : c.moneyLocked
+                        ? 'Masuk untuk melihat jadwal & biaya'
+                        : c.nextBooking == null
+                            ? 'Belum ada jadwal sewa'
+                            : 'Berikutnya ${fmtShortDate(c.nextBooking!.startsAt)} '
+                                '${fmtTime(c.nextBooking!.startsAt)}',
                 onTap: () => _open(context, const BookingsPage()),
               ),
               _Tile(
@@ -311,9 +313,11 @@ class _MorePageState extends State<MorePage> {
               _Tile(
                 icon: Icons.campaign_outlined,
                 title: 'Pengumuman',
-                subtitle: c == null || c.news == 0
-                    ? 'Belum ada pengumuman'
-                    : '${c.news} terbit • terakhir ${fmtShortDate(c.lastNews!.createdAt)}',
+                subtitle: c == null
+                    ? 'Info terbaru untuk anggota'
+                    : c.news == 0
+                        ? 'Belum ada pengumuman'
+                        : '${c.news} terbit • terakhir ${fmtShortDate(c.lastNews!.createdAt)}',
                 onTap: () => _open(context, const AnnouncementsPage()),
               ),
               const SectionTitle('Akun'),
@@ -338,7 +342,7 @@ class _MorePageState extends State<MorePage> {
                 _Tile(
                   icon: Icons.people_outline,
                   title: 'Akun & akses',
-                  subtitle: 'ID, password, role & tautan anggota',
+                  subtitle: 'Nomor akun, kata sandi, peran & tautan anggota',
                   onTap: () => _open(context, const UsersPage()),
                 ),
               // Baris ini satu-satunya tempat pembaruan terlihat tanpa
@@ -356,7 +360,7 @@ class _MorePageState extends State<MorePage> {
                     subtitle: release != null
                         ? 'Versi ${release.version} tersedia — ketuk untuk memasang'
                         : (Auth.isAdmin
-                            ? 'Tema, server, pembaruan'
+                            ? 'Tema, sambungan, pembaruan'
                             : 'Tema, akun, pembaruan'),
                     highlight: release != null,
                     onTap: () => _open(context, const SettingsPage()),

@@ -84,13 +84,39 @@ class _MembersPageState extends State<MembersPage> {
             }, tooltip: 'Ubah anggota'),
             const SizedBox(width: 6),
             iconAction(context, Icons.delete_outline, () async {
-              // Pesan harus jujur: iuran ikut terhapus (kas bulan lalu
-              // berubah), catatan gol tetap ada tanpa nama. Menonaktifkan
-              // lebih aman.
+              // Anggota yang pernah membayar iuran TIDAK dihapus: baris
+              // iurannya memakai ON DELETE CASCADE, jadi menghapusnya ikut
+              // membuang catatan uang dan mengubah saldo kas bulan lalu.
+              // Yang benar untuk orang yang berhenti bermain: nonaktifkan.
+              final hasMoney = await Member.hasFinance(m.id);
+              if (!mounted) return;
+              if (hasMoney) {
+                if (await confirm(
+                  context,
+                  'Tidak bisa dihapus',
+                  '${m.name} sudah punya catatan iuran atau patungan. '
+                      'Menghapusnya akan menghapus uang klub yang pernah masuk. '
+                      'Nonaktifkan saja — namanya tetap muncul di riwayat, '
+                      'tapi tidak ikut ditagih lagi.',
+                  confirmLabel: 'Nonaktifkan',
+                )) {
+                  if (!mounted) return;
+                  if (await attempt(context, () => m.update(
+                        name: m.name,
+                        phone: m.phone,
+                        address: m.address,
+                        position: m.position,
+                        jersey: m.jersey,
+                        active: false,
+                      ), fail: 'Gagal menonaktifkan')) {
+                    _reload();
+                  }
+                }
+                return;
+              }
               if (await confirm(context, 'Hapus anggota?',
-                  'Riwayat iuran ${m.name} ikut terhapus dan saldo kas '
-                  'bulan lalu berubah. Catatan gol tetap ada tanpa nama. '
-                  'Kalau hanya ingin menyembunyikan, matikan "Aktif" di form edit.')) {
+                  '${m.name} belum punya catatan iuran, jadi aman dihapus. '
+                  'Catatan golnya tetap ada tanpa nama.')) {
                 if (!mounted) return;
                 if (await attempt(context, () => Member.delete(m.id), fail: 'Gagal menghapus')) {
                   _reload();

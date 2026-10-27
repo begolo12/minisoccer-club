@@ -33,26 +33,29 @@ class Panel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: background ?? t.colorScheme.card,
-        borderRadius: BorderRadius.circular(radius),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(
-                color: highlight ? t.colorScheme.primary.withValues(alpha: 0.55) : t.colorScheme.border,
-              ),
+    final card = Material(
+      color: background ?? t.colorScheme.card,
+      borderRadius: BorderRadius.circular(radius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: highlight ? t.colorScheme.primary.withValues(alpha: 0.55) : t.colorScheme.border,
             ),
-            child: child,
           ),
+          child: child,
         ),
       ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      // Panel yang bisa diketuk adalah aksi, bukan sekadar wadah: tanpa
+      // button: true pembaca layar membacanya sebagai teks biasa.
+      child: onTap == null ? card : Semantics(button: true, child: card),
     );
   }
 }
@@ -98,15 +101,17 @@ class TagChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Material(
+    final chip = Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(7),
       child: InkWell(
         borderRadius: BorderRadius.circular(7),
         onTap: onTap,
         child: Container(
-          height: 30,
-          padding: EdgeInsets.only(left: 9, right: onRemove == null ? 9 : 5),
+          // 44px, bukan 30: chip ini sering berisi tombol hapus di dalamnya,
+          // dan chip 30px membuat target hapus mustahil ditekan tepat.
+          height: AppThemes.minTap,
+          padding: EdgeInsets.only(left: 9, right: onRemove == null ? 9 : 2),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(7),
             border: Border.all(color: t.colorScheme.border),
@@ -115,25 +120,33 @@ class TagChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(text, style: const TextStyle(fontSize: 12)),
-              if (onRemove != null) ...[
-                const SizedBox(width: 2),
-                InkWell(
-                  onTap: onRemove,
-                  borderRadius: BorderRadius.circular(4),
-                  // Ketukan diperluas ke ±24px meski glyph-nya 13px: tombol
-                  // ini mengeluarkan pemain dari tim, dan di Wrap yang padat
-                  // target 17px hampir selalu salah ketuk.
-                  child: Padding(
-                    padding: const EdgeInsets.all(5.5),
-                    child: Icon(Icons.close, size: 13, color: t.colorScheme.mutedForeground),
+              if (onRemove != null)
+                Semantics(
+                  button: true,
+                  // Ikonnya sendiri tidak punya label, jadi pembaca layar
+                  // hanya akan menyebut "tombol" tanpa tahu apa yang dihapus.
+                  label: 'Hapus $text',
+                  child: SizedBox(
+                    // Glyph tetap 13px; yang 44px adalah area sentuhnya, dan
+                    // area itu mengeluarkan pemain dari tim — salah ketuk di
+                    // sini langsung mengubah daftar.
+                    width: AppThemes.minTap,
+                    height: AppThemes.minTap,
+                    child: InkWell(
+                      onTap: onRemove,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Center(
+                        child: Icon(Icons.close, size: 13, color: t.colorScheme.mutedForeground),
+                      ),
+                    ),
                   ),
                 ),
-              ],
             ],
           ),
         ),
       ),
     );
+    return onTap == null ? chip : Semantics(button: true, child: chip);
   }
 }
 
@@ -149,8 +162,20 @@ class SkeletonList extends StatefulWidget {
 }
 
 class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))
-    ..repeat(reverse: true);
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // "Hapus animasi" di setelan sistem juga berlaku untuk kedipan placeholder:
+    // pengguna yang mematikannya bisa jadi terganggu gerakan, bukan cuma
+    // ingin transisi lebih cepat.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -161,25 +186,33 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-      children: [
-        for (var i = 0; i < widget.count; i++)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (_, _) => Container(
-                height: widget.height,
-                decoration: BoxDecoration(
-                  color: t.colorScheme.card.withValues(alpha: 0.55 + 0.35 * _c.value),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: t.colorScheme.border.withValues(alpha: 0.6)),
+    // Saat animasi dilarang, abu-abu ditahan di tengah: tetap terlihat sebagai
+    // placeholder, tanpa denyut yang tidak bisa dimatikan pengguna.
+    final pulse = MediaQuery.disableAnimationsOf(context) ? 0.5 : _c.value;
+    return Semantics(
+      // Tanpa label, pembaca layar hanya menemukan daftar kosong selama data
+      // dimuat — tidak ada tanda bahwa halaman masih bekerja.
+      label: 'Memuat data',
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+        children: [
+          for (var i = 0; i < widget.count; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (_, _) => Container(
+                  height: widget.height,
+                  decoration: BoxDecoration(
+                    color: t.colorScheme.card.withValues(alpha: 0.55 + 0.35 * pulse),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: t.colorScheme.border.withValues(alpha: 0.6)),
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -262,12 +295,17 @@ class ErrorState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(title, style: t.textTheme.large, textAlign: TextAlign.center),
             const SizedBox(height: 6),
-            Text(
-              '$error',
-              style: t.textTheme.small,
-              textAlign: TextAlign.center,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
+            Semantics(
+              // liveRegion: retry gagal mengganti isi pesan tanpa perpindahan
+              // fokus, jadi tanpa ini pembaca layar tetap diam.
+              liveRegion: true,
+              child: Text(
+                '$error',
+                style: t.textTheme.small,
+                textAlign: TextAlign.center,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(height: 16),
             ShadButton.outline(onPressed: onRetry, child: const Text('Coba lagi')),
@@ -295,15 +333,41 @@ class SectionTitle extends StatelessWidget {
       padding: EdgeInsets.only(bottom: 10, top: top),
       child: Row(
         children: [
-          Text(text.toUpperCase(), style: t.textTheme.h4),
+          Semantics(
+            header: true,
+            child: Text(text.toUpperCase(), style: t.textTheme.h4),
+          ),
           const SizedBox(width: 10),
           Expanded(child: Container(height: 1, color: t.colorScheme.border)),
           if (action != null) ...[
             const SizedBox(width: 8),
-            // Tinggi aksi dipaksa 40px: tombol teks ("Semua", "Buka") hanya
-            // 32px sendirian — target ketuk terkecil di halaman, tepat di
-            // tempat yang jadi pintu ke halaman lain.
-            SizedBox(height: 40, child: action!),
+            // Tinggi aksi dipaksa minTap: tombol teks ("Semua", "Buka") hanya
+            // 29px sendirian — target ketuk terkecil di halaman, tepat di
+            // tempat yang jadi pintu ke halaman lain. `minimumSize` saja tidak
+            // cukup: tema mengecilkan target Material lewat tapTargetSize,
+            // jadi keduanya diatur di sini untuk SEMUA judul bagian.
+            SizedBox(
+              height: AppThemes.minTap,
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  textButtonTheme: TextButtonThemeData(
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(0, AppThemes.minTap),
+                      visualDensity: VisualDensity.standard,
+                      tapTargetSize: MaterialTapTargetSize.padded,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ),
+                // Sabuk pengaman: kalau gaya tema tidak menaikkan kotak
+                // tombolnya, anak setinggi minTap memaksa tombol ikut setinggi
+                // itu — area sentuh tidak boleh bergantung satu mekanisme.
+                child: SizedBox(
+                  height: AppThemes.minTap,
+                  child: Center(child: action!),
+                ),
+              ),
+            ),
           ],
         ],
       ),
@@ -425,26 +489,31 @@ class RowItem extends StatelessWidget {
       ],
     );
 
-    final row = Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 12)],
-          Expanded(
-            child: trailingBelow && trailing != null
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      texts,
-                      const SizedBox(height: 3),
-                      Align(alignment: Alignment.centerLeft, child: trailing!),
-                    ],
-                  )
-                : texts,
-          ),
-          if (!trailingBelow && trailing != null) ...[const SizedBox(width: 12), trailing!],
-        ],
+    final row = ConstrainedBox(
+      // Lantai minTap, bukan sekadar padding: baris dengan satu judul saja
+      // hanya ~42px, padahal baris inilah pintu ke detail laga/iuran.
+      constraints: const BoxConstraints(minHeight: AppThemes.minTap),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 12)],
+            Expanded(
+              child: trailingBelow && trailing != null
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        texts,
+                        const SizedBox(height: 3),
+                        Align(alignment: Alignment.centerLeft, child: trailing!),
+                      ],
+                    )
+                  : texts,
+            ),
+            if (!trailingBelow && trailing != null) ...[const SizedBox(width: 12), trailing!],
+          ],
+        ),
       ),
     );
     return DecoratedBox(
@@ -453,7 +522,10 @@ class RowItem extends StatelessWidget {
       ),
       child: onTap == null
           ? row
-          : InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8), child: row),
+          : Semantics(
+              button: true,
+              child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8), child: row),
+            ),
     );
   }
 }
@@ -503,6 +575,15 @@ class StatStrip extends StatelessWidget {
 /// (jumlah pertandingan), M = menang, S = seri, K = kalah, GM = gol
 /// memasukkan, GK = gol kemasukan, SG = selisih gol. Versi sebelumnya memakai
 /// W/D/L dari bahasa Inggris, sehingga satu tabel memuat dua bahasa.
+
+/// Baris klasemen dibaca sebagai satu kalimat. Angka-angka di kolom terpisah
+/// akan dibacakan lepas dari judulnya ("3", "9") sehingga pemakai pembaca
+/// layar tidak tahu angka mana milik kolom apa.
+String _standingLabel(Standing s, int rank) =>
+    '$rank. ${s.name}, main ${s.played}, menang ${s.won}, seri ${s.drawn}, '
+    'kalah ${s.lost}, gol ${s.goalsFor}–${s.goalsAgainst}, '
+    'selisih ${s.goalDiff > 0 ? '+' : ''}${s.goalDiff}, poin ${s.points}';
+
 class StandingsTable extends StatelessWidget {
   const StandingsTable({super.key, required this.standings, this.top = 0});
 
@@ -549,64 +630,72 @@ class StandingsTable extends StatelessWidget {
                 ],
               ),
               for (var i = 0; i < standings.length; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 22,
-                        child: Text(
-                          '${i + 1}',
-                          style: t.textTheme.h2.copyWith(
-                            fontSize: 16,
-                            color: i < top && standings[i].played > 0
-                                ? t.colorScheme.primary
-                                : t.colorScheme.mutedForeground,
+                Semantics(
+                  container: true,
+                  // Kolom terpisah dibacakan sebagai angka lepas ("3", "9")
+                  // tanpa judul kolomnya; satu label utuh lebih berguna
+                  // daripada sebelas potongan.
+                  excludeSemantics: true,
+                  label: _standingLabel(standings[i], i + 1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 7),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          child: Text(
+                            '${i + 1}',
+                            style: t.textTheme.h2.copyWith(
+                              fontSize: 16,
+                              color: i < top && standings[i].played > 0
+                                  ? t.colorScheme.primary
+                                  : t.colorScheme.mutedForeground,
+                            ),
                           ),
                         ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          standings[i].name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: i < top && standings[i].played > 0
-                                ? FontWeight.w600
-                                : FontWeight.w500,
+                        Expanded(
+                          child: Text(
+                            standings[i].name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: i < top && standings[i].played > 0
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
                           ),
                         ),
-                      ),
-                      SizedBox(width: 24, child: num('${standings[i].played}')),
-                      if (wide) ...[
-                        SizedBox(width: 22, child: num('${standings[i].won}')),
-                        SizedBox(width: 22, child: num('${standings[i].drawn}')),
-                        SizedBox(width: 22, child: num('${standings[i].lost}')),
-                        SizedBox(width: 28, child: num('${standings[i].goalsFor}')),
-                        SizedBox(width: 28, child: num('${standings[i].goalsAgainst}')),
+                        SizedBox(width: 24, child: num('${standings[i].played}')),
+                        if (wide) ...[
+                          SizedBox(width: 22, child: num('${standings[i].won}')),
+                          SizedBox(width: 22, child: num('${standings[i].drawn}')),
+                          SizedBox(width: 22, child: num('${standings[i].lost}')),
+                          SizedBox(width: 28, child: num('${standings[i].goalsFor}')),
+                          SizedBox(width: 28, child: num('${standings[i].goalsAgainst}')),
+                        ],
+                        SizedBox(
+                          width: 32,
+                          child: num(
+                            standings[i].goalDiff > 0
+                                ? '+${standings[i].goalDiff}'
+                                : '${standings[i].goalDiff}',
+                          ),
+                        ),
+                        SizedBox(
+                          width: 34,
+                          child: num(
+                            '${standings[i].points}',
+                            style: cell.copyWith(
+                              fontFamily: AppThemes.display,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: t.colorScheme.primary,
+                            ),
+                          ),
+                        ),
                       ],
-                      SizedBox(
-                        width: 32,
-                        child: num(
-                          standings[i].goalDiff > 0
-                              ? '+${standings[i].goalDiff}'
-                              : '${standings[i].goalDiff}',
-                        ),
-                      ),
-                      SizedBox(
-                        width: 34,
-                        child: num(
-                          '${standings[i].points}',
-                          style: cell.copyWith(
-                            fontFamily: AppThemes.display,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: t.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
             ],
@@ -766,7 +855,10 @@ class ScoreStepper extends StatelessWidget {
           _StepButton(
             icon: Icons.remove,
             onTap: enabled && value > 0 ? () => onChanged!(value - 1) : null,
-            label: 'Kurangi gol $name',
+            // Nilai sekarang ikut disebut: angka besar di tengah tidak
+            // termasuk label tombol, jadi tanpa ini pengguna yang memakai
+            // pembaca layar menekan + tanpa tahu skor berjalan.
+            label: 'Kurangi gol $name, skor saat ini $value',
           ),
           SizedBox(
             width: 48,
@@ -779,7 +871,7 @@ class ScoreStepper extends StatelessWidget {
           _StepButton(
             icon: Icons.add,
             onTap: enabled ? () => onChanged!(value + 1) : null,
-            label: 'Tambah gol $name',
+            label: 'Tambah gol $name, skor saat ini $value',
           ),
         ],
       ),
@@ -809,6 +901,9 @@ class _StepButton extends StatelessWidget {
     final enabled = onTap != null;
     return Semantics(
       button: true,
+      // Tombol − pada skor 0 tetap terlihat; tanpa enabled: false pembaca
+      // layar mengumumkannya sebagai tombol biasa yang "tidak merespons".
+      enabled: enabled,
       label: label,
       child: Material(
         // Nonaktif tetap bergaris: tombol − yang hilang total terbaca sebagai
@@ -821,11 +916,11 @@ class _StepButton extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
-          // 40px mengikuti pedoman sentuh; stepper skor ditekan berulang
-          // cepat saat mencatat gol, salah ketuk di sini mahal harganya.
+          // minTap, bukan 40: stepper skor ditekan berulang cepat saat
+          // mencatat gol, salah ketuk di sini mahal harganya.
           child: SizedBox(
-            width: 40,
-            height: 40,
+            width: AppThemes.minTap,
+            height: AppThemes.minTap,
             child: Icon(
               icon,
               size: 18,
@@ -907,7 +1002,10 @@ class _PeriodChipsState extends State<PeriodChips> {
     final t = ShadTheme.of(context);
     final items = <String?>[if (widget.all) null, ...widget.periods];
     return SizedBox(
-      height: 38,
+      // minTap, bukan 38: deret chip ini adalah satu-satunya cara mengganti
+      // periode di halaman iuran/kas, dan 38px terlalu rendah untuk ditekan
+      // sambil berdiri di lapangan.
+      height: AppThemes.minTap,
       child: ListView.separated(
         controller: _controller,
         scrollDirection: Axis.horizontal,
@@ -917,29 +1015,46 @@ class _PeriodChipsState extends State<PeriodChips> {
         itemBuilder: (context, i) {
           final p = items[i];
           final isSelected = p == widget.selected;
-          return Material(
-            color: isSelected ? t.colorScheme.primary : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
-            child: InkWell(
+          return Semantics(
+            button: true,
+            // Bedanya hanya warna dan ketebalan huruf; tanpa selected pembaca
+            // layar tidak bisa memberi tahu periode mana yang sedang aktif.
+            selected: isSelected,
+            child: Material(
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(7),
-              onTap: () => widget.onChanged(p),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
+              // Area sentuh setinggi minTap; pil visualnya tetap ringkas di
+              // tengah. Sebelumnya pil ISINYA yang jadi target (29px) — persis
+              // jenis tombol yang salah tekan saat memilih periode kas.
+              child: SizedBox(
+                height: AppThemes.minTap,
+                child: InkWell(
                   borderRadius: BorderRadius.circular(7),
-                  border: Border.all(
-                    color: isSelected ? t.colorScheme.primary : t.colorScheme.border,
-                  ),
-                ),
-                child: Text(
-                  p == null ? 'Semua' : (widget.label?.call(p) ?? periodLabel(p)),
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected
-                        ? t.colorScheme.primaryForeground
-                        : t.colorScheme.mutedForeground,
+                  onTap: () => widget.onChanged(p),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isSelected ? t.colorScheme.primary : Colors.transparent,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                          color: isSelected
+                              ? t.colorScheme.primary
+                              : t.colorScheme.border,
+                        ),
+                      ),
+                      child: Text(
+                        p == null ? 'Semua' : (widget.label?.call(p) ?? periodLabel(p)),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected
+                              ? t.colorScheme.primaryForeground
+                              : t.colorScheme.mutedForeground,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1135,7 +1250,13 @@ class PageScaffold extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(title, style: t.textTheme.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Semantics(
+                              header: true,
+                              child: Text(title,
+                                  style: t.textTheme.h3,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
                             if (subtitle != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
@@ -1197,14 +1318,14 @@ class _OfflineStripState extends State<OfflineStrip> {
       } else if (r.sent > 0) {
         toast(context, '${r.sent} perubahan terkirim');
       } else if (r.offline) {
-        toast(context, 'Masih offline — coba lagi nanti');
+        toast(context, 'Masih tanpa internet — coba lagi nanti');
       } else if (r.failed > 0) {
         toast(context, '${r.failed} perubahan ditolak server');
       } else {
         toast(context, 'Tidak ada yang perlu dikirim');
       }
     } catch (e) {
-      if (mounted) toast(context, 'Gagal sinkron: ${errText(e)}');
+      if (mounted) toast(context, 'Gagal mengirim: ${errText(e)}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1247,10 +1368,16 @@ class _OfflineStripState extends State<OfflineStrip> {
                       onPressed: _sync,
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 10),
-                        minimumSize: const Size(0, 32),
+                        // shrinkWrap + 32px membuat bilah offline hanya bisa
+                        // ditekan di pita tipis; tingginya disamakan dengan
+                        // target sentuh minimum.
+                        minimumSize: const Size(0, AppThemes.minTap),
+                        // Tema global memakai visualDensity compact yang
+                        // memotong 8px dari tinggi tombol (44 jadi 36).
+                        visualDensity: VisualDensity.standard,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                      child: const Text('Sinkron'),
+                      child: const Text('Kirim'),
                     ),
                 ],
               ),
@@ -1264,14 +1391,51 @@ class _OfflineStripState extends State<OfflineStrip> {
   /// Jumlah perubahan lebih dulu: itu data yang belum ada di cloud, jadi
   /// paling berisiko kalau app ditutup atau dipasang ulang.
   String _text(bool offline, int pending, bool syncing) {
-    if (syncing) return 'Menyinkronkan $pending perubahan…';
+    if (syncing) return 'Mengirim $pending perubahan…';
     if (pending > 0 && offline) {
       return 'Tanpa internet — $pending perubahan menunggu, dikirim saat tersambung';
     }
     if (pending > 0) return '$pending perubahan menunggu dikirim';
     if (Db.offlineSince == null) return 'Tanpa internet — menampilkan data tersimpan';
-    return 'Offline — data tersimpan ${fmtDate(Db.offlineSince!)} '
+    return 'Tanpa internet — data tersimpan ${fmtDate(Db.offlineSince!)} '
         '${fmtTime(Db.offlineSince!)}';
+  }
+}
+
+/// Label isian yang tetap terlihat setelah pengguna mulai mengetik.
+///
+/// Placeholder saja tidak cukup (WCAG 3.3.2): begitu ada teks di dalam
+/// field, nama fieldnya hilang dari layar dan pengguna harus menebak isian
+/// mana yang sedang diketik — terutama di HP saat keyboard menutupi
+/// sebagian dialog. Tanda bintang merah menandai wajib isi.
+class FieldLabel extends StatelessWidget {
+  const FieldLabel(this.text, {super.key, this.required = false});
+
+  final String text;
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ShadTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      // Text.rich (bukan RichText) supaya labelnya ikut masuk ke pohon
+      // aksesibilitas: pembaca layar dan uji otomatis memakai jalur yang sama,
+      // dan RichText biasa tidak mengekspos teksnya.
+      child: Text.rich(
+        TextSpan(
+          text: text,
+          style: t.textTheme.large.copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
+          children: [
+            if (required)
+              TextSpan(
+                text: ' *',
+                style: TextStyle(color: AppThemes.bad(context), fontWeight: FontWeight.w700),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1284,24 +1448,32 @@ Widget iconAction(
 }) {
   final t = ShadTheme.of(context);
   final color = t.colorScheme.mutedForeground;
-  return Tooltip(
-    message: tooltip ?? '',
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        // 40px, bukan 34: pedoman sentuh Android/iOS meminta ~44px, dan
-        // tombol ikon berjajar (ubah/hapus) paling sering salah ketuk di HP
-        // kecil. Tampilannya tetap ringkas karena garis tepinya tipis.
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            border: Border.all(color: t.colorScheme.border),
-            borderRadius: BorderRadius.circular(8),
+  return Semantics(
+    // Tooltip hanya terbaca saat tooltip != null; tanpa button: true tombol
+    // tanpa tooltip tidak dikenali sebagai aksi sama sekali.
+    button: true,
+    label: tooltip,
+    child: Tooltip(
+      message: tooltip ?? '',
+      // Label diambil dari Semantics di atas; tanpa ini tooltip yang sama
+      // dibacakan dua kali oleh pembaca layar.
+      excludeFromSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          // minTap, bukan 40: tombol ikon berjajar (ubah/hapus) paling sering
+          // salah ketuk di HP kecil. Ikon tetap 18px — yang 44px adalah
+          // area sentuhnya.
+          child: Container(
+            width: AppThemes.minTap,
+            height: AppThemes.minTap,
+            decoration: BoxDecoration(
+              border: Border.all(color: t.colorScheme.border),
+            ),
+            child: Icon(icon, size: 18, color: color),
           ),
-          child: Icon(icon, size: 18, color: color),
         ),
       ),
     ),
@@ -1360,7 +1532,11 @@ class DegradedNotice extends StatelessWidget {
               onPressed: onRetry,
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                minimumSize: Size.zero,
+                // Size.zero + shrinkWrap membuat "Coba lagi" setinggi teks
+                // saja (~20px) padahal ini satu-satunya jalan keluar dari
+                // data yang gagal dimuat.
+                minimumSize: const Size(0, AppThemes.minTap),
+                visualDensity: VisualDensity.standard,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               child: const Text('Coba lagi'),

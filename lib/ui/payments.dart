@@ -62,9 +62,21 @@ class _PayData {
   }
 
   static Future<_PayData> load(int? tournamentId) async {
-    final r = await Future.wait<Soft<Object?>>([
+    // Saat turnamen pilihan sudah diketahui (ganti chip atau muat ulang),
+    // tagihan & riwayatnya diminta pada gelombang yang sama dengan daftar
+    // turnamen — satu round-trip lebih sedikit. Pada muatan pertama id-nya
+    // belum ada, jadi tagihan memang harus menunggu daftar turnamen.
+    final chosenId = tournamentId;
+    final futures = <Future<Soft<Object?>>>[
       soft('Turnamen', Tournament.all, fallback: const <Tournament>[]),
-    ]);
+    ];
+    if (chosenId != null) {
+      futures.add(soft('Tagihan', () => Payment.bill(chosenId),
+          fallback: const <DuesRow>[]));
+      futures.add(soft('Riwayat iuran', () => Payment.all(tournamentId: chosenId),
+          fallback: const <Payment>[]));
+    }
+    final r = await Future.wait(futures);
     final failures = settle(r);
     final tournaments = r[0].value! as List<Tournament>;
 
@@ -72,13 +84,17 @@ class _PayData {
     // relevan — berjalan dulu, lalu yang akan datang.
     Tournament? selected;
     for (final t in tournaments) {
-      if (t.id == tournamentId) selected = t;
+      if (t.id == chosenId) selected = t;
     }
     selected ??= tournaments.isEmpty ? null : tournaments.first;
 
-    var bill = const <DuesRow>[];
-    var payments = const <Payment>[];
-    if (selected != null) {
+    var bill = chosenId == null ? const <DuesRow>[] : r[1].value! as List<DuesRow>;
+    var payments =
+        chosenId == null ? const <Payment>[] : r[2].value! as List<Payment>;
+    if (selected == null) {
+      bill = const <DuesRow>[];
+      payments = const <Payment>[];
+    } else if (selected.id != chosenId) {
       final r2 = await Future.wait<Soft<Object?>>([
         soft('Tagihan', () => Payment.bill(selected!.id), fallback: const <DuesRow>[]),
         soft('Riwayat iuran', () => Payment.all(tournamentId: selected!.id),
@@ -154,6 +170,9 @@ class _PaymentsPageState extends State<PaymentsPage> {
   Future<void> _record(_PayData d, {int? memberId}) async {
     final t = d.selected;
     if (t == null) return;
+    // Ingat turnamen yang sedang dibuka: muat ulang setelah menyimpan bisa
+    // meminta tagihannya pada gelombang yang sama dengan daftar turnamen.
+    _tournamentId = t.id;
     final saved = await showPaymentForm(
       context,
       tournamentId: t.id,
@@ -463,6 +482,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
                               if (!mounted) return;
                               if (await attempt(context, () => Payment.delete(p.id),
                                   fail: 'Gagal menghapus')) {
+                                _tournamentId = selected.id;
                                 _reload();
                               }
                             }, tooltip: 'Hapus'),
@@ -496,7 +516,7 @@ class _TournamentChips extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     return SizedBox(
-      height: 40,
+      height: AppThemes.minTap,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -505,24 +525,52 @@ class _TournamentChips extends StatelessWidget {
         itemBuilder: (context, i) {
           final item = tournaments[i];
           final active = item.id == selectedId;
-          return GestureDetector(
+          // InkWell, bukan GestureDetector: pemilih ini harus bisa dicapai
+          // dengan Tab/Enter, dan `selected` memberi tahu pembaca layar
+          // turnamen mana yang sedang ditampilkan tanpa harus menebak warnanya.
+          return Semantics(
+            button: true,
+            selected: active,
+            label: item.name,
+            // Label di atas sudah mewakili teks chip; tanpa ini pembaca layar
+            // membacakan nama dua kali. Aksi ketuknya disediakan di sini
+            // karena semantik anak (InkWell) ikut dikecualikan.
+            excludeSemantics: true,
             onTap: () => onChanged(item.id),
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: active ? t.colorScheme.primary : Colors.transparent,
-                borderRadius: BorderRadius.circular(7),
-                border: Border.all(
-                  color: active ? t.colorScheme.primary : t.colorScheme.border,
-                ),
-              ),
-              child: Text(
-                item.name,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                  color: active ? t.colorScheme.primaryForeground : t.colorScheme.foreground,
+            child: Material(
+              color: Colors.transparent,
+              // Sama seperti PeriodChips: area sentuh setinggi minTap, pil
+              // visualnya tetap ringkas di tengah.
+              child: SizedBox(
+                height: AppThemes.minTap,
+                child: InkWell(
+                  onTap: () => onChanged(item.id),
+                  borderRadius: BorderRadius.circular(7),
+                  child: Center(
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        color: active ? t.colorScheme.primary : Colors.transparent,
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                          color: active ? t.colorScheme.primary : t.colorScheme.border,
+                        ),
+                      ),
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        child: Text(
+                          item.name,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                            color: active
+                                ? t.colorScheme.primaryForeground
+                                : t.colorScheme.foreground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

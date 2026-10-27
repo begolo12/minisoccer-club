@@ -300,17 +300,19 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   }
 
   Future<_SplitData> _load() async {
-    final split = await BookingAttendance.splitFor(widget.booking);
-    // Daftar anggota untuk dialog "tambah yang hadir". Kegagalan di sini tidak
-    // boleh menggagalkan halaman: kehadiran yang sudah ada tetap bisa dilihat
-    // dan disetor walau daftar anggota belum tersimpan di perangkat.
-    var members = const <Member>[];
-    try {
-      members = await Member.all(activeOnly: true);
-    } catch (_) {
-      members = const [];
-    }
-    return _SplitData(split: split, members: members);
+    // Kehadiran dan daftar anggota diminta bersamaan: keduanya independen,
+    // dan menunggu satu per satu menambah satu round-trip sebelum halaman
+    // terisi. Kegagalan daftar anggota tetap ditelan — kehadiran yang sudah
+    // ada masih bisa dilihat dan disetor walau daftar itu belum tersimpan di
+    // perangkat.
+    final results = await Future.wait<Object?>([
+      BookingAttendance.splitFor(widget.booking),
+      Member.all(activeOnly: true).catchError((_) => const <Member>[]),
+    ]);
+    return _SplitData(
+      split: results[0] as BookingSplit,
+      members: (results[1] as List).cast<Member>(),
+    );
   }
 
   Future<void> _reload() async {
@@ -649,32 +651,39 @@ Future<Set<int>> _pickMembers(BuildContext context, List<Member> members) async 
                           onTap: () => setLocal(() {
                             if (!selected.remove(m.id)) selected.add(m.id);
                           }),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              children: [
-                                Checkbox(
-                                  value: selected.contains(m.id),
-                                  visualDensity: VisualDensity.compact,
-                                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  onChanged: (v) => setLocal(() {
-                                    if (v == true) {
-                                      selected.add(m.id);
-                                    } else {
-                                      selected.remove(m.id);
-                                    }
-                                  }),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    m.name,
-                                    style: const TextStyle(fontSize: 13.5),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                          // Satu baris = satu target sentuh. Checkbox-nya
+                          // sendiri hanya ~30px; tingginya dinaikkan ke
+                          // AppThemes.minTap supaya mencentang nama di
+                          // lapangan tidak salah ketuk.
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: AppThemes.minTap),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: selected.contains(m.id),
+                                    visualDensity: VisualDensity.compact,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    onChanged: (v) => setLocal(() {
+                                      if (v == true) {
+                                        selected.add(m.id);
+                                      } else {
+                                        selected.remove(m.id);
+                                      }
+                                    }),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      m.name,
+                                      style: const TextStyle(fontSize: 13.5),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

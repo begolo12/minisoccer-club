@@ -114,10 +114,10 @@ Future<void> showCsvExport(
               children: [
                 ShadButton.outline(
                   onPressed: () async {
-                    await copyText(ctx, csv, message: 'CSV disalin — tempel di Excel/Sheets');
+                    await copyText(ctx, csv, message: 'Tabel disalin — tempel di aplikasi spreadsheet');
                   },
                   leading: const Icon(Icons.copy_rounded, size: 15),
-                  child: const Text('Salin CSV'),
+                  child: const Text('Salin tabel'),
                 ),
                 if (canSaveFile)
                   ShadButton(
@@ -136,7 +136,7 @@ Future<void> showCsvExport(
             if (!canSaveFile) ...[
               const SizedBox(height: 8),
               Text(
-                'Di HP, salin CSV lalu tempel ke Sheets/Excel — kolomnya otomatis terpisah.',
+                'Di HP, salin tabel lalu tempel ke aplikasi spreadsheet — kolomnya otomatis terpisah.',
                 style: t.textTheme.small,
               ),
             ],

@@ -111,14 +111,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text('Neon Postgres', style: const TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(
-                    kApiBase.isEmpty ? 'Host web ini (same-origin)' : kApiBase,
+                    kApiBase.isEmpty ? 'Alamat aplikasi web ini' : kApiBase,
                     style: t.textTheme.small,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Kredensial database hanya ada di server. Aplikasi tidak menyimpannya.',
+                    'Kata sandi penyimpanan data hanya ada di server. Aplikasi tidak menyimpannya.',
                     style: t.textTheme.small,
                   ),
                   const SizedBox(height: 12),
@@ -232,7 +232,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         barrierDismissible: false,
                         builder: (_) => const _PasswordDialog(),
                       ),
-                      child: const Text('Ganti password'),
+                      child: const Text('Ganti kata sandi'),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -264,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 4),
                   Text(
                     'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
-                    'alamat, dan posisi sendiri. Nama depan menjadi username, dan akun '
+                    'alamat, dan posisi sendiri. Nama depan menjadi nama pengguna, dan akun '
                     'langsung dibuat tanpa perlu ditambah manual di menu Anggota.',
                     style: t.textTheme.small,
                   ),
@@ -306,7 +306,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(
                   admin
                       ? 'Dibuat dengan Flutter + shadcn UI + Neon Postgres.\n'
-                          'Data tersimpan langsung di database Neon kamu.'
+                          'Data tersimpan langsung di penyimpanan data klub.'
                       : 'Aplikasi klub mini soccer: anggota, jadwal, iuran, '
                           'turnamen, dan kas.',
                   style: t.textTheme.small,
@@ -465,11 +465,11 @@ class _UpdatePanelState extends State<_UpdatePanel> {
     if (!mounted) return;
     switch (outcome) {
       case InstallOutcome.started:
-        toast(context, 'Installer terbuka. Ketuk "Pasang" untuk menyelesaikan.');
+        toast(context, 'Pemasang aplikasi terbuka. Ketuk "Pasang" untuk menyelesaikan.');
       case InstallOutcome.needsPermission:
         toast(context, 'Izinkan "Pasang aplikasi tak dikenal" untuk Minisoccer, lalu ulangi.');
       case InstallOutcome.failed:
-        toast(context, 'Installer tidak bisa dibuka. Unduh manual dari GitHub.');
+        toast(context, 'Pemasang aplikasi tidak bisa dibuka. Unduh manual dari GitHub.');
     }
   }
 
@@ -568,13 +568,13 @@ class _UpdatePanelState extends State<_UpdatePanel> {
                 ),
                 child: Text(
                   _readyPath != null
-                      ? 'Buka installer'
+                      ? 'Buka pemasang'
                       : 'Unduh & pasang v${release.version}',
                 ),
               )
             else
               Text(
-                'Pembaruan APK hanya bisa dipasang dari aplikasi Android. '
+                'Pembaruan hanya bisa dipasang dari aplikasi Android. '
                 'Di web, versi baru otomatis terpakai saat halaman dimuat ulang.',
                 style: t.textTheme.small,
               ),
@@ -620,12 +620,12 @@ class _OfflinePanelState extends State<_OfflinePanel> {
       if (r.sent > 0) {
         toast(context, '${r.sent} perubahan terkirim');
       } else if (r.offline) {
-        toast(context, 'Masih offline — coba lagi nanti');
+        toast(context, 'Masih tanpa internet — coba lagi nanti');
       } else if (r.remaining == 0) {
         toast(context, 'Tidak ada yang perlu dikirim');
       }
       if (r.failed > 0 && mounted) {
-        toast(context, '${r.failed} perubahan ditolak server');
+        toast(context, '${r.failed} perubahan ditolak saat dikirim');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -638,7 +638,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
     if (!await confirm(
       context,
       'Buang $n perubahan?',
-      'Perubahan yang ditolak server akan dihapus dari antrean. '
+      'Perubahan yang ditolak saat dikirim akan dihapus dari antrean. '
           'Data di cloud tidak terpengaruh.',
     )) {
       return;
@@ -652,7 +652,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
     if (n == 0) return;
     if (!await confirm(
       context,
-      'Buang semua perubahan offline?',
+      'Buang semua perubahan yang belum terkirim?',
       '$n perubahan yang belum terkirim akan hilang dan tidak bisa dikembalikan.',
     )) {
       return;
@@ -666,7 +666,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
       context,
       'Kosongkan data sementara?',
       'Data tersimpan untuk dibaca tanpa internet akan dihapus. Perubahan yang '
-          'belum terkirim TIDAK terpengaruh. Halaman akan memuat ulang dari server.',
+          'belum terkirim TIDAK terpengaruh. Halaman akan memuat ulang datanya.',
     )) {
       return;
     }
@@ -700,7 +700,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          offline ? 'Offline' : 'Tersambung',
+                          offline ? 'Tanpa internet' : 'Tersambung',
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
@@ -711,11 +711,11 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                   const SizedBox(height: 6),
                   Text(
                     pending == 0
-                        ? 'Semua perubahan sudah tersimpan di server. '
-                            'Data klub tetap bisa dibaca saat offline.'
+                        ? 'Semua perubahan sudah terkirim. '
+                            'Data klub tetap bisa dibaca tanpa internet.'
                         : '$pending perubahan tersimpan di HP dan akan dikirim '
-                            'otomatis saat tersambung. Data offline diutamakan '
-                            'dan akan menimpa data cloud.',
+                            'otomatis saat tersambung. Data di perangkat kamu '
+                            'didahulukan dan akan menimpa data di pusat data.',
                     style: t.textTheme.small,
                   ),
                   // Antrean yang gagal dibaca/ditulis ke disk: data hanya di
@@ -738,7 +738,7 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                       ShadButton.outline(
                         onPressed: _busy || pending == 0 ? null : _sync,
                         leading: const Icon(Icons.sync, size: 15),
-                        child: Text(_busy ? 'Mengirim…' : 'Sinkron sekarang'),
+                        child: Text(_busy ? 'Mengirim…' : 'Kirim sekarang'),
                       ),
                       if (Outbox.failedCount > 0)
                         ShadButton.outline(
@@ -764,8 +764,8 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                   if (Outbox.failedCount > 0) ...[
                     const SizedBox(height: 10),
                     Text(
-                      'Sebagian perubahan ditolak server (mis. datanya sudah '
-                      'dihapus di cloud). Periksa lalu buang agar tidak menumpuk.',
+                      'Sebagian perubahan ditolak saat dikirim (mis. datanya sudah '
+                      'dihapus). Periksa lalu buang agar tidak menumpuk.',
                       style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
                     ),
                   ],
@@ -823,11 +823,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     if (_saving) return;
     setState(() => _err = null);
     if (_next.text.length < 6) {
-      setState(() => _err = 'Password baru minimal 6 karakter');
+      setState(() => _err = 'Kata sandi baru minimal 6 karakter');
       return;
     }
     if (_next.text != _again.text) {
-      setState(() => _err = 'Ulangi password baru dengan sama');
+      setState(() => _err = 'Ulangi kata sandi baru dengan sama');
       return;
     }
     setState(() => _saving = true);
@@ -835,7 +835,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       await Auth.changePassword(current: _current.text, next: _next.text);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _err = writeFailText(e, fail: 'Gagal mengganti password'));
+      if (mounted) setState(() => _err = writeFailText(e, fail: 'Gagal mengganti kata sandi'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -845,8 +845,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     return ShadDialog(
-      title: const Text('Ganti password'),
-      description: const Text('Masukkan password lama, lalu password baru.'),
+      title: const Text('Ganti kata sandi'),
+      description: const Text('Masukkan kata sandi lama, lalu kata sandi baru.'),
       actions: [
         ShadButton.outline(
           onPressed: _saving ? null : () => Navigator.pop(context, false),
@@ -863,28 +863,31 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
+          FieldLabel('Kata sandi lama', required: true),
           ShadInput(
             controller: _current,
             obscureText: true,
             enabled: !_saving,
             autofocus: true,
-            placeholder: const Text('Password lama'),
+            placeholder: const Text('Kata sandi lama'),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          FieldLabel('Kata sandi baru', required: true),
           ShadInput(
             controller: _next,
             obscureText: true,
             enabled: !_saving,
-            placeholder: const Text('Password baru (minimal 6 karakter)'),
+            placeholder: const Text('Kata sandi baru (minimal 6 karakter)'),
             textInputAction: TextInputAction.next,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          FieldLabel('Ulangi kata sandi baru', required: true),
           ShadInput(
             controller: _again,
             obscureText: true,
             enabled: !_saving,
-            placeholder: const Text('Ulangi password baru'),
+            placeholder: const Text('Ulangi kata sandi baru'),
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _save(),
           ),
@@ -897,8 +900,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
           ],
           const SizedBox(height: 8),
           Text(
-            'Sesi lain yang sedang masuk tidak ikut keluar; tokennya berlaku '
-            'sampai kedaluwarsa (12 jam).',
+            'Perangkat lain yang sedang masuk akan diminta masuk lagi — '
+            'kata sandi lama tidak berlaku lagi di mana pun.',
             style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.4),
           ),
         ],
