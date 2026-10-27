@@ -11,6 +11,7 @@ import 'login.dart';
 import 'register.dart';
 import '../core/version.dart';
 import '../data/auth.dart';
+import 'audit.dart';
 import 'fmt.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -34,11 +35,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _load() async {
     final theme = await SecureStore.read('theme');
     if (!mounted) return;
-    setState(() => _mode = switch (theme) {
-          'light' => ThemeMode.light,
-          'system' => ThemeMode.system,
-          _ => ThemeMode.dark,
-        });
+    setState(
+      () => _mode = switch (theme) {
+        'light' => ThemeMode.light,
+        'system' => ThemeMode.system,
+        _ => ThemeMode.dark,
+      },
+    );
   }
 
   Future<void> _setMode(ThemeMode m) async {
@@ -71,7 +74,10 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Tema', style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  'Tema',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   // "Ikuti sistem" penting untuk pengguna yang menjadwalkan
@@ -108,7 +114,10 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Neon Postgres', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    'Neon Postgres',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     kApiBase.isEmpty ? 'Alamat aplikasi web ini' : kApiBase,
@@ -130,7 +139,9 @@ class _SettingsPageState extends State<SettingsPage> {
                           await Db.query('SELECT 1');
                           if (context.mounted) toast(context, 'Koneksi OK');
                         } catch (e) {
-                          if (context.mounted) toast(context, 'Gagal: ${errText(e)}');
+                          if (context.mounted) {
+                            toast(context, 'Gagal: ${errText(e)}');
+                          }
                         }
                       },
                       child: const Text('Tes koneksi'),
@@ -142,6 +153,30 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 22),
             const SectionTitle('Data tanpa internet'),
             _OfflinePanel(),
+            const SizedBox(height: 22),
+            const SectionTitle('Jejak audit'),
+            Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Mencatat siapa menambah, mengubah, dan menghapus data. '
+                    'Berguna saat angka kas tidak cocok.',
+                    style: t.textTheme.small,
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: ShadButton.outline(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AuditPage()),
+                      ),
+                      child: const Text('Buka jejak audit'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: 22),
           const SectionTitle('Akun'),
@@ -183,40 +218,46 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ] else
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(Auth.username ?? '—',
-                              style: const TextStyle(fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 2),
-                          // Role sudah tampil di label kanan; baris ini
-                          // menjelaskan artinya, bukan mengulang namanya.
-                          Text(
-                            Auth.canWrite ? 'Bisa mengubah data' : 'Hanya membaca',
-                            style: t.textTheme.small,
-                          ),
-                        ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              Auth.username ?? '—',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            // Role sudah tampil di label kanan; baris ini
+                            // menjelaskan artinya, bukan mengulang namanya.
+                            Text(
+                              Auth.canWrite
+                                  ? 'Bisa mengubah data'
+                                  : 'Hanya membaca',
+                              style: t.textTheme.small,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Text(
-                      switch (Auth.role) {
-                        'admin' => 'ADMIN',
-                        'treasurer' => 'BENDAHARA',
-                        _ => 'ANGGOTA',
-                      },
-                      style: TextStyle(
-                        fontFamily: AppThemes.display,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.2,
-                        color: t.colorScheme.primary,
+                      Text(
+                        switch (Auth.role) {
+                          'admin' => 'ADMIN',
+                          'treasurer' => 'BENDAHARA',
+                          _ => 'ANGGOTA',
+                        },
+                        style: TextStyle(
+                          fontFamily: AppThemes.display,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.2,
+                          color: t.colorScheme.primary,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 if (!Auth.isGuest) ...[
                   const SizedBox(height: 12),
                   // Password awal dari pendaftaran adalah nomor HP, jadi
@@ -238,9 +279,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 8),
                   ShadButton.outline(
                     onPressed: () async {
-                      if (!await confirm(context, 'Keluar?',
-                          'Kamu akan kembali ke mode publik (hanya melihat).',
-                          confirmLabel: 'Keluar')) {
+                      if (!await confirm(
+                        context,
+                        'Keluar?',
+                        'Kamu akan kembali ke mode publik (hanya melihat).',
+                        confirmLabel: 'Keluar',
+                      )) {
                         return;
                       }
                       await Auth.logout();
@@ -260,7 +304,10 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Tautan pendaftaran', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    'Tautan pendaftaran',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 4),
                   Text(
                     'Bagikan tautan ini ke calon anggota. Mereka mengisi nama, nomor HP, '
@@ -282,7 +329,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     alignment: Alignment.centerLeft,
                     child: ShadButton.outline(
                       onPressed: () async {
-                        await Clipboard.setData(ClipboardData(text: registrationLink()));
+                        await Clipboard.setData(
+                          ClipboardData(text: registrationLink()),
+                        );
                         if (context.mounted) toast(context, 'Tautan disalin');
                       },
                       child: const Text('Salin tautan'),
@@ -301,14 +350,17 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Minisoccer Club v$kAppVersion', style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  'Minisoccer Club v$kAppVersion',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   admin
                       ? 'Dibuat dengan Flutter + shadcn UI + Neon Postgres.\n'
-                          'Data tersimpan langsung di penyimpanan data klub.'
+                            'Data tersimpan langsung di penyimpanan data klub.'
                       : 'Aplikasi klub mini soccer: anggota, jadwal, iuran, '
-                          'turnamen, dan kas.',
+                            'turnamen, dan kas.',
                   style: t.textTheme.small,
                 ),
                 // Diagnostik layar hanya untuk admin: angka refresh rate dan
@@ -363,7 +415,9 @@ class _ThemeOption extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? t.colorScheme.primaryForeground : t.colorScheme.foreground,
+                color: selected
+                    ? t.colorScheme.primaryForeground
+                    : t.colorScheme.foreground,
               ),
             ),
           ),
@@ -465,11 +519,20 @@ class _UpdatePanelState extends State<_UpdatePanel> {
     if (!mounted) return;
     switch (outcome) {
       case InstallOutcome.started:
-        toast(context, 'Pemasang aplikasi terbuka. Ketuk "Pasang" untuk menyelesaikan.');
+        toast(
+          context,
+          'Pemasang aplikasi terbuka. Ketuk "Pasang" untuk menyelesaikan.',
+        );
       case InstallOutcome.needsPermission:
-        toast(context, 'Izinkan "Pasang aplikasi tak dikenal" untuk Minisoccer, lalu ulangi.');
+        toast(
+          context,
+          'Izinkan "Pasang aplikasi tak dikenal" untuk Minisoccer, lalu ulangi.',
+        );
       case InstallOutcome.failed:
-        toast(context, 'Pemasang aplikasi tidak bisa dibuka. Unduh manual dari GitHub.');
+        toast(
+          context,
+          'Pemasang aplikasi tidak bisa dibuka. Unduh manual dari GitHub.',
+        );
     }
   }
 
@@ -501,8 +564,10 @@ class _UpdatePanelState extends State<_UpdatePanel> {
                       kIsWeb
                           ? 'Versi web selalu yang terbaru setelah halaman dimuat ulang.'
                           : (_checking
-                              ? 'Memeriksa GitHub…'
-                              : (check == null ? 'Belum diperiksa' : check.status)),
+                                ? 'Memeriksa GitHub…'
+                                : (check == null
+                                      ? 'Belum diperiksa'
+                                      : check.status)),
                       style: t.textTheme.small,
                     ),
                   ],
@@ -534,7 +599,9 @@ class _UpdatePanelState extends State<_UpdatePanel> {
                       release.notes,
                       maxLines: 6,
                       overflow: TextOverflow.ellipsis,
-                      style: t.textTheme.small.copyWith(color: t.colorScheme.foreground),
+                      style: t.textTheme.small.copyWith(
+                        color: t.colorScheme.foreground,
+                      ),
                     ),
                   ],
                 ],
@@ -560,10 +627,12 @@ class _UpdatePanelState extends State<_UpdatePanel> {
                 onPressed: _downloading
                     ? null
                     : (_readyPath != null
-                        ? () => _install(_readyPath!)
-                        : () => _download(release)),
+                          ? () => _install(_readyPath!)
+                          : () => _download(release)),
                 leading: Icon(
-                  _readyPath != null ? Icons.install_desktop : Icons.system_update_alt,
+                  _readyPath != null
+                      ? Icons.install_desktop
+                      : Icons.system_update_alt,
                   size: 16,
                 ),
                 child: Text(
@@ -695,7 +764,9 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                       Icon(
                         offline ? Icons.cloud_off : Icons.cloud_done_outlined,
                         size: 16,
-                        color: offline ? t.colorScheme.mutedForeground : t.colorScheme.primary,
+                        color: offline
+                            ? t.colorScheme.mutedForeground
+                            : t.colorScheme.primary,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -712,10 +783,10 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                   Text(
                     pending == 0
                         ? 'Semua perubahan sudah terkirim. '
-                            'Data klub tetap bisa dibaca tanpa internet.'
+                              'Data klub tetap bisa dibaca tanpa internet.'
                         : '$pending perubahan tersimpan di HP dan akan dikirim '
-                            'otomatis saat tersambung. Data di perangkat kamu '
-                            'didahulukan dan akan menimpa data di pusat data.',
+                              'otomatis saat tersambung. Data di perangkat kamu '
+                              'didahulukan dan akan menimpa data di pusat data.',
                     style: t.textTheme.small,
                   ),
                   // Antrean yang gagal dibaca/ditulis ke disk: data hanya di
@@ -727,7 +798,9 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                       child: Text(
                         '${Outbox.loadError} Coba sinkron sekarang, lalu '
                         'buka ulang aplikasi.',
-                        style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
+                        style: t.textTheme.small.copyWith(
+                          color: AppThemes.bad(context),
+                        ),
                       ),
                     ),
                   const SizedBox(height: 12),
@@ -756,7 +829,10 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                       // punya cara membersihkannya tanpa menunggu restart.
                       ShadButton.outline(
                         onPressed: _busy ? null : _clearCache,
-                        leading: const Icon(Icons.cleaning_services_outlined, size: 15),
+                        leading: const Icon(
+                          Icons.cleaning_services_outlined,
+                          size: 15,
+                        ),
                         child: const Text('Kosongkan data sementara'),
                       ),
                     ],
@@ -766,7 +842,9 @@ class _OfflinePanelState extends State<_OfflinePanel> {
                     Text(
                       'Sebagian perubahan ditolak saat dikirim (mis. datanya sudah '
                       'dihapus). Periksa lalu buang agar tidak menumpuk.',
-                      style: t.textTheme.small.copyWith(color: AppThemes.bad(context)),
+                      style: t.textTheme.small.copyWith(
+                        color: AppThemes.bad(context),
+                      ),
                     ),
                   ],
                 ],
@@ -822,8 +900,8 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _err = null);
-    if (_next.text.length < 6) {
-      setState(() => _err = 'Kata sandi baru minimal 6 karakter');
+    if (_next.text.length < 8) {
+      setState(() => _err = 'Kata sandi baru minimal 8 karakter');
       return;
     }
     if (_next.text != _again.text) {
@@ -835,7 +913,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       await Auth.changePassword(current: _current.text, next: _next.text);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) setState(() => _err = writeFailText(e, fail: 'Gagal mengganti kata sandi'));
+      if (mounted) {
+        setState(
+          () => _err = writeFailText(e, fail: 'Gagal mengganti kata sandi'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -846,7 +928,9 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     final t = ShadTheme.of(context);
     return ShadDialog(
       title: const Text('Ganti kata sandi'),
-      description: const Text('Masukkan kata sandi lama, lalu kata sandi baru.'),
+      description: const Text(
+        'Masukkan kata sandi lama, lalu kata sandi baru.',
+      ),
       actions: [
         ShadButton.outline(
           onPressed: _saving ? null : () => Navigator.pop(context, false),
@@ -855,7 +939,11 @@ class _PasswordDialogState extends State<_PasswordDialog> {
         ShadButton(
           onPressed: _saving ? null : _save,
           child: _saving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Text('Simpan'),
         ),
       ],
@@ -878,7 +966,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             controller: _next,
             obscureText: true,
             enabled: !_saving,
-            placeholder: const Text('Kata sandi baru (minimal 6 karakter)'),
+            placeholder: const Text('Kata sandi baru (minimal 8 karakter)'),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 12),
@@ -895,7 +983,10 @@ class _PasswordDialogState extends State<_PasswordDialog> {
             const SizedBox(height: 12),
             ShadAlert.destructive(
               icon: const Icon(Icons.error_outline, size: 16),
-              description: Text(_err!, style: const TextStyle(fontSize: 12.5, height: 1.45)),
+              description: Text(
+                _err!,
+                style: const TextStyle(fontSize: 12.5, height: 1.45),
+              ),
             ),
           ],
           const SizedBox(height: 8),

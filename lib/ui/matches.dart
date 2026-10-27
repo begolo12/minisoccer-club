@@ -482,7 +482,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                       const SizedBox(width: 12),
                       Pill('$drew seri'),
                       const SizedBox(width: 12),
-                      Pill('$lost kalah', color: AppThemes.bad(context)),
+                      Pill('$lost kalah', color: lost > 0 ? AppThemes.bad(context) : null),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -568,7 +568,7 @@ class _MatchDetailPageState extends State<MatchDetailPage> {
                               if (await attempt(context, () => MatchEvent.delete(e.id), fail: 'Gagal menghapus')) {
                                 _reload();
                               }
-                            }, tooltip: 'Hapus catatan'),
+                            }, tooltip: 'Hapus catatan', bordered: false),
                           ],
                         ],
                       ),

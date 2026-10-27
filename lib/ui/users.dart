@@ -71,7 +71,8 @@ class _UsersPageState extends State<UsersPage> {
         child: EmptyState(
           icon: Icons.lock_outline,
           title: 'Khusus admin',
-          message: 'Akun ${Auth.username ?? ''} tidak punya akses ke daftar akun.',
+          message:
+              'Akun ${Auth.username ?? ''} tidak punya akses ke daftar akun.',
         ),
       );
     }
@@ -88,18 +89,20 @@ class _UsersPageState extends State<UsersPage> {
         onRefresh: _reload,
         builder: (users) {
           if (users.isEmpty) {
-            return ListView(children: [
-              const SizedBox(height: 80),
-              EmptyState(
-                icon: Icons.people_outline,
-                title: 'Belum ada akun',
-                message: 'Tambah admin atau bendahara klub.',
-                actionLabel: 'Tambah akun',
-                onAction: () async {
-                  if (await _create(context)) _reload();
-                },
-              ),
-            ]);
+            return ListView(
+              children: [
+                const SizedBox(height: 80),
+                EmptyState(
+                  icon: Icons.people_outline,
+                  title: 'Belum ada akun',
+                  message: 'Tambah admin atau bendahara klub.',
+                  actionLabel: 'Tambah akun',
+                  onAction: () async {
+                    if (await _create(context)) _reload();
+                  },
+                ),
+              ],
+            );
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
@@ -107,9 +110,13 @@ class _UsersPageState extends State<UsersPage> {
               for (final u in users)
                 RowItem(
                   leading: Icon(
-                    u.role == 'admin' ? Icons.shield_outlined : Icons.person_outline,
+                    u.role == 'admin'
+                        ? Icons.shield_outlined
+                        : Icons.person_outline,
                     size: 17,
-                    color: u.active ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                    color: u.active
+                        ? t.colorScheme.primary
+                        : t.colorScheme.mutedForeground,
                   ),
                   title: u.id == _selfId ? '${u.username} (kamu)' : u.username,
                   // Satu baris menjawab "akun siapa ini": id (untuk menyebut
@@ -125,8 +132,11 @@ class _UsersPageState extends State<UsersPage> {
                   // Satu pintu: semua ubahan ada di panel akun. Lima tombol
                   // ikon berjajar tidak muat di layar 320px dan paling
                   // sering salah ketuk.
-                  trailing: Icon(Icons.chevron_right,
-                      size: 20, color: t.colorScheme.mutedForeground),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: t.colorScheme.mutedForeground,
+                  ),
                   onTap: () async {
                     if (await _manage(context, u)) _reload();
                   },
@@ -190,13 +200,17 @@ class _UsersPageState extends State<UsersPage> {
                         toast(ctx, 'Nama pengguna wajib diisi');
                         return;
                       }
-                      if (password.text.length < 6) {
-                        toast(ctx, 'Kata sandi minimal 6 karakter');
+                      if (password.text.length < 8) {
+                        toast(ctx, 'Kata sandi minimal 8 karakter');
                         return;
                       }
                       setLocal(() => saving = true);
                       try {
-                        await AppUser.insert(username.text, role, password: password.text);
+                        await AppUser.insert(
+                          username.text,
+                          role,
+                          password: password.text,
+                        );
                         if (ctx.mounted) Navigator.pop(ctx, true);
                       } catch (e) {
                         if (ctx.mounted) {
@@ -221,7 +235,7 @@ class _UsersPageState extends State<UsersPage> {
               FieldLabel('Kata sandi', required: true),
               ShadInput(
                 controller: password,
-                placeholder: const Text('Kata sandi (min. 6 karakter)'),
+                placeholder: const Text('Kata sandi (min. 8 karakter)'),
                 obscureText: true,
               ),
               const SizedBox(height: 12),
@@ -230,7 +244,10 @@ class _UsersPageState extends State<UsersPage> {
                 placeholder: const Text('Hak akses'),
                 initialValue: role,
                 options: AppUser.roles
-                    .map((r) => ShadOption(value: r, child: Text(roleLabels[r] ?? r)))
+                    .map(
+                      (r) =>
+                          ShadOption(value: r, child: Text(roleLabels[r] ?? r)),
+                    )
                     .toList(),
                 selectedOptionBuilder: (c, v) => Text(roleLabels[v] ?? v),
                 onChanged: (v) => setLocal(() => role = v ?? 'member'),
@@ -425,9 +442,15 @@ class _AccountPanelState extends State<_AccountPanel> {
               placeholder: const Text('Hak akses'),
               initialValue: _role,
               options: AppUser.roles
-                  .map((r) => ShadOption(value: r, child: Text(_UsersPageState.roleLabels[r] ?? r)))
+                  .map(
+                    (r) => ShadOption(
+                      value: r,
+                      child: Text(_UsersPageState.roleLabels[r] ?? r),
+                    ),
+                  )
                   .toList(),
-              selectedOptionBuilder: (c, v) => Text(_UsersPageState.roleLabels[v] ?? v),
+              selectedOptionBuilder: (c, v) =>
+                  Text(_UsersPageState.roleLabels[v] ?? v),
               onChanged: (v) => setState(() => _role = v ?? _role),
             ),
             const SizedBox(height: 10),
@@ -461,7 +484,8 @@ class _AccountPanelState extends State<_AccountPanel> {
                             ),
                           ),
                           TextButton(
-                            onPressed: () => setState(() => _members = Member.all()),
+                            onPressed: () =>
+                                setState(() => _members = Member.all()),
                             child: const Text('Coba lagi'),
                           ),
                         ],
@@ -473,7 +497,10 @@ class _AccountPanelState extends State<_AccountPanel> {
                 // Belum termuat bukan "tidak tertaut": menulisnya di sini
                 // berarti mengklaim hasil query yang belum selesai.
                 if (list == null) {
-                  return const _InfoLine(label: 'Anggota tertaut', value: 'Memuat…');
+                  return const _InfoLine(
+                    label: 'Anggota tertaut',
+                    value: 'Memuat…',
+                  );
                 }
                 if (list.isEmpty) {
                   return _InfoLine(
@@ -481,7 +508,9 @@ class _AccountPanelState extends State<_AccountPanel> {
                     value: _memberId == null ? 'Tidak tertaut' : '#$_memberId',
                   );
                 }
-                final valid = list.any((m) => m.id == _memberId) ? _memberId : null;
+                final valid = list.any((m) => m.id == _memberId)
+                    ? _memberId
+                    : null;
                 // `T` sengaja `int`, bukan `int?`: shadcn memanggil
                 // `initialValue!` saat membangun opsi, jadi `ShadOption` dengan
                 // nilai null melempar "Null check operator used on a null
@@ -501,19 +530,30 @@ class _AccountPanelState extends State<_AccountPanel> {
                       searchPlaceholder: const Text('Cari anggota'),
                       onSearchChanged: (q) => setState(() => _query = q),
                       options: [
-                        const ShadOption(value: 0, child: Text('Tidak tertaut')),
+                        const ShadOption(
+                          value: 0,
+                          child: Text('Tidak tertaut'),
+                        ),
                         for (final m in list)
                           if (_query.isEmpty ||
-                              m.name.toLowerCase().contains(_query.toLowerCase()) ||
+                              m.name.toLowerCase().contains(
+                                _query.toLowerCase(),
+                              ) ||
                               '${m.id}' == _query)
-                            ShadOption(value: m.id, child: Text('${m.name} (#${m.id})')),
+                            ShadOption(
+                              value: m.id,
+                              child: Text('${m.name} (#${m.id})'),
+                            ),
                       ],
                       selectedOptionBuilder: (c, v) {
                         final m = list.where((m) => m.id == v).firstOrNull;
-                        return Text(m == null ? 'Tidak tertaut' : '${m.name} (#${m.id})');
+                        return Text(
+                          m == null ? 'Tidak tertaut' : '${m.name} (#${m.id})',
+                        );
                       },
-                      onChanged: (v) =>
-                          setState(() => _memberId = (v == null || v == 0) ? null : v),
+                      onChanged: (v) => setState(
+                        () => _memberId = (v == null || v == 0) ? null : v,
+                      ),
                     ),
                   ],
                 );
@@ -530,8 +570,12 @@ class _AccountPanelState extends State<_AccountPanel> {
             // terdorong ke luar layar.
             ShadSwitch(
               value: _active,
-              label: Text(widget.isSelf ? 'Bisa masuk (akun sendiri)' : 'Bisa masuk'),
-              onChanged: widget.isSelf ? null : (v) => setState(() => _active = v),
+              label: Text(
+                widget.isSelf ? 'Bisa masuk (akun sendiri)' : 'Bisa masuk',
+              ),
+              onChanged: widget.isSelf
+                  ? null
+                  : (v) => setState(() => _active = v),
             ),
             const SizedBox(height: 4),
             Text(
@@ -546,7 +590,7 @@ class _AccountPanelState extends State<_AccountPanel> {
             Text(
               u.hasPassword
                   ? 'Tersimpan dalam bentuk teracak satu arah — isinya tidak bisa '
-                      'ditampilkan, hanya bisa diganti.'
+                        'ditampilkan, hanya bisa diganti.'
                   : 'Akun ini belum punya kata sandi. Setel satu supaya bisa masuk.',
               style: t.textTheme.small,
             ),
@@ -557,7 +601,9 @@ class _AccountPanelState extends State<_AccountPanel> {
                 decoration: BoxDecoration(
                   color: t.colorScheme.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: t.colorScheme.primary.withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: t.colorScheme.primary.withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Row(
                   children: [

@@ -17,29 +17,67 @@ import { bearer, issueToken, verifyToken } from './_auth.js';
 
 const sql = neon(process.env.DATABASE_URL);
 
-const MAX_FAILS = 5;
-const LOCK_MINUTES = 10;
-const MIN_PASS = 6; // ponytail: 6 biar tidak mengunci user lama; naikkan ke 8 kalau boleh.
+// Batas panjang password.
+//
+// 6 karakter terlalu lemah untuk akun yang bisa melihat kas klub. Dinaikkan ke
+// 8, TAPI hanya untuk password BARU (`create`, `reset`, `change`, `register`).
+// Jalur `login` memang tidak pernah memeriksa panjang minimum — ia hanya
+// membandingkan dengan hash yang tersimpan — jadi akun lama yang passwordnya
+// 6-7 karakter tetap bisa masuk. Yang dijaga adalah password berikutnya.
+const MIN_PASS = 8;
+
 const MAX_USER = 40;
 const MAX_PASS = 200;
 const MAX_BODY = 8 * 1024;
 
-// ponytail: rate limit per instance (Map). Cukup untuk membendung brute force
-// biasa; ganti ke Redis/DB kalau butuh batas lintas instance.
+// Batas salah password sebelum akun dikunci sementara.
+const MAX_FAILS = 5;
+const LOCK_MINUTES = 10;
+
+// Batas percobaan login.
+//
+// Dulu penghitungnya `Map` di memori instance. Di Vercel, satu fungsi bisa
+// berjalan di beberapa instance sekaligus, dan tiap instance punya Map sendiri
+// — jadi batas 30 percobaan sebenarnya 30 × jumlah instance, dan instance baru
+// (setelah idle) mulai dari nol. Penyerang tinggal mengulang sampai kena
+// instance yang masih segar.
+//
+// Sekarang hitungannya di Postgres, satu baris per IP, lewat satu `INSERT ...
+// ON CONFLICT` yang atomik: tidak ada balapan baca-lalu-tulis.
 const WINDOW_MS = 5 * 60_000;
 const MAX_HITS = 30;
-const hits = new Map();
 
-function tooMany(ip) {
-  const now = Date.now();
-  const h = hits.get(ip);
-  if (!h || now > h.reset) {
-    hits.set(ip, { n: 1, reset: now + WINDOW_MS });
-    if (hits.size > 5000) hits.clear(); // jaga memori
+/**
+ * Sudah terlalu banyak percobaan dari IP ini?
+ *
+ * Gagal-terbuka kalau DB bermasalah: tanpa DB, login memang tidak bisa
+ * dilanjutkan, jadi menolak dengan 429 hanya menyamarkan masalah sebenarnya.
+ */
+async function tooMany(ip) {
+  if (!ip) return false;
+  try {
+    const rows = await sql(
+      `INSERT INTO auth_throttle (ip, hits, reset_at)
+       VALUES ($1, 1, now() + make_interval(secs => $2))
+       ON CONFLICT (ip) DO UPDATE SET
+         hits = CASE WHEN auth_throttle.reset_at <= now() THEN 1
+                     ELSE auth_throttle.hits + 1 END,
+         reset_at = CASE WHEN auth_throttle.reset_at <= now()
+                         THEN now() + make_interval(secs => $2)
+                         ELSE auth_throttle.reset_at END
+       RETURNING hits`,
+      [ip, WINDOW_MS / 1000],
+    );
+    // Bersihkan baris kedaluwarsa sesekali: tabel ini hanya perlu memuat IP
+    // yang sedang dalam jendela, dan tanpa pembersihan ia tumbuh selamanya.
+    if (Math.random() < 0.02) {
+      await sql("DELETE FROM auth_throttle WHERE reset_at < now() - interval '1 day'");
+    }
+    return (rows[0]?.hits ?? 0) > MAX_HITS;
+  } catch (e) {
+    console.error('[auth] throttle tidak bisa diperiksa:', e.message);
     return false;
   }
-  h.n++;
-  return h.n > MAX_HITS;
 }
 
 const clientIp = (req) =>
@@ -73,7 +111,7 @@ export default async function handler(req, res) {
   const pass = String(password || '');
 
   // Batasi hanya percobaan kredensial; aksi admin yang sah tidak ikut terhitung.
-  if ((action === 'login' || action === 'register') && tooMany(clientIp(req))) {
+  if ((action === 'login' || action === 'register') && (await tooMany(clientIp(req)))) {
     res.setHeader('retry-after', String(WINDOW_MS / 1000));
     return res.status(429).json({ error: 'Terlalu banyak percobaan. Tunggu beberapa menit.' });
   }

@@ -57,6 +57,11 @@ const setup = [
   `GRANT SELECT, INSERT, UPDATE, DELETE ON
      ${APP_WEB_TABLES.join(', ')}
    TO app_web`,
+  // Jejak audit: hanya tambah dan baca. Tanpa UPDATE/DELETE, catatan yang sudah
+  // dibuat tidak bisa dihapus lewat koneksi aplikasi — termasuk kalau suatu saat
+  // ada bug yang mengirim DELETE ke tabel ini.
+  'GRANT SELECT, INSERT ON audit_log TO app_web',
+  'GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO app_web',
   'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO app_web',
   `GRANT SELECT ON ${APP_WEB_VIEWS.join(', ')} TO app_web`,
 ];

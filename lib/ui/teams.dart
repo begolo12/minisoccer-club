@@ -546,7 +546,7 @@ class _TeamDetailPageState extends State<TeamDetailPage> {
                                 fail: 'Gagal mengeluarkan pemain')) {
                               await _reload();
                             }
-                          }, tooltip: 'Keluarkan dari tim')
+                          }, tooltip: 'Keluarkan dari tim', bordered: false)
                         : null,
                   ),
               // Laga terjadwal bukan riwayat. Tanpa pemisahan ini judul

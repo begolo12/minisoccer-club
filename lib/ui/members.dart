@@ -140,8 +140,8 @@ class _MembersPageState extends State<MembersPage> {
       // Riwayat iuran hanya untuk yang sudah masuk, jadi jangan menjanjikan
       // ketukan itu kepada tamu.
       subtitle: Auth.signedIn
-          ? '${_activeOnly ? "Aktif" : "Semua"} • ketuk untuk riwayat iuran'
-          : '${_activeOnly ? "Aktif" : "Semua"} • daftar anggota klub',
+          ? 'ketuk baris untuk riwayat iuran'
+          : 'daftar anggota klub',
       actions: [
         // Tautan pendaftaran dibuka dari sini karena di halaman inilah admin
         // biasanya sedang menambah orang — tidak perlu masuk Pengaturan.
@@ -156,32 +156,49 @@ class _MembersPageState extends State<MembersPage> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            // 16dp dari garis kepala: dulu 0, sehingga garis bidang pencarian
+            // menempel pada garis kepala dan terbaca sebagai garis ganda.
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
             child: Row(
               children: [
                 Expanded(
-                  child: ShadInput(
-                    controller: _search,
-                    placeholder: const Text('Cari nama…'),
-                    // `trim` penting: spasi di awal/akhir (sering ikut terketik
-                    // atau ter-tempel) membuat pencarian gagal padahal datanya
-                    // ada, dan pengguna melihat "Tidak ditemukan".
-                    onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-                    leading: const Padding(
-                      padding: EdgeInsets.only(right: 8),
-                      child: Icon(Icons.search, size: 16),
+                  child: SizedBox(
+                    // ShadInput tidak punya parameter tinggi; 44dp dipilih
+                    // supaya sama dengan tombol di sebelahnya — dulu 38 vs
+                    // 41,5 sehingga tepi atas/bawah kedua kontrol tidak
+                    // sejajar.
+                    height: 44,
+                    child: ShadInput(
+                      controller: _search,
+                      placeholder: const Text('Cari nama…'),
+                      // `trim` penting: spasi di awal/akhir (sering ikut terketik
+                      // atau ter-tempel) membuat pencarian gagal padahal datanya
+                      // ada, dan pengguna melihat "Tidak ditemukan".
+                      onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+                      leading: const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: Icon(Icons.search, size: 16),
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
-                Tooltip(
-                  message: _activeOnly ? 'Tampilkan semua' : 'Hanya aktif',
-                  child: ShadButton.outline(
-                    onPressed: () {
-                      setState(() => _activeOnly = !_activeOnly);
-                      _reload();
-                    },
-                    child: Icon(_activeOnly ? Icons.filter_alt : Icons.filter_alt_off, size: 16),
+                // Keadaan saringan ditulis di tombolnya sendiri. Dulu hanya
+                // ikon corong, jadi satu-satunya petunjuk "Aktif" ada di
+                // subjudul — jauh dari kontrol yang mengubahnya.
+                ShadButton.outline(
+                  height: 44,
+                  onPressed: () {
+                    setState(() => _activeOnly = !_activeOnly);
+                    _reload();
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(_activeOnly ? Icons.filter_alt : Icons.filter_alt_off, size: 15),
+                      const SizedBox(width: 6),
+                      Text(_activeOnly ? 'Aktif' : 'Semua'),
+                    ],
                   ),
                 ),
               ],

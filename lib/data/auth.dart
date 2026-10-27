@@ -111,7 +111,7 @@ class Auth {
   /// Buat admin pertama (hanya bisa saat belum ada user).
   static Future<void> register(String user, String pass, {String role = 'admin'}) async {
     final u = user.trim();
-    if (u.isEmpty || pass.length < 6) throw Exception('Password minimal 6 karakter');
+    if (u.isEmpty || pass.length < 8) throw Exception('Password minimal 8 karakter');
     final body = await _post(
       {'action': 'register', 'username': u, 'password': pass, 'role': role},
       auth: false,

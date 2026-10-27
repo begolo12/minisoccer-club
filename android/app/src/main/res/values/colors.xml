@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sama dengan `AppThemes.ink` (lib/ui/theme.dart). Dipakai layar pembuka
+         di `drawable/launch_background.xml`. -->
+    <color name="launch_background">#080B09</color>
+</resources>

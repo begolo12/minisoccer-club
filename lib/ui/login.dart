@@ -94,7 +94,9 @@ class _LoginPageState extends State<LoginPage> {
       }
       if (mounted) _finish();
     } catch (e) {
-      if (mounted) setState(() => _err = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        setState(() => _err = e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -110,7 +112,9 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(child: CustomPaint(painter: _PitchPainter(_lineColor(context)))),
+          Positioned.fill(
+            child: CustomPaint(painter: _PitchPainter(_lineColor(context))),
+          ),
           if (canPop)
             Positioned(
               top: 8,
@@ -126,7 +130,10 @@ class _LoginPageState extends State<LoginPage> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 28,
+                ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 940),
                   child: LayoutBuilder(
@@ -150,14 +157,14 @@ class _LoginPageState extends State<LoginPage> {
                                 _check();
                               }
                             : null,
-                        onTogglePass: () => setState(() => _showPass = !_showPass),
+                        onTogglePass: () =>
+                            setState(() => _showPass = !_showPass),
                         onSubmit: _submit,
                         onRegister: () => Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (ctx) => RegisterPage(
-                              onDone: () => Navigator.pop(ctx),
-                            ),
+                            builder: (ctx) =>
+                                RegisterPage(onDone: () => Navigator.pop(ctx)),
                           ),
                         ),
                       );
@@ -176,9 +183,16 @@ class _LoginPageState extends State<LoginPage> {
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          const Expanded(flex: 6, child: _Brand(compact: false)),
+                          // Form lebih dulu: orang membuka layar ini untuk masuk,
+                          // bukan untuk membaca pengantar. Dulu headline dua
+                          // baris dan daftar 01/02/03 mendahuluinya, sehingga
+                          // kolom isian terdorong ke sisi sekunder.
+                          Expanded(flex: 5, child: form),
                           const SizedBox(width: 48),
-                          Expanded(flex: 4, child: form),
+                          const Expanded(
+                            flex: 5,
+                            child: _Brand(compact: false),
+                          ),
                         ],
                       );
                     },
@@ -215,7 +229,11 @@ class _PitchPainter extends CustomPainter {
 
     final cx = size.width * 0.24;
     canvas.drawCircle(Offset(cx, size.height * 0.42), size.width * 0.17, paint);
-    canvas.drawLine(Offset(0, size.height * 0.42), Offset(size.width, size.height * 0.42), paint);
+    canvas.drawLine(
+      Offset(0, size.height * 0.42),
+      Offset(size.width, size.height * 0.42),
+      paint,
+    );
   }
 
   @override
@@ -237,7 +255,9 @@ class _Brand extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     return Column(
-      crossAxisAlignment: compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      crossAxisAlignment: compact
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
@@ -250,7 +270,11 @@ class _Brand extends StatelessWidget {
                 border: Border.all(color: t.colorScheme.primary, width: 1.5),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.sports_soccer, size: 18, color: t.colorScheme.primary),
+              child: Icon(
+                Icons.sports_soccer,
+                size: 18,
+                color: t.colorScheme.primary,
+              ),
             ),
             const SizedBox(width: 10),
             Text(
@@ -364,7 +388,10 @@ class _FormPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Pill(firstRun ? 'Admin pertama' : 'Masuk', color: t.colorScheme.primary),
+          Pill(
+            firstRun ? 'Admin pertama' : 'Masuk',
+            color: t.colorScheme.primary,
+          ),
           const SizedBox(height: 8),
           Text(
             firstRun ? 'Belum ada akun' : 'Masuk ke klub',
@@ -402,7 +429,7 @@ class _FormPanel extends StatelessWidget {
               obscureText: !showPass,
               autofillHints: const [AutofillHints.password],
               textInputAction: TextInputAction.done,
-              placeholder: Text(firstRun ? 'Minimal 6 karakter' : 'Kata sandi'),
+              placeholder: Text(firstRun ? 'Minimal 8 karakter' : 'Kata sandi'),
               onSubmitted: (_) => onSubmit(),
               // Tombol mata tidak boleh mencuri fokus dari field.
               trailing: ExcludeFocus(
@@ -410,7 +437,9 @@ class _FormPanel extends StatelessWidget {
                   splashRadius: 18,
                   tooltip: showPass ? 'Sembunyikan' : 'Tampilkan',
                   icon: Icon(
-                    showPass ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    showPass
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
                     size: 17,
                     color: t.colorScheme.mutedForeground,
                   ),
@@ -423,7 +452,10 @@ class _FormPanel extends StatelessWidget {
             const SizedBox(height: 14),
             ShadAlert.destructive(
               icon: const Icon(Icons.error_outline, size: 16),
-              description: Text(error!, style: const TextStyle(fontSize: 12.5, height: 1.45)),
+              description: Text(
+                error!,
+                style: const TextStyle(fontSize: 12.5, height: 1.45),
+              ),
             ),
             if (onRetryCheck != null)
               Align(
@@ -465,7 +497,7 @@ class _FormPanel extends StatelessWidget {
             firstRun
                 ? 'Kata sandi disimpan dalam bentuk teracak. Tidak ada yang bisa membacanya.'
                 : 'Lupa kata sandi? Minta admin klub menyetel kata sandi baru lewat '
-                'Lainnya → Akun & akses.',
+                      'Lainnya → Akun & akses.',
             textAlign: TextAlign.start,
             style: t.textTheme.small.copyWith(fontSize: 11.5, height: 1.5),
           ),
@@ -513,7 +545,10 @@ class _Field extends StatelessWidget {
             style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 1),
           ),
         ),
-        child,
+        // Satu tinggi untuk kedua isian. `ShadInput` tidak punya parameter
+        // tinggi, jadi dipatok di sini: sebelumnya isian username, password,
+        // dan tombol masuk berturut-turut 37/57/42 px.
+        SizedBox(height: 44, child: child),
       ],
     );
   }

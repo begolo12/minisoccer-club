@@ -373,7 +373,10 @@ class _LedgerRow extends StatelessWidget {
             amount,
             style: t.textTheme.table.copyWith(
               fontWeight: FontWeight.w600,
-              color: income ? t.colorScheme.primary : t.colorScheme.foreground,
+              // Nominal selalu amber; arah uang dibaca dari tanda +/− dan
+              // ikon panah. Dulu pemasukan hijau dan pengeluaran netral,
+              // padahal angka yang sama tampil amber di Beranda.
+              color: AppThemes.money(context),
               fontFeatures: AppThemes.tabular,
             ),
           ),

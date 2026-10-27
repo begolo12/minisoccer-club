@@ -122,7 +122,9 @@ CREATE TABLE IF NOT EXISTS transactions (
   amount      NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
   occurred_at DATE NOT NULL DEFAULT CURRENT_DATE,
   member_id   INT REFERENCES members(id) ON DELETE SET NULL,
-  period      TEXT,                    -- contoh: 2026-10 (khusus iuran)
+  -- Kolom `period` sudah dihapus (iuran terikat TURNAMEN, lihat migrasi di
+  -- bawah). Jangan ditambahkan lagi: `CREATE INDEX ... ON transactions(period)`
+  -- dulu membuat `db:init` gagal di database yang sudah dimigrasi.
   note        TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -212,12 +214,13 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_played_at  ON matches(played_at DESC);
-CREATE INDEX IF NOT EXISTS idx_sessions_match     ON match_sessions(match_id);
 CREATE INDEX IF NOT EXISTS idx_events_match       ON match_events(match_id);
 CREATE INDEX IF NOT EXISTS idx_events_session     ON match_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_tx_occurred        ON transactions(occurred_at DESC);
-CREATE INDEX IF NOT EXISTS idx_tx_period          ON transactions(period);
-CREATE INDEX IF NOT EXISTS idx_payments_member    ON payments(member_id);
+-- `idx_sessions_match`, `idx_tx_occurred`, dan `idx_payments_member` sengaja
+-- tidak dibuat di sini: ketiganya sudah tercakup index lain (UNIQUE
+-- match_id+session_no, idx_tx_occurred_id, UNIQUE member_id+tournament_id) dan
+-- bagian "Integritas data" di bawah membuangnya. Membuat lalu membuang di
+-- setiap migrasi hanya menambah kerja DDL tanpa manfaat.
 
 -- Index unik iuran: SATU catatan per anggota per TURNAMEN.
 --
@@ -374,11 +377,10 @@ $$;
 CREATE UNIQUE INDEX IF NOT EXISTS payments_member_tournament_uniq
   ON payments(member_id, tournament_id);
 
-CREATE INDEX IF NOT EXISTS idx_payments_tournament ON payments(tournament_id);
-
-CREATE INDEX IF NOT EXISTS idx_tm_tournament       ON tournament_matches(tournament_id);
+-- `idx_payments_tournament`, `idx_tm_tournament`, dan `idx_tournament_teams`
+-- tidak dibuat: masing-masing sudah tercakup UNIQUE (tournament_id, ...) di
+-- tabelnya, dan bagian "Integritas data" di bawah membuangnya.
 CREATE INDEX IF NOT EXISTS idx_team_players_member ON team_players(member_id);
-CREATE INDEX IF NOT EXISTS idx_tournament_teams    ON tournament_teams(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_matches_teams       ON matches(home_team_id, away_team_id);
 
 -- Klasemen abadi antar tim klub: semua laga internal yang sudah selesai.
@@ -584,3 +586,75 @@ BEGIN
   END IF;
 END
 $$;
+-- Jejak audit (audit_log).
+--
+-- Kenapa: aplikasi ini mencatat uang klub, dan sampai sekarang tidak ada
+-- satu pun cara menjawab "siapa yang mengubah catatan kas ini?". Setiap
+-- baris `transactions`, `payments`, dan `booking_attendance` hanya punya
+-- `created_at` — tidak ada `created_by`, tidak ada `updated_at`, dan
+-- penghapusan tidak meninggalkan apa pun.
+--
+-- Yang dicatat: satu baris per TULISAN yang berhasil (INSERT/UPDATE/DELETE)
+-- lewat /api/sql, berisi siapa (username + role dari token), tabel apa,
+-- operasi apa, dan perkiraan id barisnya. Isi lengkap baris TIDAK disimpan:
+-- salinan data keuangan di tabel kedua akan basi dan bisa dibaca sebagai
+-- kebenaran, sementara yang dicari saat kas terlihat aneh hampir selalu
+-- "kapan dan oleh siapa", bukan "bagaimana bentuk barisnya dulu".
+--
+-- Ditulis dari aplikasi (api/sql.js), bukan trigger Postgres: trigger butuh
+-- session state untuk tahu siapa yang menulis, dan koneksi Neon HTTP tidak
+-- punya itu. Konsekuensinya tulis langsung ke DB (psql, skrip admin) tidak
+-- tercatat di sini — itu memang di luar jangkauan aplikasi.
+--
+-- Tidak ada FOREIGN KEY ke `users`: menghapus akun tidak boleh menghapus
+-- riwayat perbuatannya. `actor` disimpan sebagai teks.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS audit_log (
+  id        BIGSERIAL PRIMARY KEY,
+  at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actor     TEXT NOT NULL,           -- username saat menulis ('tamu' untuk publik)
+  role      TEXT NOT NULL,           -- admin | treasurer | member | public
+  tbl       TEXT NOT NULL,           -- tabel yang ditulis
+  op        TEXT NOT NULL,           -- insert | update | delete
+  row_id    BIGINT,                  -- id baris, kalau RETURNING menyebutkannya
+  detail    TEXT                     -- ringkasan singkat (mis. jumlah baris)
+);
+
+-- Hampir semua pembacaan nanti berbentuk "apa yang terjadi belakangan ini",
+-- dan pembersihan berkala memakai `at`.
+CREATE INDEX IF NOT EXISTS idx_audit_at    ON audit_log(at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_table ON audit_log(tbl, at DESC);
+
+-- Jejak audit hanya untuk admin, dan hanya dibaca (tidak ada UPDATE/DELETE
+-- lewat /api/sql — lihat WRITE_DENY di api/_guard.js). `app_web` perlu INSERT
+-- karena dialah yang menulis catatannya.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_web') THEN
+    GRANT SELECT, INSERT ON audit_log TO app_web;
+    GRANT USAGE, SELECT ON SEQUENCE audit_log_id_seq TO app_web;
+  END IF;
+END
+$$;
+
+-- =====================================================================
+-- Penghitung percobaan login per IP.
+--
+-- Sebelumnya batas ini hidup di `Map` memori instance Vercel: tiap instance
+-- punya hitungan sendiri dan instance baru mulai dari nol, jadi batas "30
+-- percobaan per 5 menit" sebenarnya jauh lebih longgar. Di sini satu baris per
+-- IP, diperbarui dengan `INSERT ... ON CONFLICT DO UPDATE` yang atomik.
+--
+-- Baris lama dibersihkan `api/auth.js` sesekali (2% permintaan); tabel ini
+-- hanya perlu memuat IP yang sedang dalam jendela.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS auth_throttle (
+  ip       TEXT PRIMARY KEY,
+  hits     INT NOT NULL DEFAULT 0,
+  reset_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_throttle_reset ON auth_throttle(reset_at);
+
+-- Ditulis HANYA lewat /api/auth (koneksi owner). `app_web` sengaja tidak
+-- diberi izin apa pun: dari sisi aplikasi tabel ini tidak ada.

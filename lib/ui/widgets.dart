@@ -44,7 +44,9 @@ class Panel extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(
-              color: highlight ? t.colorScheme.primary.withValues(alpha: 0.55) : t.colorScheme.border,
+              color: highlight
+                  ? t.colorScheme.primary.withValues(alpha: 0.55)
+                  : t.colorScheme.border,
             ),
           ),
           child: child,
@@ -89,67 +91,6 @@ class Pill extends StatelessWidget {
   }
 }
 
-/// Label isi daftar (mis. nama pemain dalam satu tim): garis rambut, bukan
-/// chip Material yang berbingkai tebal.
-class TagChip extends StatelessWidget {
-  const TagChip(this.text, {super.key, this.onRemove, this.onTap});
-
-  final String text;
-  final VoidCallback? onRemove;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    final chip = Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(7),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(7),
-        onTap: onTap,
-        child: Container(
-          // 44px, bukan 30: chip ini sering berisi tombol hapus di dalamnya,
-          // dan chip 30px membuat target hapus mustahil ditekan tepat.
-          height: AppThemes.minTap,
-          padding: EdgeInsets.only(left: 9, right: onRemove == null ? 9 : 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(color: t.colorScheme.border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(text, style: const TextStyle(fontSize: 12)),
-              if (onRemove != null)
-                Semantics(
-                  button: true,
-                  // Ikonnya sendiri tidak punya label, jadi pembaca layar
-                  // hanya akan menyebut "tombol" tanpa tahu apa yang dihapus.
-                  label: 'Hapus $text',
-                  child: SizedBox(
-                    // Glyph tetap 13px; yang 44px adalah area sentuhnya, dan
-                    // area itu mengeluarkan pemain dari tim — salah ketuk di
-                    // sini langsung mengubah daftar.
-                    width: AppThemes.minTap,
-                    height: AppThemes.minTap,
-                    child: InkWell(
-                      onTap: onRemove,
-                      borderRadius: BorderRadius.circular(4),
-                      child: Center(
-                        child: Icon(Icons.close, size: 13, color: t.colorScheme.mutedForeground),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    return onTap == null ? chip : Semantics(button: true, child: chip);
-  }
-}
-
 /// Placeholder loading berbentuk baris — hindari layar kosong + spinner.
 class SkeletonList extends StatefulWidget {
   const SkeletonList({super.key, this.count = 4, this.height = 64});
@@ -161,8 +102,12 @@ class SkeletonList extends StatefulWidget {
   State<SkeletonList> createState() => _SkeletonListState();
 }
 
-class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderStateMixin {
-  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+class _SkeletonListState extends State<SkeletonList>
+    with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
 
   @override
   void didChangeDependencies() {
@@ -204,9 +149,13 @@ class _SkeletonListState extends State<SkeletonList> with SingleTickerProviderSt
                 builder: (_, _) => Container(
                   height: widget.height,
                   decoration: BoxDecoration(
-                    color: t.colorScheme.card.withValues(alpha: 0.55 + 0.35 * pulse),
+                    color: t.colorScheme.card.withValues(
+                      alpha: 0.55 + 0.35 * pulse,
+                    ),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: t.colorScheme.border.withValues(alpha: 0.6)),
+                    border: Border.all(
+                      color: t.colorScheme.border.withValues(alpha: 0.6),
+                    ),
                   ),
                 ),
               ),
@@ -255,7 +204,11 @@ class EmptyState extends StatelessWidget {
             Text(title, style: t.textTheme.large, textAlign: TextAlign.center),
             if (message != null) ...[
               const SizedBox(height: 6),
-              Text(message!, style: t.textTheme.muted, textAlign: TextAlign.center),
+              Text(
+                message!,
+                style: t.textTheme.muted,
+                textAlign: TextAlign.center,
+              ),
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: 20),
@@ -291,7 +244,11 @@ class ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_rounded, size: 32, color: t.colorScheme.mutedForeground),
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 32,
+              color: t.colorScheme.mutedForeground,
+            ),
             const SizedBox(height: 12),
             Text(title, style: t.textTheme.large, textAlign: TextAlign.center),
             const SizedBox(height: 6),
@@ -308,7 +265,10 @@ class ErrorState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            ShadButton.outline(onPressed: onRetry, child: const Text('Coba lagi')),
+            ShadButton.outline(
+              onPressed: onRetry,
+              child: const Text('Coba lagi'),
+            ),
             ?extra,
           ],
         ),
@@ -412,7 +372,10 @@ class StatTile extends StatelessWidget {
                 child: Text(
                   label.toUpperCase(),
                   maxLines: 1,
-                  style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 0.9),
+                  style: t.textTheme.h4.copyWith(
+                    fontSize: 11,
+                    letterSpacing: 0.9,
+                  ),
                 ),
               ),
             ),
@@ -440,7 +403,9 @@ class StatTile extends StatelessWidget {
             child: Text(
               hint!,
               maxLines: 1,
-              style: t.textTheme.small.copyWith(fontFeatures: AppThemes.tabular),
+              style: t.textTheme.small.copyWith(
+                fontFeatures: AppThemes.tabular,
+              ),
             ),
           ),
       ],
@@ -480,11 +445,21 @@ class RowItem extends StatelessWidget {
     final texts = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: t.textTheme.large, maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text(
+          title,
+          style: t.textTheme.large,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         if (subtitle != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Text(subtitle!, style: t.textTheme.small, maxLines: 2, overflow: TextOverflow.ellipsis),
+            child: Text(
+              subtitle!,
+              style: t.textTheme.small,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
       ],
     );
@@ -506,25 +481,35 @@ class RowItem extends StatelessWidget {
                       children: [
                         texts,
                         const SizedBox(height: 3),
-                        Align(alignment: Alignment.centerLeft, child: trailing!),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: trailing!,
+                        ),
                       ],
                     )
                   : texts,
             ),
-            if (!trailingBelow && trailing != null) ...[const SizedBox(width: 12), trailing!],
+            if (!trailingBelow && trailing != null) ...[
+              const SizedBox(width: 12),
+              trailing!,
+            ],
           ],
         ),
       ),
     );
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: t.colorScheme.border.withValues(alpha: 0.7))),
+        border: Border(bottom: BorderSide(color: t.colorScheme.border)),
       ),
       child: onTap == null
           ? row
           : Semantics(
               button: true,
-              child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8), child: row),
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(8),
+                child: row,
+              ),
             ),
     );
   }
@@ -542,7 +527,8 @@ class StatStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     return Container(
-      padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding:
+          padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         border: Border.all(color: t.colorScheme.border),
         borderRadius: BorderRadius.circular(12),
@@ -599,10 +585,10 @@ class StandingsTable extends StatelessWidget {
     final cell = t.textTheme.table;
 
     Widget num(String text, {TextStyle? style}) => Text(
-          text,
-          textAlign: TextAlign.right,
-          style: (style ?? cell).copyWith(fontFeatures: AppThemes.tabular),
-        );
+      text,
+      textAlign: TextAlign.right,
+      style: (style ?? cell).copyWith(fontFeatures: AppThemes.tabular),
+    );
 
     // Lebar wadah, bukan lebar layar: di rail desktop tabel ini sempit walau
     // jendelanya lebar.
@@ -617,16 +603,52 @@ class StandingsTable extends StatelessWidget {
                 children: [
                   const SizedBox(width: 22),
                   Expanded(child: Text('TIM', style: head)),
-                  SizedBox(width: 24, child: Text('MP', textAlign: TextAlign.right, style: head)),
+                  SizedBox(
+                    width: 24,
+                    child: Text('MP', textAlign: TextAlign.right, style: head),
+                  ),
                   if (wide) ...[
-                    SizedBox(width: 22, child: Text('M', textAlign: TextAlign.right, style: head)),
-                    SizedBox(width: 22, child: Text('S', textAlign: TextAlign.right, style: head)),
-                    SizedBox(width: 22, child: Text('K', textAlign: TextAlign.right, style: head)),
-                    SizedBox(width: 28, child: Text('GM', textAlign: TextAlign.right, style: head)),
-                    SizedBox(width: 28, child: Text('GK', textAlign: TextAlign.right, style: head)),
+                    SizedBox(
+                      width: 22,
+                      child: Text('M', textAlign: TextAlign.right, style: head),
+                    ),
+                    SizedBox(
+                      width: 22,
+                      child: Text('S', textAlign: TextAlign.right, style: head),
+                    ),
+                    SizedBox(
+                      width: 22,
+                      child: Text('K', textAlign: TextAlign.right, style: head),
+                    ),
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        'GM',
+                        textAlign: TextAlign.right,
+                        style: head,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        'GK',
+                        textAlign: TextAlign.right,
+                        style: head,
+                      ),
+                    ),
                   ],
-                  SizedBox(width: 32, child: Text('SG', textAlign: TextAlign.right, style: head)),
-                  SizedBox(width: 34, child: Text('POIN', textAlign: TextAlign.right, style: head)),
+                  SizedBox(
+                    width: 32,
+                    child: Text('SG', textAlign: TextAlign.right, style: head),
+                  ),
+                  SizedBox(
+                    width: 34,
+                    child: Text(
+                      'POIN',
+                      textAlign: TextAlign.right,
+                      style: head,
+                    ),
+                  ),
                 ],
               ),
               for (var i = 0; i < standings.length; i++)
@@ -666,13 +688,31 @@ class StandingsTable extends StatelessWidget {
                             ),
                           ),
                         ),
-                        SizedBox(width: 24, child: num('${standings[i].played}')),
+                        SizedBox(
+                          width: 24,
+                          child: num('${standings[i].played}'),
+                        ),
                         if (wide) ...[
-                          SizedBox(width: 22, child: num('${standings[i].won}')),
-                          SizedBox(width: 22, child: num('${standings[i].drawn}')),
-                          SizedBox(width: 22, child: num('${standings[i].lost}')),
-                          SizedBox(width: 28, child: num('${standings[i].goalsFor}')),
-                          SizedBox(width: 28, child: num('${standings[i].goalsAgainst}')),
+                          SizedBox(
+                            width: 22,
+                            child: num('${standings[i].won}'),
+                          ),
+                          SizedBox(
+                            width: 22,
+                            child: num('${standings[i].drawn}'),
+                          ),
+                          SizedBox(
+                            width: 22,
+                            child: num('${standings[i].lost}'),
+                          ),
+                          SizedBox(
+                            width: 28,
+                            child: num('${standings[i].goalsFor}'),
+                          ),
+                          SizedBox(
+                            width: 28,
+                            child: num('${standings[i].goalsAgainst}'),
+                          ),
                         ],
                         SizedBox(
                           width: 32,
@@ -742,10 +782,12 @@ class MatchRow extends StatelessWidget {
     final win = own > opp;
     final draw = own == opp;
     final color = !finished
-        ? (match.ongoing ? t.colorScheme.primary : t.colorScheme.mutedForeground)
+        ? (match.ongoing
+              ? t.colorScheme.primary
+              : t.colorScheme.mutedForeground)
         : (draw
-            ? t.colorScheme.mutedForeground
-            : (win ? t.colorScheme.primary : AppThemes.bad(context)));
+              ? t.colorScheme.mutedForeground
+              : (win ? t.colorScheme.primary : AppThemes.bad(context)));
 
     final String status;
     if (finished) {
@@ -865,7 +907,10 @@ class ScoreStepper extends StatelessWidget {
             child: Text(
               '$value',
               textAlign: TextAlign.center,
-              style: t.textTheme.h1Large.copyWith(fontSize: 30, color: t.colorScheme.foreground),
+              style: t.textTheme.h1Large.copyWith(
+                fontSize: 30,
+                color: t.colorScheme.foreground,
+              ),
             ),
           ),
           _StepButton(
@@ -883,13 +928,17 @@ class ScoreStepper extends StatelessWidget {
 /// Dipakai dialog skor supaya akibat satu gol langsung terbaca.
 String scoreOutcome(String homeName, String awayName, int home, int away) =>
     home > away
-        ? '$homeName menang $home–$away · 3 poin'
-        : (home < away
-            ? '$awayName menang $away–$home · 3 poin'
-            : 'Seri $home–$away · 1 poin');
+    ? '$homeName menang $home–$away · 3 poin'
+    : (home < away
+          ? '$awayName menang $away–$home · 3 poin'
+          : 'Seri $home–$away · 1 poin');
 
 class _StepButton extends StatelessWidget {
-  const _StepButton({required this.icon, required this.onTap, required this.label});
+  const _StepButton({
+    required this.icon,
+    required this.onTap,
+    required this.label,
+  });
 
   final IconData icon;
   final VoidCallback? onTap;
@@ -911,7 +960,9 @@ class _StepButton extends StatelessWidget {
         color: enabled ? t.colorScheme.muted : Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: enabled ? Colors.transparent : t.colorScheme.border),
+          side: BorderSide(
+            color: enabled ? Colors.transparent : t.colorScheme.border,
+          ),
         ),
         child: InkWell(
           onTap: onTap,
@@ -924,7 +975,9 @@ class _StepButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 18,
-              color: enabled ? t.colorScheme.foreground : t.colorScheme.mutedForeground,
+              color: enabled
+                  ? t.colorScheme.foreground
+                  : t.colorScheme.mutedForeground,
             ),
           ),
         ),
@@ -983,7 +1036,10 @@ class _PeriodChipsState extends State<PeriodChips> {
     // Lebar chip tidak seragam ("Semua" vs "November 2026"), jadi posisinya
     // diperkirakan dari rata-rata lalu dijepit ke rentang gulir yang sah.
     const estimate = 96.0;
-    final target = (index * estimate - 40).clamp(0.0, _controller.position.maxScrollExtent);
+    final target = (index * estimate - 40).clamp(
+      0.0,
+      _controller.position.maxScrollExtent,
+    );
     _controller.animateTo(
       target.toDouble(),
       duration: const Duration(milliseconds: 240),
@@ -1033,10 +1089,15 @@ class _PeriodChipsState extends State<PeriodChips> {
                   onTap: () => widget.onChanged(p),
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: isSelected ? t.colorScheme.primary : Colors.transparent,
+                        color: isSelected
+                            ? t.colorScheme.primary
+                            : Colors.transparent,
                         borderRadius: BorderRadius.circular(7),
                         border: Border.all(
                           color: isSelected
@@ -1045,10 +1106,14 @@ class _PeriodChipsState extends State<PeriodChips> {
                         ),
                       ),
                       child: Text(
-                        p == null ? 'Semua' : (widget.label?.call(p) ?? periodLabel(p)),
+                        p == null
+                            ? 'Semua'
+                            : (widget.label?.call(p) ?? periodLabel(p)),
                         style: TextStyle(
                           fontSize: 12.5,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
                           color: isSelected
                               ? t.colorScheme.primaryForeground
                               : t.colorScheme.mutedForeground,
@@ -1073,14 +1138,14 @@ class _PeriodChipsState extends State<PeriodChips> {
 /// pembayaran bulan depan tidak bisa dicatat dan pengguna mencatatnya di bulan
 /// yang salah. [monthsBack] menentukan seberapa jauh tunggakan bisa dicatat.
 List<String> recentPeriods({int monthsBack = 12}) => [
-      // Bulan depan (i = -1) → bulan ini (0) → bulan-bulan sebelumnya.
-      for (var i = -1; i < monthsBack; i++)
-        () {
-          final now = DateTime.now();
-          final d = DateTime(now.year, now.month - i);
-          return '${d.year}-${d.month.toString().padLeft(2, '0')}';
-        }(),
-    ];
+  // Bulan depan (i = -1) → bulan ini (0) → bulan-bulan sebelumnya.
+  for (var i = -1; i < monthsBack; i++)
+    () {
+      final now = DateTime.now();
+      final d = DateTime(now.year, now.month - i);
+      return '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    }(),
+];
 
 /// Bungkus Future + loading/error/retry + pull-to-refresh.
 ///
@@ -1137,30 +1202,33 @@ class _AsyncViewState<T> extends State<AsyncView<T>> {
 
   void _watch() {
     final f = widget.future;
-    f.then((v) {
-      if (!mounted) return;
-      setState(() {
-        _data = v;
-        _hasData = true;
-      });
-    }, onError: (Object e) {
-      if (!mounted) return;
-      if (_hasData) {
-        // Data lama masih sah: jangan ganti layar dengan error penuh. Beri
-        // tahu lewat callback halaman, atau toast kalau halaman tidak
-        // menyediakannya — kegagalan diam-diam lebih buruk daripada data
-        // yang terlihat tidak berubah tanpa penjelasan.
-        final handler = widget.onRefreshError;
-        if (handler != null) {
-          handler(e);
-        } else if (context.mounted) {
-          toast(context, 'Gagal menyegarkan: ${errText(e)}');
+    f.then(
+      (v) {
+        if (!mounted) return;
+        setState(() {
+          _data = v;
+          _hasData = true;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        if (_hasData) {
+          // Data lama masih sah: jangan ganti layar dengan error penuh. Beri
+          // tahu lewat callback halaman, atau toast kalau halaman tidak
+          // menyediakannya — kegagalan diam-diam lebih buruk daripada data
+          // yang terlihat tidak berubah tanpa penjelasan.
+          final handler = widget.onRefreshError;
+          if (handler != null) {
+            handler(e);
+          } else if (context.mounted) {
+            toast(context, 'Gagal menyegarkan: ${errText(e)}');
+          }
+          setState(() {}); // lepas status menunggu
+        } else {
+          setState(() {}); // biarkan FutureBuilder menampilkan ErrorState
         }
-        setState(() {}); // lepas status menunggu
-      } else {
-        setState(() {}); // biarkan FutureBuilder menampilkan ErrorState
-      }
-    });
+      },
+    );
   }
 
   @override
@@ -1174,7 +1242,10 @@ class _AsyncViewState<T> extends State<AsyncView<T>> {
             return widget.loading ?? const SkeletonList();
           }
           if (snap.hasError) {
-            return ErrorState(error: snap.error!, onRetry: () => widget.onRefresh());
+            return ErrorState(
+              error: snap.error!,
+              onRetry: () => widget.onRefresh(),
+            );
           }
           final fresh = snap.data;
           if (fresh == null) return widget.loading ?? const SkeletonList();
@@ -1243,8 +1314,12 @@ class PageScaffold extends StatelessWidget {
                       if (canPop)
                         Padding(
                           padding: const EdgeInsets.only(right: 10),
-                          child: iconAction(context, Icons.arrow_back_rounded,
-                              () => Navigator.pop(context), tooltip: 'Kembali'),
+                          child: iconAction(
+                            context,
+                            Icons.arrow_back_rounded,
+                            () => Navigator.pop(context),
+                            tooltip: 'Kembali',
+                          ),
                         ),
                       Expanded(
                         child: Column(
@@ -1252,15 +1327,20 @@ class PageScaffold extends StatelessWidget {
                           children: [
                             Semantics(
                               header: true,
-                              child: Text(title,
-                                  style: t.textTheme.h3,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
+                              child: Text(
+                                title,
+                                style: t.textTheme.h3,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                             if (subtitle != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
-                                child: Text(subtitle!, style: t.textTheme.small),
+                                child: Text(
+                                  subtitle!,
+                                  style: t.textTheme.small,
+                                ),
                               ),
                           ],
                         ),
@@ -1294,7 +1374,10 @@ class PageScaffold extends StatelessWidget {
 ///
 /// Tidak mengambil tempat saat online dan tidak ada antrean.
 class OfflineStrip extends StatefulWidget {
-  const OfflineStrip({super.key, this.padding = const EdgeInsets.fromLTRB(20, 6, 8, 6)});
+  const OfflineStrip({
+    super.key,
+    this.padding = const EdgeInsets.fromLTRB(20, 6, 8, 6),
+  });
 
   final EdgeInsets padding;
 
@@ -1350,9 +1433,13 @@ class _OfflineStripState extends State<OfflineStrip> {
                   Icon(
                     syncing
                         ? Icons.sync
-                        : (pending > 0 ? Icons.cloud_upload_outlined : Icons.cloud_off),
+                        : (pending > 0
+                              ? Icons.cloud_upload_outlined
+                              : Icons.cloud_off),
                     size: 14,
-                    color: pending > 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                    color: pending > 0
+                        ? t.colorScheme.primary
+                        : t.colorScheme.mutedForeground,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1396,7 +1483,9 @@ class _OfflineStripState extends State<OfflineStrip> {
       return 'Tanpa internet — $pending perubahan menunggu, dikirim saat tersambung';
     }
     if (pending > 0) return '$pending perubahan menunggu dikirim';
-    if (Db.offlineSince == null) return 'Tanpa internet — menampilkan data tersimpan';
+    if (Db.offlineSince == null) {
+      return 'Tanpa internet — menampilkan data tersimpan';
+    }
     return 'Tanpa internet — data tersimpan ${fmtDate(Db.offlineSince!)} '
         '${fmtTime(Db.offlineSince!)}';
   }
@@ -1425,12 +1514,18 @@ class FieldLabel extends StatelessWidget {
       child: Text.rich(
         TextSpan(
           text: text,
-          style: t.textTheme.large.copyWith(fontSize: 13.5, fontWeight: FontWeight.w600),
+          style: t.textTheme.large.copyWith(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+          ),
           children: [
             if (required)
               TextSpan(
                 text: ' *',
-                style: TextStyle(color: AppThemes.bad(context), fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  color: AppThemes.bad(context),
+                  fontWeight: FontWeight.w700,
+                ),
               ),
           ],
         ),
@@ -1445,34 +1540,46 @@ Widget iconAction(
   IconData icon,
   VoidCallback onTap, {
   String? tooltip,
+  // Baris data yang panjang (detail laga, pemain per tim) memakai `false`:
+  // delapan kotak × bertepi membuat "hapus" jadi elemen paling menonjol di
+  // halaman yang isinya justru skor dan nama.
+  bool bordered = true,
 }) {
   final t = ShadTheme.of(context);
   final color = t.colorScheme.mutedForeground;
   return Semantics(
-    // Tooltip hanya terbaca saat tooltip != null; tanpa button: true tombol
-    // tanpa tooltip tidak dikenali sebagai aksi sama sekali.
+    // Tanpa button: true tombol tanpa tooltip tidak dikenali sebagai aksi;
+    // labelnya diambil dari tooltip supaya pembaca layar menyebut fungsinya.
     button: true,
     label: tooltip,
     child: Tooltip(
       message: tooltip ?? '',
-      // Label diambil dari Semantics di atas; tanpa ini tooltip yang sama
-      // dibacakan dua kali oleh pembaca layar.
+      // Label sudah dibacakan Semantics di atas; Tooltip yang ikut bersuara
+      // membuat tiap tombol dibacakan dua kali.
       excludeFromSemantics: true,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
-          // minTap, bukan 40: tombol ikon berjajar (ubah/hapus) paling sering
-          // salah ketuk di HP kecil. Ikon tetap 18px — yang 44px adalah
-          // area sentuhnya.
-          child: Container(
-            width: AppThemes.minTap,
-            height: AppThemes.minTap,
-            decoration: BoxDecoration(
-              border: Border.all(color: t.colorScheme.border),
+          // Kotak terlihat 40px, area sentuh 46px: pedoman Android/iOS meminta
+          // ~44px, dan tombol ikon berjajar (ubah/hapus) paling sering salah
+          // ketuk di HP kecil. Padding 3px sekaligus memberi jarak visual 12px
+          // antar dua tombol yang dipisah SizedBox(6) — cukup jauh antara
+          // "ubah" dan "hapus" tanpa mengubah tampilan.
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: bordered
+                  ? BoxDecoration(
+                      border: Border.all(color: t.colorScheme.border),
+                      borderRadius: BorderRadius.circular(8),
+                    )
+                  : null,
+              child: Icon(icon, size: 18, color: color),
             ),
-            child: Icon(icon, size: 18, color: color),
           ),
         ),
       ),
@@ -1500,12 +1607,18 @@ class DegradedNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.colorScheme.destructive.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: t.colorScheme.destructive.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: t.colorScheme.destructive.withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded, size: 17, color: t.colorScheme.destructive),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 17,
+            color: t.colorScheme.destructive,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -1521,7 +1634,9 @@ class DegradedNotice extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   failures.join(' • '),
-                  style: t.textTheme.small.copyWith(color: t.colorScheme.mutedForeground),
+                  style: t.textTheme.small.copyWith(
+                    color: t.colorScheme.mutedForeground,
+                  ),
                 ),
               ],
             ),

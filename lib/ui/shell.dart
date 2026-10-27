@@ -63,6 +63,30 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int _seenWrites = Db.writes.value;
   bool _syncing = false;
 
+  /// Navigator isi: satu-satunya jalur untuk halaman turunan (Kas, Turnamen,
+  /// detail laga, …).
+  ///
+  /// Dulu halaman turunan di-push ke navigator akar, sehingga menutupi
+  /// `Scaffold` shell: bar bawah dan rail kiri hilang begitu pengguna membuka
+  /// Kas, dan satu-satunya jalan kembali adalah tombol panah. Sekarang rute
+  /// turunan hidup di dalam shell, jadi navigasi utama tetap terlihat.
+  final _nav = GlobalKey<NavigatorState>();
+
+  /// Naik setiap isi tab berubah. Rute dasar dibangun sekali oleh Navigator,
+  /// jadi `setState` shell saja tidak cukup untuk menyegarkan daftar tab:
+  /// builder rute tidak dipanggil ulang. Notifier ini yang memicunya.
+  final _tabs = ValueNotifier<int>(0);
+
+  /// Ada halaman turunan terbuka di [_nav]. Diisi dari
+  /// `NavigationNotification` navigator isi, dipakai aturan tombol Back.
+  bool _navCanPop = false;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _tabs.value++;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +108,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _tabs.dispose();
     super.dispose();
   }
 
@@ -153,6 +178,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   void _select(int i) {
+    // Halaman turunan (Kas, detail laga, …) masih terbuka: kembali ke tab
+    // dasar dulu. Tanpa ini, memilih tab lain meninggalkan halaman detail di
+    // atas tab yang baru — pengguna menekan "Beranda" dan tetap melihat Kas.
+    _nav.currentState?.popUntil((r) => r.isFirst);
     setState(() {
       // Ada tulis di tab lain? Muat ulang tab yang akan dibuka.
       if (Db.writes.value != _seenWrites) {
@@ -166,20 +195,58 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _trySync();
   }
 
+  /// Aturan tombol Back: tutup halaman turunan dulu, lalu kembali ke Beranda
+  /// dari tab mana pun, baru keluar. Dipakai kedua layout.
+  Widget _withBack(Widget child) => PopScope<Object?>(
+        canPop: !_navCanPop && _index == 0,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          if (_navCanPop) {
+            _nav.currentState?.maybePop();
+            return;
+          }
+          _select(0);
+        },
+        child: child,
+      );
+
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
-    final body = IndexedStack(
-      index: _index,
-      children: [
-        for (var i = 0; i < _pages.length; i++)
-          if (_built.contains(i))
-            KeyedSubtree(key: ValueKey('page-$i-${_version[i]}'), child: _pages[i])
-          else
-            const SizedBox.shrink(),
-      ],
+    // Semua halaman turunan hidup di navigator ini, bukan di navigator akar,
+    // supaya shell (bar bawah / rail) tidak ikut tertutup. Rute dasar adalah
+    // daftar tab.
+    final body = NotificationListener<NavigationNotification>(
+      onNotification: (n) {
+        if (_navCanPop != n.canHandlePop) {
+          _navCanPop = n.canHandlePop;
+          // Notifikasi bisa datang di tengah build; segarkan setelah frame.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() {});
+          });
+        }
+        return false;
+      },
+      child: Navigator(
+        key: _nav,
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          builder: (_) => ValueListenableBuilder<int>(
+            valueListenable: _tabs,
+            builder: (context, _, _) => IndexedStack(
+              index: _index,
+              children: [
+                for (var i = 0; i < _pages.length; i++)
+                  if (_built.contains(i))
+                    KeyedSubtree(key: ValueKey('page-$i-${_version[i]}'), child: _pages[i])
+                  else
+                    const SizedBox.shrink(),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
 
     // Bilah status di atas isi: mode publik (ada tombol Masuk) dan/atau
@@ -190,7 +257,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     );
 
     if (wide) {
-      return Scaffold(
+      return _withBack(Scaffold(
         body: SafeArea(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,19 +309,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             ],
           ),
         ),
-      );
+      ));
     }
 
-    return PopScope(
-      // Kebiasaan Android: tombol Back dari tab mana pun kembali ke Beranda
-      // dulu, baru keluar. Tanpa ini, menekan Back di tab "Iuran" langsung
-      // menutup aplikasi — terasa seperti app yang tidak native.
-      canPop: _index == 0,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _select(0);
-      },
-      child: Scaffold(
+    return _withBack(Scaffold(
         body: SafeArea(
           // Edge-to-edge dipaksa sejak Android 15 (targetSdk 36): tanpa
           // SafeArea, bilah status offline dan tombol "Masuk" tergambar di
@@ -307,8 +365,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
         ),
         ),
-      ),
-    );
+      ));
   }
 }
 

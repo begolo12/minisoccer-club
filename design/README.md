@@ -10,8 +10,8 @@ Arah visual app: **Papan skor** — papan LED stadion, bukan dashboard SaaS.
 | Font teks | Inter |
 | Dasar gelap | `#080B09` · kartu `#0E1512` · garis `#202C25` |
 | Dasar terang | `#F2F5F1` · kartu `#FFFFFF` · garis `#D8E0D9` |
-| Aksen | hijau lapangan `#35D07F` (gelap) / `#0E7C48` (terang) |
-| Uang | amber `#F5B841` / `#8A5A00` |
+| Aksen | hijau lapangan `#35D07F` (gelap) / `#0A7D43` (terang, AA di atas `#F2F5F1`) |
+| Uang | amber `#F5B841` / `#7A5C00` (AA di atas `#F2F5F1`) |
 | Tunggakan & kalah | merah `#FF5A5A` / `#B3261E` |
 | Permukaan | datar + garis rambut. Tanpa gradien dekoratif, tanpa bayangan |
 | Daftar | baris ber-garis (`RowItem`), bukan kartu bertumpuk |
@@ -397,3 +397,60 @@ Perbaikan lain yang muncul saat verifikasi:
 - **`e2e.mjs` bisa dijalankan berulang.** Nama entitas diberi cap waktu dan
   setiap bagian membuat datanya sendiri, jadi skrip tidak lagi gagal pada
   run kedua karena sisa data run pertama.
+
+## Ronde review UI 1 (navigasi & kontrol)
+
+Lima reviewer independen, satu per kelompok layar; temuannya di
+`design/review/round-1/`. Yang sudah diperbaiki:
+
+- **Halaman turunan tinggal di dalam shell.** `HomeShell` memakai `Navigator`
+  bersarang, jadi bottom nav (HP) dan rail (≥900px) tetap terlihat di Anggota,
+  Kas, Turnamen, Statistik, Booking, Pengumuman, Pengguna, Pengaturan, detail
+  tim, dan detail laga. Mengetuk tab menutup halaman turunan lebih dulu.
+- **Satu aturan tombol Back.** Tutup halaman turunan → kembali ke Beranda →
+  keluar. Layout lebar sebelumnya tidak punya penanganan Back sama sekali.
+- **Area sentuh `iconAction` 46dp** (kotak terlihat tetap 40dp, padding 3dp),
+  sehingga dua tombol berjajar berjarak visual 12dp.
+- **Toolbar Anggota** sejajar: pencarian dan saringan sama-sama 44dp dan
+  berjarak 16dp dari garis kepala; label saringan menyebut keadaannya
+  (`Aktif` / `Semua`) alih-alih hanya ikon corong.
+- **Satu garis rambut.** `RowItem` dan baris pengumuman/jadwal memakai
+  `colorScheme.border` tanpa alpha, sama dengan tepi `Panel` dan `StatStrip`.
+- **Pil "0 kalah" tidak merah lagi.** Merah hanya untuk angka > 0.
+- **Token terang** di tabel atas disamakan dengan `theme.dart`, yaitu hijau
+  `#0A7D43` dan amber `#7A5C00` (keduanya lolos AA di `#F2F5F1`).
+
+Keputusan yang menolak temuan:
+
+- **Chip `Semua` di Iuran tidak ditambahkan.** Iuran terikat satu turnamen dan
+  tagihannya hanya bisa dihitung untuk satu turnamen, jadi "semua turnamen"
+  bukan keadaan yang bisa ditampilkan. Chip pemilih turnamen sudah menjadi
+  satu-satunya daftar.
+
+Keputusan lain di ronde yang sama:
+
+- **Baris turnamen vs kartu turnamen terakhir dibiarkan berbeda.** Bentuknya
+  memang beda karena fungsinya beda: baris hanya menjawab "kapan dan di mana"
+  untuk turnamen yang belum dimainkan, sedangkan kartu membuka daftar hasil
+  per pertandingan. Menyeragamkan keduanya berarti memindahkan hasil ke
+  halaman detail (kehilangan satu ketukan) atau memuat hasil untuk turnamen
+  yang belum punya hasil sama sekali.
+- **Tombol hapus di dalam baris tanpa bingkai.** Delapan kotak × bertepi di
+  detail laga dan detail tim membuat "hapus" jadi elemen paling menonjol di
+  halaman berisi skor dan nama. Area sentuhnya tetap 46dp; hanya garisnya yang
+  hilang (`iconAction(..., bordered: false)`).
+
+## Aturan yang dipilih sekali, dipakai di mana-mana
+
+- **Warna uang.** Nominal uang selalu amber (`AppThemes.money`). Hijau dan merah
+  hanya menandai *keadaan*: lunas, tunggakan, defisit, gagal. Arah uang dibaca
+  dari tanda `+`/`−` dan ikon panah, bukan dari warna. Sebelumnya pemasukan
+  hijau, pengeluaran netral, dan angka yang sama amber di Beranda.
+- **`StatStrip` bergaris, `Panel` berisi.** Dua bentuk, dua peran: strip adalah
+  deret angka tanpa isi (tidak perlu latar), panel adalah satu objek yang bisa
+  diketuk. Bukan dua gaya untuk hal yang sama.
+- **Satu tingkat garis per daftar.** Daftar nama memakai `RowItem` bergaris di
+  atas latar halaman; panel bertepi yang berisi chip bertepi dianggap salah
+  (lihat "Pemain per tim" di ronde ini).
+- **Aksi hapus di dalam baris tanpa bingkai**, aksi hapus di kepala halaman
+  berbingkai. Kepala halaman adalah tempat aksi halaman; baris adalah data.
