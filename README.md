@@ -60,6 +60,7 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Akun & akses** | Khusus admin: daftar akun dengan **ID**, role, anggota tertaut, status, dan tanggal dibuat. Ketuk satu akun → ubah username, role, tautan anggota, aktif/nonaktif, **setel password baru** (ditampilkan sekali + tombol salin), hapus akun. Password lama tidak bisa ditampilkan karena disimpan bcrypt satu arah |
 | **Akun saya** | Untuk role anggota: total iuran, tunggakan, main berikutnya, dan riwayat iuran — jawaban untuk "saya sudah bayar apa?" tanpa mencari nama sendiri di daftar anggota |
+| **Jejak audit** | Khusus admin: siapa mengubah tabel apa, kapan, dan baris mana. Ditulis `api/sql.js` setelah tulis berhasil; bisa dihapus oleh pihak yang diaudit tidak membuktikan apa pun, jadi `audit_log` tidak bisa ditulis lewat jalur SQL klien |
 | **Pengaturan** | Tema gelap/terang/ikuti sistem (langsung), akun sendiri (ganti password, keluar), pembaruan APK. Bagian teknis — alamat server, tes koneksi, antrean offline, tautan pendaftaran, diagnostik layar — **hanya untuk admin** |
 
 Poin klasemen hanya dihitung dari laga berstatus selesai; skor laga yang
@@ -163,7 +164,7 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 275 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, dan **tinggi target sentuh judul bagian & chip periode** |
+| `flutter test` | 282 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, **tinggi target sentuh judul bagian & chip periode**, dan **shell tetap ada saat halaman turunan dibuka** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
@@ -347,6 +348,7 @@ lib/
           AppScrollBehavior), fmt, forms, finance (buku kas), halaman per fitur
 api/sql.js                  Satu-satunya pintu SQL (role terbatas); batch + tulis idempoten
 api/sql.test.mjs            Uji batch, idempoten, pencabutan sesi, batas jawaban
+api/health.js               GET /api/health — server & database hidup (publik, tanpa isi data)
 api/_guard.js               Filter statement + pengikat parameter `@nama`
 api/_guard.test.mjs         Uji filter & parameter (node --test)
 api/_app-queries.test.mjs   Semua query app harus lolos filter untuk role yang berhak
@@ -488,8 +490,10 @@ juga diperiksa karena kredensial yang dihapus di commit berikutnya tetap bisa
 dibaca lewat `git show` — kalau satu terlanjur masuk, rotasi kredensialnya dulu,
 baru bersihkan riwayat dengan `git filter-repo`.
 
-Belum ada: reset password via email, 2FA, dan rate limit lintas instance
-(penghitung per instance). Tambahkan kalau app dipakai di luar klub sendiri.
+Belum ada: reset password via email dan 2FA. Batas laju lintas instance sudah
+ada (tabel `auth_throttle`, ditulis `/api/auth`), jadi percobaan login dibatasi
+bersama di semua instance, bukan hanya per proses. Tambahkan sisanya kalau app
+dipakai di luar klub sendiri.
 
 ## Kebersihan repo
 

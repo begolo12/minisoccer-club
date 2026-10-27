@@ -209,23 +209,33 @@ Buang yang redundan: `idx_payments_member`, `idx_attendance_booking`,
 **Verifikasi terakhir**
 
 ```
-npm test                 62 lulus
+npm test                 65 lulus
 flutter analyze          No issues found
-flutter test             275 lulus
+flutter test             282 lulus
+flutter build web        sukses (release, no-cdn)
+db:init                  dua kali berturut-turut, 92 statement (idempoten)
 check:schema             Schema produksi cocok
-check:secrets            tidak ada kredensial
+check:secrets            tidak ada kredensial (termasuk riwayat git)
+CI Build APK             menunggu run untuk commit b6a4643 (lihat Actions)
 visual sweep (3 ukuran)  52/52 (build pra-label) • hp 19/20 sesudahnya, satu-
                          satunya fail = tap target "Semua", lalu diperbaiki dan
                          diverifikasi 0 target kecil di Chrome + 2 widget test
 potret dialog 320×640    label persisten tampil, dialog tidak meluber
-target kecil di Beranda  0 (diukur di Chrome setelah login)
-
-CATATAN: sweep penuh terakhir tertahan karena `ADMIN_PASS` di `.env` tidak
-lagi cocok dengan akun admin produksi (kemungkinan dirotasi di luar sesi
-ini). Semua pemeriksaan yang butuh login admin (`check:visual`,
-`check:features`, `check:e2e`) harus dijalankan ulang setelah `.env`
-diperbarui; tidak ada perubahan aplikasi yang bergantung padanya.
 ```
+
+Catatan integrasi: main bergerak selama pekerjaan ini (perbaikan login 500,
+jejak audit, health, pengingat iuran, navigasi shell, penjaga Back/Batal form,
+rilis 1.15.9). Dua merge commit menggabungkan keduanya — bukan memilih salah
+satu: audit tetap tercatat di jalur batch/idempoten, PopScope tunggal milik
+`showEditorDialog`, minimum kata sandi 8 karakter dari main dengan teks
+Indonesia, dan `db:init` diperbaiki agar idempoten pada database yang kolom
+`transactions.period`-nya sudah dihapus.
+
+CATATAN lingkungan: `ADMIN_PASS` di `.env` tidak lagi cocok dengan akun admin
+produksi (kemungkinan dirotasi di luar sesi ini). Semua pemeriksaan yang butuh
+login admin (`check:visual`, `check:features`, `check:e2e`) harus dijalankan
+ulang setelah `.env` diperbarui; tidak ada perubahan aplikasi yang bergantung
+padanya.
 
 ## Yang sengaja tidak dikerjakan
 
