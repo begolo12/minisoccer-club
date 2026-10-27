@@ -14,7 +14,9 @@ import { hiddenColumns, hiddenColumnMessage, mentionsHidden } from './_privacy.j
 const MAX_LEN = 20_000;
 
 // Tabel yang tidak boleh ditulis lewat jalur SQL umum.
-const WRITE_DENY = new Set(['users', 'pg_catalog', 'information_schema']);
+// `applied_writes` ditulis server sendiri untuk idempoten; klien yang bisa
+// menulisnya bisa memalsukan "sudah diterapkan" dan membatalkan tulis sah.
+const WRITE_DENY = new Set(['users', 'applied_writes', 'pg_catalog', 'information_schema']);
 
 // Tabel yang TIDAK boleh dibaca tanpa masuk (role `public`).
 //
@@ -199,6 +201,10 @@ export function rejectSql(text, session) {
   // iuran, jadi nomor HP untuk="@+62" plainly needed). Role `member` dan
   // tamu tidak.
   if (targets.length === 0) {
+    // Catatan internal server: menyimpan hasil tulis untuk diputar ulang.
+    // Klien tidak pernah perlu membacanya, dan isinya bisa memuat baris data
+    // milik pengguna lain.
+    if (/\bapplied_writes\b/i.test(scan)) return 'Tabel internal server';
     if (/\busers\b/i.test(scan) && session?.r !== 'admin') {
       return 'Hanya admin yang bisa melihat pengguna';
     }

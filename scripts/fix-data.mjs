@@ -54,17 +54,21 @@ console.log(
 );
 
 // ---------- 2. Iuran ganda ----------
+// Dulu dikelompokkan per `payments.period` (iuran bulanan). Kolom itu sudah
+// dihapus; kunci yang benar sekarang adalah pasangan anggota + turnamen —
+// sama dengan `payments_member_tournament_uniq`. Script ini dulu GAGAL total
+// di sini karena masih menyebut kolom yang tidak ada.
 const payments = (
   await run(
-    `SELECT id, member_id, period, amount, paid_at FROM payments
-      ORDER BY member_id, period, paid_at DESC, id DESC`,
+    `SELECT id, member_id, tournament_id, amount, paid_at FROM payments
+      ORDER BY member_id, tournament_id, paid_at DESC, id DESC`,
   )
 ).rows;
 
 const keep = new Map();
 const dupes = [];
 for (const p of payments) {
-  const key = `${p.member_id}|${p.period}`;
+  const key = `${p.member_id}|${p.tournament_id}`;
   if (!keep.has(key)) keep.set(key, p);
   else dupes.push(p);
 }
@@ -106,8 +110,13 @@ if (dry) {
   console.log('[dry] index unik iuran tidak dibuat.');
 } else {
   try {
-    await run('CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_member_period ON payments (member_id, period)');
-    console.log('index unik iuran: siap (idx_payments_member_period).');
+    // Kunci iuran sekarang anggota + TURNAMEN. Index lama
+    // `idx_payments_member_period` tidak bisa dibuat lagi karena kolom
+    // `period` sudah dihapus.
+    await run(
+      'CREATE UNIQUE INDEX IF NOT EXISTS payments_member_tournament_uniq ON payments (member_id, tournament_id)',
+    );
+    console.log('index unik iuran: siap (payments_member_tournament_uniq).');
   } catch (e) {
     console.error('index unik iuran GAGAL:', e.message);
     process.exit(1);
@@ -126,7 +135,7 @@ if (!dry) {
   const stillDupe = (
     await run(
       `SELECT count(*)::int AS n FROM (
-         SELECT 1 FROM payments GROUP BY member_id, period HAVING count(*) > 1
+         SELECT 1 FROM payments GROUP BY member_id, tournament_id HAVING count(*) > 1
        ) d`,
     )
   ).rows[0].n;

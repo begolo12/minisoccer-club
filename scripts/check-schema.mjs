@@ -13,6 +13,37 @@
 // Exit code 1 kalau ada yang kurang, jadi bisa dipakai di CI setelah deploy.
 const base = (process.env.API_BASE || 'https://minisoccer-club.vercel.app').replace(/\/$/, '');
 
+// Tabel uang (kas, iuran, sewa, pengaturan) DITOLAK untuk tamu sejak mode
+// publik dilock. Tanpa token, pemeriksaan schema melaporkan lima "masalah"
+// yang sebenarnya bukan masalah — itu jawaban guard, bukan kolom yang hilang.
+// Jadi: masuk sebagai admin kalau kredensial tersedia; kalau tidak, tabel
+// tersebut ditandai "tidak diperiksa" alih-alih gagal.
+import { adminCredentials } from './_admin-auth.mjs';
+
+let token = null;
+try {
+  const { user, pass } = adminCredentials();
+  const res = await fetch(`${base}/api/auth`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'login', username: user, password: pass }),
+  });
+  if (res.ok) {
+    const body = await res.json();
+    if (typeof body.token === 'string') token = body.token;
+  }
+} catch {
+  // Kredensial tidak ada: lanjut sebagai tamu.
+}
+
+const MONEY_TABLES = new Set([
+  'transactions',
+  'payments',
+  'bookings',
+  'booking_attendance',
+  'settings',
+]);
+
 // Kolom yang dipakai app (lib/data/models.dart) + kolom wajib dari
 // db/schema.sql. Daftar ini sengaja eksplisit: menambah kolom baru di schema
 // berarti menambah baris di sini, dan itu yang membuat drift ketahuan lebih
@@ -29,7 +60,7 @@ const EXPECTED = {
   ],
   match_sessions: ['id', 'match_id', 'session_no', 'score_home', 'score_away', 'winner', 'started_at', 'ended_at'],
   match_events: ['id', 'match_id', 'session_id', 'member_id', 'minute', 'type'],
-  transactions: ['id', 'kind', 'category', 'amount', 'occurred_at', 'member_id', 'period', 'note', 'created_at', 'booking_id', 'attendance_id'],
+  transactions: ['id', 'kind', 'category', 'amount', 'occurred_at', 'member_id', 'note', 'created_at', 'booking_id', 'attendance_id'],
   // Iuran terikat TURNAMEN, bukan bulan: `period` sudah dihapus, diganti
   // `tournament_id`. Index unik (member_id, tournament_id) mencegah satu
   // anggota tercatat dua kali untuk turnamen yang sama.
@@ -62,7 +93,10 @@ const PRIVATE_COLUMNS = new Set(['phone', 'address']);
 async function ask(sql) {
   const res = await fetch(`${base}/api/sql`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ sql, params: {} }),
   });
   const body = await res.json().catch(() => ({}));
@@ -80,6 +114,12 @@ async function checkColumn(table, column) {
   // anggota hanya untuk admin/bendahara (lihat api/_privacy.js). Kolomnya
   // diperiksa lewat e2e-check yang punya token.
   if (status === 403 && (table === 'users' || PRIVATE_COLUMNS.has(column))) return true;
+  // Tanpa kredensial admin, tabel uang memang tertutup untuk tamu. Itu bukan
+  // schema yang kurang — jangan dilaporkan sebagai kegagalan.
+  if (status === 403 && MONEY_TABLES.has(table) && !token) {
+    notes.push(`${table}: tidak diperiksa (butuh ADMIN_USER/ADMIN_PASS)`);
+    return true;
+  }
   if (status !== 200) {
     const msg = body?.error || `HTTP ${status}`;
     // Tabel tidak ada dan kolom tidak ada sama-sama 400 dari /api/sql.
@@ -90,6 +130,15 @@ async function checkColumn(table, column) {
 }
 
 async function checkTable(table, columns) {
+  // `users` sengaja tidak bisa diperiksa lewat jalur ini: role `app_web`
+  // hanya diberi SELECT pada kolom aman (id, username, role, member_id,
+  // active, created_at, token_version). Kolom kunci login — `failed_attempts`,
+  // `locked_until` — tidak pernah bisa dibaca dari sini, dan itu memang
+  // tujuannya. Keberadaannya diperiksa `db:init` yang memakai koneksi owner.
+  if (table === 'users') {
+    notes.push('users: tidak diperiksa lewat /api/sql (kolom kunci tidak di-grant)');
+    return;
+  }
   const ok = await checkColumn(table, columns[0]);
   if (!ok) return; // tabelnya sendiri hilang; jangan banjiri output
   let missing = 0;

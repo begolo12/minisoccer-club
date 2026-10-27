@@ -440,3 +440,147 @@ BEGIN
   END IF;
 END
 $$;
+
+-- =====================================================================
+-- Integritas data (v2.1)
+-- =====================================================================
+
+-- Pencabutan sesi. Token HMAC bersifat stateless: tanpa kolom ini, akun yang
+-- dinonaktifkan atau passwordnya direset tetap bisa menulis sampai tokennya
+-- kedaluwarsa (12 jam). Versi ini dinaikkan setiap kali akses harus dicabut,
+-- dan `/api/sql` membandingkannya dengan klaim `v` di token.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INT NOT NULL DEFAULT 0;
+
+-- Tulis idempoten.
+--
+-- Klien mengirim `writeId` unik per operasi. Kalau jawaban server hilang di
+-- tengah jalan (timeout 20 detik), operasi yang sama dikirim ulang dari
+-- antrean offline — tanpa tabel ini, INSERT-nya berjalan dua kali dan buku kas
+-- klub mencatat uang yang sama dua kali. Hasil pertama disimpan lalu diputar
+-- ulang, jadi klien menerima id baris yang sama.
+CREATE TABLE IF NOT EXISTS applied_writes (
+  write_id   TEXT PRIMARY KEY,
+  result     JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_applied_writes_created ON applied_writes(created_at);
+
+-- Hapus anggota tidak boleh menghapus uang klub.
+--
+-- `payments.member_id` memakai ON DELETE CASCADE: satu ketukan "Hapus" di
+-- daftar anggota ikut membuang seluruh riwayat iurannya, dan saldo kas
+-- berubah tanpa jejak. Anggota yang berhenti cukup dinonaktifkan
+-- (`members.active = FALSE`) — riwayatnya tetap utuh.
+--
+-- Trigger, bukan perubahan FK: mengubah ke ON DELETE SET NULL akan membuat
+-- baris iuran tanpa pemilik, dan laporan per anggota kehilangan namanya.
+CREATE OR REPLACE FUNCTION protect_member_finance() RETURNS trigger AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM payments WHERE member_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM transactions WHERE member_id = OLD.id)
+     OR EXISTS (SELECT 1 FROM booking_attendance WHERE member_id = OLD.id) THEN
+    RAISE EXCEPTION 'Anggota punya riwayat keuangan; nonaktifkan saja'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS members_protect_finance ON members;
+CREATE TRIGGER members_protect_finance
+  BEFORE DELETE ON members
+  FOR EACH ROW EXECUTE FUNCTION protect_member_finance();
+
+-- Nilai enum dijaga database, bukan hanya komentar.
+--
+-- `/api/sql` menerima SQL dari klien; filter `_guard.js` memeriksa bentuk
+-- statement, bukan nilai. Tanpa CHECK, satu salah ketik di jalur tulis
+-- (mis. `status = 'finishd'`) tersimpan diam-diam dan laga tidak pernah
+-- dihitung di klasemen. NOT VALID supaya migrasi tidak gagal pada data lama —
+-- aturan tetap berlaku untuk baris baru.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_chk') THEN
+    ALTER TABLE users ADD CONSTRAINT users_role_chk
+      CHECK (role IN ('admin', 'treasurer', 'member')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'matches_status_chk') THEN
+    ALTER TABLE matches ADD CONSTRAINT matches_status_chk
+      CHECK (status IN ('scheduled', 'ongoing', 'finished')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bookings_status_chk') THEN
+    ALTER TABLE bookings ADD CONSTRAINT bookings_status_chk
+      CHECK (status IN ('booked', 'done', 'canceled')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tx_kind_chk') THEN
+    ALTER TABLE transactions ADD CONSTRAINT tx_kind_chk
+      CHECK (kind IN ('income', 'expense')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'events_type_chk') THEN
+    ALTER TABLE match_events ADD CONSTRAINT events_type_chk
+      CHECK (type IN ('goal', 'assist', 'yellow', 'red', 'own_goal')) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payments_amount_chk') THEN
+    ALTER TABLE payments ADD CONSTRAINT payments_amount_chk
+      CHECK (amount >= 0) NOT VALID;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tournaments_status_chk') THEN
+    ALTER TABLE tournaments ADD CONSTRAINT tournaments_status_chk
+      CHECK (status IN ('draft', 'running', 'done')) NOT VALID;
+  END IF;
+END
+$$;
+
+-- Kolom mati: `transactions.period` tidak pernah ditulis (iuran kini per
+-- turnamen) dan tidak pernah dibaca; index-nya hanya membebani setiap INSERT.
+DROP INDEX IF EXISTS idx_tx_period;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'transactions' AND column_name = 'period'
+  ) THEN
+    ALTER TABLE transactions DROP COLUMN period;
+  END IF;
+END
+$$;
+
+-- Index untuk query yang benar-benar dijalankan app.
+-- Daftar ini mengikuti WHERE/ORDER BY di `lib/data/models.dart`.
+CREATE INDEX IF NOT EXISTS idx_members_name        ON members(name);
+CREATE INDEX IF NOT EXISTS idx_payments_paid_at    ON payments(paid_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payments_tour_date  ON payments(tournament_id, paid_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bookings_starts     ON bookings(starts_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bookings_status     ON bookings(status, starts_at);
+CREATE INDEX IF NOT EXISTS idx_matches_away_team   ON matches(away_team_id);
+CREATE INDEX IF NOT EXISTS idx_tournaments_starts  ON tournaments(starts_at DESC);
+CREATE INDEX IF NOT EXISTS idx_announcements_date  ON announcements(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tt_team             ON tournament_teams(team_id);
+CREATE INDEX IF NOT EXISTS idx_events_member       ON match_events(member_id);
+CREATE INDEX IF NOT EXISTS idx_tx_member           ON transactions(member_id);
+CREATE INDEX IF NOT EXISTS idx_users_member        ON users(member_id);
+CREATE INDEX IF NOT EXISTS idx_tx_occurred_id      ON transactions(occurred_at DESC, id DESC);
+
+-- Index yang sudah tercakup index lain (biaya tulis tanpa manfaat baca).
+DROP INDEX IF EXISTS idx_payments_member;
+DROP INDEX IF EXISTS idx_payments_tournament;
+DROP INDEX IF EXISTS idx_attendance_booking;
+DROP INDEX IF EXISTS idx_sessions_match;
+DROP INDEX IF EXISTS idx_tm_tournament;
+DROP INDEX IF EXISTS idx_tournament_teams;
+DROP INDEX IF EXISTS idx_tx_occurred;
+
+-- Retensi tulis idempoten: hasil replay hanya berguna beberapa hari, dan
+-- tabel ini tidak boleh tumbuh selamanya.
+DELETE FROM applied_writes WHERE created_at < now() - interval '30 days';
+
+-- Izin untuk role terbatas. Diulang di sini supaya `db:init` mandiri, sama
+-- seperti grant view di atas.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_web') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON applied_writes TO app_web;
+    GRANT SELECT (token_version) ON users TO app_web;
+  END IF;
+END
+$$;

@@ -11,7 +11,7 @@ function sign(payload) {
   return createHmac('sha256', SECRET).update(payload).digest('base64url');
 }
 
-export function issueToken({ id, username, role, member_id }) {
+export function issueToken({ id, username, role, member_id, token_version }) {
   if (!SECRET) throw new Error('AUTH_SECRET belum diset di server');
   const payload = b64(
     JSON.stringify({
@@ -23,6 +23,10 @@ export function issueToken({ id, username, role, member_id }) {
       // "saya" — iuran dan patungan miliknya sendiri — tanpa perlu mencari
       // namanya di daftar anggota.
       m: member_id ?? null,
+      // Versi sesi. Dinaikkan saat password diganti, role diubah, atau akun
+      // dinonaktifkan, sehingga token lama berhenti berlaku tanpa menunggu
+      // kedaluwarsa (lihat api/sql.js).
+      v: token_version ?? 0,
       exp: Math.floor(Date.now() / 1000) + TTL_SECONDS,
     }),
   );

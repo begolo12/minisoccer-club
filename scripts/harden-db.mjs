@@ -46,8 +46,14 @@ const setup = [
   'REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM app_web',
   'REVOKE ALL ON SCHEMA public FROM app_web',
   'GRANT USAGE ON SCHEMA public TO app_web',
+  // Batas waktu per statement. Filter `_guard.js` memeriksa bentuknya, bukan
+  // biayanya: satu JOIN besar tetap bisa menyandera fungsi Vercel sampai
+  // timeout platform. Batas 8 detik cukup untuk laporan terbesar di app ini
+  // (klasemen semua laga) dan memutus query yang salah tulis.
+  "ALTER ROLE app_web SET statement_timeout = '8s'",
+  "ALTER ROLE app_web SET idle_in_transaction_session_timeout = '10s'",
   // users: hanya kolom aman. password_hash sengaja tidak diberikan.
-  'GRANT SELECT (id, username, role, member_id, active, created_at) ON users TO app_web',
+  'GRANT SELECT (id, username, role, member_id, active, created_at, token_version) ON users TO app_web',
   `GRANT SELECT, INSERT, UPDATE, DELETE ON
      ${APP_WEB_TABLES.join(', ')}
    TO app_web`,

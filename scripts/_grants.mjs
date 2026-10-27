@@ -21,6 +21,8 @@ export const APP_WEB_TABLES = [
   'tournament_matches',
   'teams',
   'team_players',
+  // Ditulis server (bukan klien) untuk tulis idempoten; lihat api/sql.js.
+  'applied_writes',
 ];
 
 export const APP_WEB_VIEWS = ['v_team_standings'];

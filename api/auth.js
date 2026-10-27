@@ -170,7 +170,11 @@ export default async function handler(req, res) {
           `UPDATE users
               SET username  = coalesce($2, username),
                   role      = coalesce($3, role),
-                  member_id = CASE WHEN $4::boolean THEN $5::int ELSE member_id END
+                  member_id = CASE WHEN $4::boolean THEN $5::int ELSE member_id END,
+                  -- Role ada DI DALAM token; mengubahnya tanpa menaikkan versi
+                  -- berarti orang itu tetap memakai hak lama sampai 12 jam.
+                  token_version = token_version
+                    + CASE WHEN $3::text IS NOT NULL AND $3::text <> role THEN 1 ELSE 0 END
             WHERE id = $1
             RETURNING id, username, role, active, member_id`,
           [uid, newName, newRole, touchMember, newMember],
@@ -199,7 +203,13 @@ export default async function handler(req, res) {
           }
         }
         const rows = await sql(
-          'UPDATE users SET active = $2 WHERE id = $1 RETURNING id, username, active',
+          `UPDATE users
+              SET active = $2,
+                  -- Nonaktif harus langsung mencabut akses. Tanpa ini akun
+                  -- yang dikeluarkan masih bisa menulis sampai tokennya habis.
+                  token_version = token_version + CASE WHEN $2 THEN 0 ELSE 1 END
+            WHERE id = $1
+            RETURNING id, username, active`,
           [uid, on],
         );
         if (!rows.length) return res.status(404).json({ error: 'User tidak ditemukan' });
@@ -247,7 +257,9 @@ export default async function handler(req, res) {
         `UPDATE users
             SET password_hash = crypt($2, gen_salt('bf', 10)),
                 failed_attempts = 0,
-                locked_until = NULL
+                locked_until = NULL,
+                -- Password diganti admin = sesi lama pemilik akun dicabut.
+                token_version = token_version + 1
           WHERE id = $1
           RETURNING id, username`,
         [uid, pass],
@@ -274,14 +286,18 @@ export default async function handler(req, res) {
         `UPDATE users
             SET password_hash = crypt($2, gen_salt('bf', 10)),
                 failed_attempts = 0,
-                locked_until = NULL
+                locked_until = NULL,
+                token_version = token_version + 1
           WHERE id = $1 AND active
             AND password_hash = crypt($3, password_hash)
-          RETURNING id`,
+          RETURNING id, username, role, member_id, token_version`,
         [session.id, next, current],
       );
       if (!rows.length) return res.status(403).json({ error: 'Password lama salah' });
-      return res.status(200).json({ ok: true });
+      // Token baru langsung dikirim: versi naik (sesi lain di perangkat lain
+      // ikut berhenti), tapi perangkat yang baru mengganti password tidak
+      // terlempar ke layar masuk.
+      return res.status(200).json({ ok: true, token: issueToken(rows[0]) });
     }
 
     // ---- publik: register admin pertama ----
@@ -294,7 +310,7 @@ export default async function handler(req, res) {
          SELECT $1, 'admin', crypt($2, gen_salt('bf', 10))
           WHERE NOT EXISTS (SELECT 1 FROM users)
          ON CONFLICT (username) DO NOTHING
-         RETURNING id, username, role`,
+         RETURNING id, username, role, token_version`,
         [user, pass],
       );
       if (!rows.length) return res.status(403).json({ error: 'Sudah ada user. Tambah lewat menu Pengguna.' });
@@ -318,7 +334,7 @@ export default async function handler(req, res) {
     }
 
     const rows = await sql(
-      `SELECT id, username, role, member_id FROM users
+      `SELECT id, username, role, member_id, token_version FROM users
         WHERE username = $1 AND active AND password_hash IS NOT NULL
           AND password_hash = crypt($2, password_hash)`,
       [user, pass],
