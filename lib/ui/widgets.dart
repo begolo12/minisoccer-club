@@ -86,57 +86,6 @@ class Pill extends StatelessWidget {
   }
 }
 
-/// Label isi daftar (mis. nama pemain dalam satu tim): garis rambut, bukan
-/// chip Material yang berbingkai tebal.
-class TagChip extends StatelessWidget {
-  const TagChip(this.text, {super.key, this.onRemove, this.onTap});
-
-  final String text;
-  final VoidCallback? onRemove;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ShadTheme.of(context);
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(7),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(7),
-        onTap: onTap,
-        child: Container(
-          height: 30,
-          padding: EdgeInsets.only(left: 9, right: onRemove == null ? 9 : 5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(color: t.colorScheme.border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(text, style: const TextStyle(fontSize: 12)),
-              if (onRemove != null) ...[
-                const SizedBox(width: 2),
-                InkWell(
-                  onTap: onRemove,
-                  borderRadius: BorderRadius.circular(4),
-                  // Ketukan diperluas ke ±24px meski glyph-nya 13px: tombol
-                  // ini mengeluarkan pemain dari tim, dan di Wrap yang padat
-                  // target 17px hampir selalu salah ketuk.
-                  child: Padding(
-                    padding: const EdgeInsets.all(5.5),
-                    child: Icon(Icons.close, size: 13, color: t.colorScheme.mutedForeground),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Placeholder loading berbentuk baris — hindari layar kosong + spinner.
 class SkeletonList extends StatefulWidget {
   const SkeletonList({super.key, this.count = 4, this.height = 64});

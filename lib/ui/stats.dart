@@ -76,6 +76,12 @@ class _StatsPageState extends State<StatsPage> {
           // dijumlah — bukan dikurangkan seperti selisih dua tim.
           final goals = s.overall[3] + s.overall[4];
           final perMatch = played == 0 ? null : goals / played;
+          // Daftar pencetak gol yang benar-benar tampil, dan total golnya.
+          // Dipakai untuk menyebut berapa gol yang tidak masuk daftar.
+          final shown = s.scorers
+              .take(_allScorers ? s.scorers.length : s.scorers.length.clamp(0, _scorerLimit))
+              .toList();
+          final shownGoals = shown.fold<int>(0, (a, r) => a + r.goals);
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
@@ -110,7 +116,7 @@ class _StatsPageState extends State<StatsPage> {
                 action: s.scorers.length > _scorerLimit
                     ? TextButton(
                         onPressed: () => setState(() => _allScorers = !_allScorers),
-                        child: Text(_allScorers ? 'Ringkas' : 'Semua ${s.scorers.length}'),
+                        child: Text(_allScorers ? 'Ringkas' : 'Semua ${s.scorers.length} pemain'),
                       )
                     : null,
               ),
@@ -122,11 +128,26 @@ class _StatsPageState extends State<StatsPage> {
                     style: t.textTheme.muted,
                   ),
                 )
-              else
-                for (var i = 0;
-                    i < (_allScorers ? s.scorers.length : s.scorers.length.clamp(0, _scorerLimit));
-                    i++)
-                  _ScorerRow(index: i, row: s.scorers[i], topGoals: s.scorers.first.goals),
+              else ...[
+                for (var i = 0; i < shown.length; i++)
+                  _ScorerRow(
+                    index: i,
+                    row: shown.elementAt(i),
+                    topGoals: s.scorers.first.goals,
+                  ),
+                // Angka di strip menghitung semua gol; daftar ini hanya memuat
+                // yang pemainnya tercatat dan (kalau belum dibuka semua)
+                // lima teratas. Tanpa baris ini selisihnya terbaca sebagai
+                // data yang tidak cocok.
+                if (shownGoals < goals)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '${goals - shownGoals} gol lain belum tercantum di daftar ini',
+                      style: t.textTheme.small,
+                    ),
+                  ),
+              ],
               if (s.standings.isNotEmpty) ...[
                 const SectionTitle('Klasemen tim'),
                 StandingsTable(standings: s.standings, top: 1),
@@ -166,7 +187,7 @@ class _ScorerRow extends StatelessWidget {
                 style: t.textTheme.h2.copyWith(
                   fontSize: 19,
                   height: 1,
-                  color: index == 0 ? t.colorScheme.primary : t.colorScheme.mutedForeground,
+                  color: row.goals == topGoals ? t.colorScheme.primary : t.colorScheme.mutedForeground,
                 ),
               ),
             ),
@@ -195,7 +216,7 @@ class _ScorerRow extends StatelessWidget {
                       '${row.goals}',
                       style: t.textTheme.h2.copyWith(
                         fontSize: 22,
-                        color: index == 0 ? t.colorScheme.primary : null,
+                        color: row.goals == topGoals ? t.colorScheme.primary : null,
                       ),
                     ),
                   ],
@@ -208,7 +229,10 @@ class _ScorerRow extends StatelessWidget {
                     minHeight: 3,
                     backgroundColor: t.colorScheme.muted,
                     valueColor: AlwaysStoppedAnimation(
-                      index == 0
+                      // Warna mengikuti nilai, bukan urutan baris: dua pemain
+                      // dengan jumlah gol sama harus tampil sama, dan dulu hanya
+                      // baris pertama yang berwarna penuh.
+                      row.goals == topGoals
                           ? t.colorScheme.primary
                           : t.colorScheme.primary.withValues(alpha: 0.45),
                     ),

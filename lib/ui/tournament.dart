@@ -81,6 +81,14 @@ class _TournamentsPageState extends State<TournamentsPage> {
           }
           final running = items.where((t) => t.status == 'running').length;
           final done = items.where((t) => t.status == 'done').length;
+          // Satu daftar panjang hanya dibedakan pil kecil di tepi kanan, jadi
+          // status tidak terbaca saat memindai. Dikelompokkan: yang berjalan,
+          // yang belum dimulai, lalu yang selesai (urutan `Tournament.all`).
+          const groups = [
+            ('running', 'Berjalan'),
+            ('draft', 'Akan datang'),
+            ('done', 'Selesai'),
+          ];
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
@@ -95,8 +103,16 @@ class _TournamentsPageState extends State<TournamentsPage> {
                   StatTile(label: 'Selesai', value: '$done'),
                 ],
               ),
-              const SectionTitle('Daftar turnamen'),
-              for (final t in items)
+              for (final (status, label) in groups)
+                if (items.any((t) => t.status == status)) ...[
+                  SectionTitle(label),
+                  for (final t in items.where((t) => t.status == status))
+                    _TournamentTile(tournament: t, onChanged: _reload),
+                ],
+              // Status lain (mis. nilai baru dari server) tetap tampil, jangan
+              // hilang hanya karena tidak ada di daftar grup di atas.
+              for (final t in items.where(
+                  (t) => !groups.any((g) => g.$1 == t.status)))
                 _TournamentTile(tournament: t, onChanged: _reload),
             ],
           );
@@ -354,6 +370,9 @@ class _TournamentDetailPageState extends State<TournamentDetailPage> {
     return PageScaffold(
       title: widget.tournament.name,
       subtitle: [
+        // Status disebut di sini: daftar mengelompokkannya, dan halaman detail
+        // yang dibuka dari tautan mana pun harus menyebut keadaannya sendiri.
+        Tournament.statusLabels[widget.tournament.status] ?? widget.tournament.status,
         fmtDateTime(widget.tournament.startsAt),
         if (widget.tournament.venue?.isNotEmpty ?? false) widget.tournament.venue!,
       ].join(' • '),
@@ -685,12 +704,15 @@ class _TeamCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ShadTheme.of(context);
-    return Panel(
-      padding: const EdgeInsets.fromLTRB(14, 12, 8, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    // Dulu: Panel bertepi berisi chip bertepi. Dua tingkat garis untuk satu
+    // daftar nama, dan tiap pemain membawa kotak × sendiri. Sekarang satu
+    // tingkat: kepala tim, lalu baris bergaris per pemain.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 2),
+          child: Row(
             children: [
               Expanded(
                 child: Row(children: [
@@ -716,33 +738,33 @@ class _TeamCard extends StatelessWidget {
                 ),
             ],
           ),
-          if (players.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('Belum ada pemain', style: t.textTheme.small),
-            )
-          else
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final p in players)
-                  TagChip(
-                    p.name,
-                    onRemove: Auth.canWrite
-                        ? () async {
-                            if (await attempt(context,
-                                () => Team.removePlayer(team.id, p.id),
-                                fail: 'Gagal mengeluarkan pemain')) {
-                              await onChanged();
-                            }
-                          }
-                        : null,
-                  ),
-              ],
+        ),
+        if (players.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text('Belum ada pemain', style: t.textTheme.small),
+          )
+        else
+          for (final p in players)
+            RowItem(
+              title: p.name,
+              subtitle: [p.position, if (p.jersey != null) '#${p.jersey}'].join(' • '),
+              trailing: Auth.canWrite
+                  ? iconAction(
+                      context,
+                      Icons.close,
+                      () async {
+                        if (await attempt(context,
+                            () => Team.removePlayer(team.id, p.id),
+                            fail: 'Gagal mengeluarkan pemain')) {
+                          await onChanged();
+                        }
+                      },
+                      tooltip: 'Keluarkan dari tim',
+                    )
+                  : null,
             ),
-        ],
-      ),
+      ],
     );
   }
 }

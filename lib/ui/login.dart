@@ -176,9 +176,13 @@ class _LoginPageState extends State<LoginPage> {
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          const Expanded(flex: 6, child: _Brand(compact: false)),
+                          // Form lebih dulu: orang membuka layar ini untuk masuk,
+                          // bukan untuk membaca pengantar. Dulu headline dua
+                          // baris dan daftar 01/02/03 mendahuluinya, sehingga
+                          // kolom isian terdorong ke sisi sekunder.
+                          Expanded(flex: 5, child: form),
                           const SizedBox(width: 48),
-                          Expanded(flex: 4, child: form),
+                          const Expanded(flex: 5, child: _Brand(compact: false)),
                         ],
                       );
                     },
@@ -436,7 +440,7 @@ class _FormPanel extends StatelessWidget {
           ],
           const SizedBox(height: 20),
           ShadButton(
-            height: 42,
+            height: 44,
             onPressed: busy ? null : onSubmit,
             child: busy
                 ? const SizedBox(
@@ -507,7 +511,10 @@ class _Field extends StatelessWidget {
             style: t.textTheme.h4.copyWith(fontSize: 11, letterSpacing: 1),
           ),
         ),
-        child,
+        // Satu tinggi untuk kedua isian. `ShadInput` tidak punya parameter
+        // tinggi, jadi dipatok di sini: sebelumnya isian username, password,
+        // dan tombol masuk berturut-turut 37/57/42 px.
+        SizedBox(height: 44, child: child),
       ],
     );
   }

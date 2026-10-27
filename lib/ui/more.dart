@@ -234,7 +234,6 @@ class _MorePageState extends State<MorePage> {
             return ListView(
             padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
             children: [
-              _AccountStrip(),
               if (error != null)
                 DegradedNotice(
                   failures: ['Data klub: ${errText(error)}'],
@@ -317,6 +316,10 @@ class _MorePageState extends State<MorePage> {
                 onTap: () => _open(context, const AnnouncementsPage()),
               ),
               const SectionTitle('Akun'),
+              // Kartu akun memimpin bagiannya sendiri. Dulu ia mengambang di
+              // puncak daftar, sementara label AKUN di bawah bisa tampil tanpa
+              // isi apa pun untuk akun non-anggota.
+              _AccountStrip(),
               // Halaman milik anggota sendiri. Role anggota adalah mayoritas
               // pengguna app ini, dan sebelumnya tidak punya tempat untuk
               // melihat "saya sudah bayar apa" tanpa mencari namanya di
