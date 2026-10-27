@@ -23,6 +23,7 @@ export const MONEY_READS = new Set([
   'attendanceForBooking',
   'attendanceForMember',
   'transactions',
+  'memberHasFinance',
   'bookings',
   'bookingsWithCash',
 ]);
@@ -126,8 +127,13 @@ export const reads = {
          LEFT JOIN transactions t ON t.attendance_id = a.id
          WHERE a.member_id=@m ORDER BY b.starts_at DESC`,
   transactions: `SELECT * FROM transactions
-         WHERE to_char(occurred_at, 'YYYY-MM') = @p
+         WHERE occurred_at >= @from AND occurred_at < @to
          ORDER BY occurred_at DESC, id DESC`,
+  // Dipakai `Member.hasFinance` sebelum menghapus anggota: satu-satunya
+  // penghalang di klien untuk menjaga riwayat uang tetap utuh.
+  memberHasFinance: `SELECT (EXISTS (SELECT 1 FROM payments WHERE member_id=@id)
+              OR EXISTS (SELECT 1 FROM transactions WHERE member_id=@id)
+              OR EXISTS (SELECT 1 FROM booking_attendance WHERE member_id=@id)) AS has`,
   bookings: "SELECT * FROM bookings WHERE status='booked' AND starts_at >= now() ORDER BY starts_at ASC LIMIT 5",
   bookingsWithCash: `SELECT b.*, t.id AS transaction_id FROM bookings b
          LEFT JOIN transactions t ON t.booking_id = b.id
