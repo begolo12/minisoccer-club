@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: "22"
 
+      # `api/sql.js` mengimpor `@neondatabase/serverless`; tesnya butuh paket
+      # itu terpasang di runner bersih.
+      - run: npm ci --omit=dev
       - run: node --test "api/*.test.mjs"
       - run: flutter pub get
       - run: flutter analyze

@@ -60,6 +60,10 @@ jobs:
           test -s android/app/release-keystore.p12
           test -s android/key.properties
 
+      # Tes API mengimpor modul runtime (`@neondatabase/serverless`) lewat
+      # `api/sql.js`, jadi dependensi harus terpasang lebih dulu. Tanpa ini
+      # `node --test` gagal "Cannot find package" di runner bersih.
+      - run: npm ci --omit=dev
       - run: node --test "api/*.test.mjs"
       - run: flutter pub get
       - run: flutter analyze
