@@ -235,11 +235,67 @@ satu: audit tetap tercatat di jalur batch/idempoten, PopScope tunggal milik
 Indonesia, dan `db:init` diperbaiki agar idempoten pada database yang kolom
 `transactions.period`-nya sudah dihapus.
 
-CATATAN lingkungan: `ADMIN_PASS` di `.env` tidak lagi cocok dengan akun admin
-produksi (kemungkinan dirotasi di luar sesi ini). Semua pemeriksaan yang butuh
-login admin (`check:visual`, `check:features`, `check:e2e`) harus dijalankan
-ulang setelah `.env` diperbarui; tidak ada perubahan aplikasi yang bergantung
-padanya.
+CATATAN lingkungan: `ADMIN_PASS` di `.env` tidak cocok dengan akun admin
+produksi (terverifikasi ulang 2026-11-01 lewat pencocokan hash langsung di
+DB: `password_env_cocok: false`, 6 percobaan gagal). Pemeriksaan yang butuh
+login admin dijalankan lewat **akun verifikasi sementara** (prefix `_uji_`,
+dibuat langsung di DB dengan hash bcrypt yang sama, dihapus setelah selesai)
+supaya kredensial admin asli tidak pernah disentuh. Perbaiki `.env` dengan
+password yang benar, atau setel ulang password admin dari app lalu isi
+`.env`-nya.
+
+## Insiden 2026-11-01: bagian beranda web gagal dimuat
+
+**Gejala** (produksi 1.16.0): "Iuran bulan ini" dan beberapa bagian beranda
+web menampilkan error `Converting object to an encodable object failed`,
+`tambah pengumuman` gagal, sementara API menjawab 200 untuk semua query yang
+sama (dibuktikan probe langsung ke kedua domain). `check:features` 11/23.
+
+**Akar**: query ber-rentang tanggal (audit 1.6: `paid_at >= @from AND < @to`)
+mengirim parameter `DateTime`. `cache_stub.dart` meng-`jsonEncode` params
+mentah **di luar** `try`, dan `Db.query` meng-`await writeEntry` tanpa
+penjaga — lemparan itu mematikan query yang datanya sudah di tangan. Di
+Android (`cache_io.dart`) lemparan tertelan, jadi gejalanya berbeda: cache
+untuk query ber-rentang tanggal **tidak pernah tersimpan** (data lenyap saat
+offline). Regresi ini lolos karena pemeriksaan browser yang akan
+menangkapnya (`check:features`/`check:visual`) justru yang tertunda akibat
+`ADMIN_PASS` kadaluarsa — keduanya kini dijadwalkan berbarengan.
+
+**Perbaikan** (1.16.1+48):
+- `jsonSafeParams` dipindah ke `cache.dart` (dipakai antrean + cache);
+- `Db.query` membungkus penulisan cache dalam `try` — cache adalah optimasi,
+  kegagalannya tidak boleh menjatuhkan query;
+- entri cache menyimpan params yang sudah aman-JSON (ISO-8601 UTC, bentuk
+  yang sama dikirim ke server);
+- kedua penyimpanan (web/Android) menyandikan params ternormalisasi.
+
+**Verifikasi**: `test/cache_json_safe_test.dart` (5 tes: lemparan penyimpanan
+tidak mematikan query, params entri aman-JSON, konversi bersarang),
+`flutter test` 287 lulus, `check:features` di produksi hijau setelah deploy
+1.16.1.
+
+## Insiden 2026-11-01 (lanjutan): rail navigasi hilang dari pohon a11y
+
+**Gejala**: setelah bug cache diperbaiki, `check:features` tetap gagal di
+semua halaman setelah tab Tim — penyelidikan lewat tangkapan layar
+menunjukkan **app sebenarnya baik-baik saja**, tetapi rail kiri tidak punya
+node di pohon aksesibilitas (DOM web produksi), sehingga harness tidak bisa
+bernavigasi. Artinya pembaca layar sungguhan pun kehilangan navigasi utama.
+
+**Akar** (dibuktikan dengan biner-search widget test): `Navigator` dalam
+(yang dipakai sejak "halaman turunan tetap di dalam shell") membuat semantik
+sibling-nya lenyap dari pohon yang terpasang — rail 216px tidak pernah
+menjadi node. Overlay polos, `IndexedStack`, `PopScope`, dan semua pembungkus
+rute secara terpisah tidak berpengaruh; hanya Navigator yang memicunya.
+
+**Perbaikan**: Navigator dalam dibungkus `Semantics(container: true,
+explicitChildNodes: true)` di `lib/ui/shell.dart` — batas semantik itu
+memisahkan subtree navigator sehingga rail tetap terekspos.
+
+**Verifikasi**: tes regresi baru di `test/nav_shell_test.dart` (kelima label
+rail ditemukan oleh `find.bySemanticsLabel`), pohon a11y produksi kini memuat
+kelima tombol rail (dibuktikan lewat CDP), `check:features` 24/24 dan
+`check:visual` 52/52 di produksi 1.16.1.
 
 ## Yang sengaja tidak dikerjakan
 

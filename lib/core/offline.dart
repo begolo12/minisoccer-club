@@ -16,6 +16,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import 'cache.dart';
 import 'net.dart';
 import 'outbox_store.dart';
 import 'row_patch.dart';
@@ -88,33 +89,6 @@ class PendingWrite {
       lastError: m['last_error'] as String?,
     );
   }
-}
-
-/// Ubah parameter tulis jadi bentuk yang aman disimpan sebagai JSON.
-///
-/// `jsonEncode` gagal untuk `DateTime`, dan kegagalan itu membuat SELURUH
-/// antrean tidak tersimpan ke disk — tulisan tetap ada di memori, jadi terlihat
-/// berhasil, lalu hilang begitu aplikasi ditutup. Contoh nyata: "Ubah jadwal
-/// laga" mengirim `played_at` sebagai `DateTime`.
-///
-/// Nilai yang dikonversi sama dengan yang dikirim driver ke server (ISO-8601
-/// UTC), jadi hasilnya tetap sah saat antrean dikirim ulang.
-Map<String, dynamic> jsonSafeParams(Map<String, Object?> params) => {
-      for (final e in params.entries) e.key: _jsonSafeValue(e.value),
-    };
-
-Object? _jsonSafeValue(Object? v) {
-  if (v == null || v is String || v is num || v is bool) return v;
-  if (v is DateTime) return v.toUtc().toIso8601String();
-  if (v is List) return v.map(_jsonSafeValue).toList();
-  if (v is Map) {
-    return {
-      for (final e in v.entries) '${e.key}': _jsonSafeValue(e.value),
-    };
-  }
-  // Tipe lain (enum, objek khusus) diubah ke teks supaya tidak menggagalkan
-  // penyimpanan antrean.
-  return v.toString();
 }
 
 /// Hasil satu kali sinkronisasi.

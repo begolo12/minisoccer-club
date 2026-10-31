@@ -30,9 +30,13 @@ class LocalStorageCacheStore implements CacheStore {
   @override
   Future<void> writeEntry(CacheEntry entry) async {
     final key = '$_prefix${entry.key}';
+    // Params dinormalkan dulu: `DateTime` mentah membuat `jsonEncode` melempar.
+    // Lemparan itu tidak sampai ke pemanggil (`Db` menjaganya dengan `try`),
+    // tetapi tanpa normalisasi entri ini tidak pernah tersimpan — pembacaan
+    // dengan rentang tanggal (iuran/kas bulan ini) tidak punya cache offline.
     final value = jsonEncode({
       'sql': entry.sql,
-      'params': entry.params,
+      'params': jsonSafeParams(entry.params),
       'saved_at': entry.savedAt.toIso8601String(),
       'rows': entry.rows,
     });

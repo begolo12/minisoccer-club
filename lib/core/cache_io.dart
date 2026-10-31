@@ -52,7 +52,11 @@ class FileCacheStore implements CacheStore {
       await tmp.writeAsString(
         jsonEncode({
           'sql': entry.sql,
-          'params': entry.params,
+          // `DateTime` mentah membuat `jsonEncode` melempar. Di sini lemparan
+          // itu tertelan `try`, jadi gejalanya bukan query gagal, tetapi cache
+          // yang tidak pernah tersimpan untuk query ber-rentang tanggal
+          // (iuran/kas bulan ini) — datanya lenyap saat offline.
+          'params': jsonSafeParams(entry.params),
           'saved_at': entry.savedAt.toIso8601String(),
           'rows': entry.rows,
         }),

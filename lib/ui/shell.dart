@@ -218,31 +218,42 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     // Semua halaman turunan hidup di navigator ini, bukan di navigator akar,
     // supaya shell (bar bawah / rail) tidak ikut tertutup. Rute dasar adalah
     // daftar tab.
-    final body = NotificationListener<NavigationNotification>(
-      onNotification: (n) {
-        if (_navCanPop != n.canHandlePop) {
-          _navCanPop = n.canHandlePop;
-          // Notifikasi bisa datang di tengah build; segarkan setelah frame.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) setState(() {});
-          });
-        }
-        return false;
-      },
-      child: Navigator(
-        key: _nav,
-        onGenerateRoute: (_) => MaterialPageRoute<void>(
-          builder: (_) => ValueListenableBuilder<int>(
-            valueListenable: _tabs,
-            builder: (context, _, _) => IndexedStack(
-              index: _index,
-              children: [
-                for (var i = 0; i < _pages.length; i++)
-                  if (_built.contains(i))
-                    KeyedSubtree(key: ValueKey('page-$i-${_version[i]}'), child: _pages[i])
-                  else
-                    const SizedBox.shrink(),
-              ],
+    //
+    // PEMBUNGKUS SEMANTIK WAJIB ADA: Navigator dalam ternyata membuat semantik
+    // sibling-nya (rail kiri di layar lebar) lenyap dari pohon aksesibilitas —
+    // pembaca layar kehilangan navigasi utama, dan pemeriksaan browser tidak
+    // menemukan tombol rail (terbukti di widget test dan DOM web produksi).
+    // `Semantics(container, explicitChildNodes)` memisahkan subtree navigator
+    // sehingga rail tetap terekspos. Tes: `nav_shell_test.dart`.
+    final body = Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: NotificationListener<NavigationNotification>(
+        onNotification: (n) {
+          if (_navCanPop != n.canHandlePop) {
+            _navCanPop = n.canHandlePop;
+            // Notifikasi bisa datang di tengah build; segarkan setelah frame.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() {});
+            });
+          }
+          return false;
+        },
+        child: Navigator(
+          key: _nav,
+          onGenerateRoute: (_) => MaterialPageRoute<void>(
+            builder: (_) => ValueListenableBuilder<int>(
+              valueListenable: _tabs,
+              builder: (context, _, _) => IndexedStack(
+                index: _index,
+                children: [
+                  for (var i = 0; i < _pages.length; i++)
+                    if (_built.contains(i))
+                      KeyedSubtree(key: ValueKey('page-$i-${_version[i]}'), child: _pages[i])
+                    else
+                      const SizedBox.shrink(),
+                ],
+              ),
             ),
           ),
         ),

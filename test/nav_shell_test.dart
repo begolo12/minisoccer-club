@@ -110,4 +110,28 @@ void main() {
 
     expect(find.byType(FinancePage), findsNothing);
   });
+
+  testWidgets('layar lebar: item rail terekspos di pohon semantik', (tester) async {
+    // Regresi 2026-11-01: Navigator dalam (yang menjaga shell tetap ada saat
+    // halaman turunan dibuka) membuat semantik sibling-nya lenyap — rail kiri
+    // tidak punya node di pohon aksesibilitas, sehingga pembaca layar tidak
+    // bisa bernavigasi dan pemeriksaan browser (check:features) tidak
+    // menemukan tombol rail. Perbaikan: Navigator dibungkus Semantics
+    // container di `shell.dart`. Tes ini menjaga supaya tidak kambuh.
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_app());
+    final handle = tester.ensureSemantics();
+    await _settle(tester);
+
+    for (final tab in ['Beranda', 'Tanding', 'Tim', 'Iuran', 'Lainnya']) {
+      expect(find.bySemanticsLabel(RegExp('^$tab\$')), findsOneWidget,
+          reason: 'rail "$tab" harus menjadi node semantik yang bisa difokuskan');
+    }
+    // Handle harus dilepas di badan tes: verifikasi akhir berjalan sebelum
+    // addTearDown dan menolak handle yang masih terbuka.
+    handle.dispose();
+  });
 }

@@ -78,6 +78,36 @@ String cacheKey(String sql, Map<String, Object?> params, {String scope = ''}) {
   return sha256.convert(utf8.encode(canonical)).toString().substring(0, 32);
 }
 
+/// Ubah parameter query jadi bentuk yang bisa disimpan sebagai JSON.
+///
+/// `jsonEncode` gagal untuk `DateTime`. Di antrean tulis, kegagalan itu
+/// membuat SELURUH antrean tidak tersimpan ke disk — tulisan tetap ada di
+/// memori, jadi terlihat berhasil, lalu hilang begitu aplikasi ditutup.
+/// Contoh nyata: "Ubah jadwal laga" mengirim `played_at` sebagai `DateTime`.
+/// Di entri cache web, `jsonEncode` yang melempar di luar `try` bahkan
+/// menjatuhkan query yang datanya sudah sampai (bagian "Iuran bulan ini"
+/// di beranda) — perbaiki sekali di sini supaya semua penyimpanan aman.
+///
+/// Nilai yang dikonversi sama dengan yang dikirim driver ke server
+/// (ISO-8601 UTC), jadi hasilnya tetap sah saat dibaca atau dikirim ulang.
+Map<String, dynamic> jsonSafeParams(Map<String, Object?> params) => {
+      for (final e in params.entries) e.key: _jsonSafeValue(e.value),
+    };
+
+Object? _jsonSafeValue(Object? v) {
+  if (v == null || v is String || v is num || v is bool) return v;
+  if (v is DateTime) return v.toUtc().toIso8601String();
+  if (v is List) return v.map(_jsonSafeValue).toList();
+  if (v is Map) {
+    return {
+      for (final e in v.entries) '${e.key}': _jsonSafeValue(e.value),
+    };
+  }
+  // Tipe lain (enum, objek khusus) diubah ke teks supaya tidak menggagalkan
+  // penyimpanan antrean.
+  return v.toString();
+}
+
 /// Penyimpanan cache. Implementasi per platform ada di `cache_io.dart`
 /// (Android/desktop) dan `cache_stub.dart` (web); tes memakai versi memori.
 abstract interface class CacheStore {

@@ -89,13 +89,22 @@ class Db {
       if (write) {
         writes.value++;
       } else {
-        await activeCacheStore.writeEntry(CacheEntry(
-          key: key,
-          sql: sql,
-          params: params,
-          rows: rows,
-          savedAt: DateTime.now(),
-        ));
+        // Cache adalah optimasi: kegagalannya tidak boleh menjatuhkan query
+        // yang datanya sudah ada di tangan. Pernah terjadi di web — entri
+        // dengan parameter `DateTime` membuat `jsonEncode` di penyimpanan
+        // melempar di luar `try`, dan bagian "Iuran bulan ini" di beranda
+        // tampil gagal padahal server menjawab 200.
+        try {
+          await activeCacheStore.writeEntry(CacheEntry(
+            key: key,
+            sql: sql,
+            params: jsonSafeParams(params),
+            rows: rows,
+            savedAt: DateTime.now(),
+          ));
+        } catch (_) {
+          // Diabaikan dengan sengaja: baca tetap berhasil tanpa cache.
+        }
       }
       _markOnline();
       return rows;
