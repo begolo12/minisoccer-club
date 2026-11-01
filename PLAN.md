@@ -320,7 +320,7 @@ ditulis ulang ke bentuk sekarang; mock server + e2e kini mendukung
 
 ```
 flutter analyze          No issues found
-flutter test             308 lulus (287 + 21 baru)
+flutter test             313 lulus (287 + 26 baru)
 npm test                 65 lulus (query sematan baru lolos filter guard)
 flutter build web        sukses (release, no-cdn)
 mock preview e2e         48 PASS (server mock bersih)
@@ -330,9 +330,34 @@ check:audit (produksi)   99/99 query lolos, termasuk SQL pengumuman baru —
                          dijalankan SEBELUM deploy: kolom sudah ada di DB,
                          app lama tidak menyentuhnya (SELECT * hanya
                          mengembalikan kolom ekstra), jadi urutan deploy aman
+check:features (produksi, setelah deploy 1.17.1)  24/24
 Pemeriksaan yang butuh login admin dijalankan lewat akun sementara
 `_uji_envcheck` (lihat catatan lingkungan di atas), dihapus setelah selesai.
+Deploy web: `npx vercel --prod` dari mesin ter-link — workflow Deploy Web
+GitHub Actions gagal karena secret repo VERCEL_* kosong (README diperbarui).
 ```
+
+## Insiden 2026-11-01 (1.17.0): frame pertama halaman Pengumuman melempar
+
+**Gejala** (produksi 1.17.0): `check:features` 23/24 — semua pemeriksaan
+fungsional lulus (pengumuman tersimpan & tampil), tetapi satu error konsol:
+`LateInitializationError: Field '' has not been initialized`.
+
+**Akar**: rewrite halaman Pengumuman membuat `initState` memanggil `_load()`
+async yang mengisi `late Future _future` HANYA setelah `await` pertama
+(pembacaan penanda "sudah dilihat") selesai. `build()` pertama jalan sebelum
+await itu — `late` field dibaca sebelum diisi. Regresi lolos karena tidak ada
+satu pun widget test yang mem-pump halaman ini; 308 tes unit hijau semua.
+Persis kelas bug yang sama dengan insiden rail a11y: hanya browser check yang
+menangkap.
+
+**Perbaikan** (1.17.1+50): `_future` diisi sinkron di `initState`
+(`_future = _fetch()`); urutan "baca penanda dulu, baru mark" dipindah ke
+dalam `_fetch()`. Tes regresi widget baru di `test/announcements_page_test.dart`
+(5 tes: frame pertama bersih, daftar tampil, badge BARU hanya di atas penanda,
+ikon semat bersemantik, penanda terpasang setelah kunjungan). Catatan harness:
+cache store harus diganti versi memori (`cache_io` melakukan I/O berkas
+sungguhan yang tidak pernah selesai di zona fake-async `testWidgets`).
 
 ## Yang sengaja tidak dikerjakan
 

@@ -171,7 +171,7 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 308 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, **tinggi target sentuh judul bagian & chip periode**, **shell tetap ada saat halaman turunan dibuka**, **laporan kas per kategori**, **sematan + penanda dibaca pengumuman per akun**, dan **baris CSV daftar anggota** |
+| `flutter test` | 313 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, **tinggi target sentuh judul bagian & chip periode**, **shell tetap ada saat halaman turunan dibuka**, **laporan kas per kategori**, **sematan + penanda dibaca pengumuman per akun**, **frame pertama halaman Pengumuman tidak melempar** (regresi `late` + async init), dan **baris CSV daftar anggota** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
@@ -334,8 +334,12 @@ Uji jalur portal tanpa Vercel: bangun dengan `--base-href /minisoccer/`, lalu
 buka `http://localhost:<port>/minisoccer/` dari server statis yang menyajikan
 `build/web` — semua aset dan `/minisoccer/api/sql` harus 200.
 
-Setelah itu, deploy berikutnya cukup lewat GitHub Actions **Deploy Web** (Run workflow).
-Isi secret repo: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+Deploy berikutnya: `npx vercel --prod` dari mesin yang sudah `vercel link`
+dan login — jalur yang dipakai rilis-rilis terakhir. Workflow GitHub Actions
+**Deploy Web** juga tersedia, tetapi butuh secret repo `VERCEL_TOKEN`,
+`VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`; per 1.17.0 ketiganya masih kosong
+sehingga workflow gagal di langkah deploy (`--token` tanpa nilai). Isi
+secret-nya dulu kalau mau pindah ke jalur CI.
 
 > **Login.** Semua akses DB lewat `/api/sql` yang butuh token sesi dari `/api/auth`.
 > Password di-hash bcrypt oleh Postgres (`pgcrypto`), bukan disimpan di app.

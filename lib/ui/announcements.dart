@@ -29,27 +29,28 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // HARUS sinkron: build pertama jalan sebelum await pertama selesai, dan
+    // `late _future` yang belum terisi melempar LateInitializationError di
+    // frame itu (error konsol di produksi, halaman berkedip merah).
+    _future = _fetch();
   }
 
-  Future<void> _load() async {
-    // Penanda dibaca harus diambil SEBELUM daftar dimuat: `mark` di bawah
-    // memperbaruinya, dan kalau urutannya terbalik setiap pengumuman sudah
-    // terhitung "dibaca" sebelum sempat ditampilkan — badge tidak pernah
-    // muncul sama sekali.
+  Future<List<Announcement>> _fetch() async {
+    // Penanda dibaca SEBELUM daftar dimuat: `mark` di bawah memperbaruinya,
+    // dan kalau urutannya terbalik setiap pengumuman sudah terhitung
+    // "dibaca" sebelum sempat ditampilkan — badge tidak pernah muncul.
     final seen = await AnnouncementSeen.lastId();
-    if (!mounted) return;
-    final f = Announcement.all().then((items) {
-      unawaited(AnnouncementSeen.mark(items));
-      return items;
-    });
-    setState(() {
-      _seenId = seen;
-      _future = f;
-    });
+    if (mounted) setState(() => _seenId = seen);
+    final items = await Announcement.all();
+    unawaited(AnnouncementSeen.mark(items));
+    return items;
   }
 
-  Future<void> _reload() => _load();
+  Future<void> _reload() async {
+    final f = _fetch();
+    setState(() => _future = f);
+    await f;
+  }
 
   @override
   Widget build(BuildContext context) {
