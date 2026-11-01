@@ -331,8 +331,14 @@ check:audit (produksi)   99/99 query lolos, termasuk SQL pengumuman baru —
                          app lama tidak menyentuhnya (SELECT * hanya
                          mengembalikan kolom ekstra), jadi urutan deploy aman
 check:features (produksi, setelah deploy 1.17.1)  24/24
+check:visual (produksi 1.17.1)     52/52 di 3 ukuran (320×640, 390×844,
+                                   1440×900) — termasuk header Anggota yang
+                                   kini memuat 3 ikon admin di 320px
+Build APK v1.17.1 (CI)             sukses; rilis memuat app-release.apk
+                                   (universal) + app-arm64-v8a + app-armeabi-v7a
 Pemeriksaan yang butuh login admin dijalankan lewat akun sementara
-`_uji_envcheck` (lihat catatan lingkungan di atas), dihapus setelah selesai.
+`_uji_envcheck` (lihat catatan lingkungan di atas), dihapus setelah selesai
+(terverifikasi 0 akun `_uji_` tersisa di DB).
 Deploy web: `npx vercel --prod` dari mesin ter-link — workflow Deploy Web
 GitHub Actions gagal karena secret repo VERCEL_* kosong (README diperbarui).
 ```
