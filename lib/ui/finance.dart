@@ -172,6 +172,40 @@ class _FinancePageState extends State<FinancePage> {
     );
   }
 
+  /// Laporan per kategori untuk periode yang sedang tampil.
+  ///
+  /// CSV ekspor menjawab "transaksi apa saja yang terjadi", tetapi laporan
+  /// bulanan untuk pengurus menjawab "uang keluar paling banyak untuk apa" —
+  /// dua pertanyaan berbeda, jadi keduanya tersedia.
+  Future<void> _report() async {
+    final _FinanceData d;
+    try {
+      d = await _future;
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Data belum termuat: ${errText(e)}');
+      return;
+    }
+    if (d.entries.isEmpty) {
+      if (!mounted) return;
+      toast(context, 'Belum ada catatan untuk dilaporkan');
+      return;
+    }
+    final text = buildCashReportText(
+      periodName: _periodName(_period),
+      summary: d.summary,
+      byCategory: summarizeCashByCategory(d.entries),
+    );
+    if (!mounted) return;
+    await showTextShare(
+      context,
+      title: 'Laporan kas',
+      description: 'Total per kategori untuk ${_periodName(_period)}, '
+          'siap ditempel ke grup atau laporan pengurus.',
+      text: text,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!Auth.signedIn) return const LockedMoney(title: 'Kas klub');
@@ -179,6 +213,10 @@ class _FinancePageState extends State<FinancePage> {
       title: 'Kas klub',
       subtitle: _periodName(_period),
       actions: [
+        // Laporan bisa dibaca semua role yang sudah masuk (buku kasnya juga
+        // bisa), jadi tidak digembok `canWrite` seperti tombol catat.
+        iconAction(context, Icons.summarize_outlined, _report,
+            tooltip: 'Laporan per kategori'),
         if (Auth.canWrite)
           iconAction(context, Icons.add, _add, tooltip: 'Catat transaksi'),
       ],

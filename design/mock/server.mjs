@@ -106,10 +106,10 @@ const bookings = [
 }));
 
 const announcements = [
-  ['Latihan pindah ke jam 20.00', 'Mulai minggu ini latihan rutin maju satu jam. Jangan lupa bawa rompi dan air minum sendiri.'],
-  ['Iuran Oktober sudah dibuka', 'Iuran bulan ini Rp 75.000. Bisa transfer ke bendahara atau bayar langsung setelah latihan.'],
-].map(([title, body], i) => ({
-  id: i + 1, title, body, created_at: iso(day * (3 + i * 4)),
+  ['Latihan pindah ke jam 20.00', 'Mulai minggu ini latihan rutin maju satu jam. Jangan lupa bawa rompi dan air minum sendiri.', null],
+  ['Iuran Oktober sudah dibuka', 'Iuran bulan ini Rp 75.000. Bisa transfer ke bendahara atau bayar langsung setelah latihan.', iso(day * 1)],
+].map(([title, body, pinned_at], i) => ({
+  id: i + 1, title, body, pinned_at, created_at: iso(day * (3 + i * 4)),
 }));
 
 const transactions = [
@@ -359,7 +359,16 @@ function rowsFor(sql, params = {}) {
       ? transactions
       : transactions.filter((t) => t.occurred_at.startsWith(params.p));
   }
-  if (/from announcements/.test(q)) return announcements;
+  if (/from announcements/.test(q)) {
+    // Cermin `ORDER BY pinned_at DESC NULLS LAST, created_at DESC`: yang
+    // disematkan tampil paling atas supaya pratinjau sama dengan produksi.
+    return [...announcements].sort((a, b) => {
+      if (a.pinned_at && b.pinned_at) return b.pinned_at.localeCompare(a.pinned_at);
+      if (a.pinned_at) return -1;
+      if (b.pinned_at) return 1;
+      return b.created_at.localeCompare(a.created_at);
+    });
+  }
   if (/from users/.test(q)) return users.map(({ id, username, role, active }) => ({ id, username, role, active }));
   if (/from team_players/.test(q)) {
     let rows = team_players;
@@ -477,6 +486,7 @@ function applyWrite(sql, params) {
   if (/^\s*insert\s+into\s+announcements/.test(q)) {
     announcements.unshift({
       id: announcements.length + 1, title: params.t, body: params.b,
+      pinned_at: params.pin ?? null,
       created_at: new Date().toISOString(),
     });
     return 1;
@@ -486,6 +496,7 @@ function applyWrite(sql, params) {
     if (!a) return 0;
     a.title = params.t;
     a.body = params.b;
+    a.pinned_at = params.pin ?? null;
     return 1;
   }
   if (/^\s*delete\s+from\s+announcements/.test(q)) {

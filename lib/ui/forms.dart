@@ -1162,12 +1162,17 @@ Future<bool> showAnnouncementForm(
   var saving = false;
   String? titleError;
   String? bodyError;
+  var pinned = announcement?.pinned ?? false;
   final initialTitle = title.text;
   final initialBody = body.text;
+  final initialPinned = pinned;
 
   final ok = await showEditorDialog(
     context: context,
-    draft: () => title.text != initialTitle || body.text != initialBody,
+    draft: () =>
+        title.text != initialTitle ||
+        body.text != initialBody ||
+        pinned != initialPinned,
     builder: (ctx, cancel) => StatefulBuilder(
       builder: (ctx, setLocal) {
         Future<void> save() async {
@@ -1184,9 +1189,14 @@ Future<bool> showAnnouncementForm(
               await announcement.update(
                 title: title.text.trim(),
                 body: body.text.trim(),
+                pinned: pinned,
               );
             } else {
-              await Announcement.insert(title: title.text.trim(), body: body.text.trim());
+              await Announcement.insert(
+                title: title.text.trim(),
+                body: body.text.trim(),
+                pinned: pinned,
+              );
             }
             if (ctx.mounted) Navigator.pop(ctx, true);
           } catch (e) {
@@ -1236,6 +1246,12 @@ Future<bool> showAnnouncementForm(
                 ),
               ),
               if (bodyError != null) _ErrorText(bodyError!),
+              const SizedBox(height: 14),
+              ShadSwitch(
+                value: pinned,
+                label: const Text('Sematkan di atas'),
+                onChanged: (v) => setLocal(() => pinned = v),
+              ),
             ],
           ),
         ), [title, body]);

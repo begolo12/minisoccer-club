@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:minisoccer_club/data/models.dart';
 import 'package:minisoccer_club/ui/export.dart';
 
 void main() {
@@ -51,6 +52,46 @@ void main() {
     test('baris tunggal tanpa CRLF tambahan', () {
       final csv = buildCsv([['satu']]);
       expect(csv, '\uFEFFsatu');
+    });
+  });
+
+  group('memberCsvRows()', () {
+    Member m({
+      String name = 'Budi',
+      String? phone = '0800111',
+      String? address = 'Jl. Merdeka 1',
+      bool active = true,
+    }) =>
+        Member(
+          id: 1,
+          name: name,
+          phone: phone,
+          address: address,
+          position: 'Bebas',
+          jersey: 9,
+          active: active,
+          joinedAt: DateTime.utc(2026, 3, 7),
+        );
+
+    test('baris pertama adalah kepala kolom', () {
+      final rows = memberCsvRows([m()]);
+      expect(rows.first,
+          ['Nama', 'Posisi', 'Punggung', 'HP', 'Alamat', 'Status', 'Bergabung']);
+    });
+
+    test('status mengikuti active, tanggal bergabung ISO', () {
+      final rows = memberCsvRows([m(), m(name: 'Ani', active: false)]);
+      expect(rows[1][5], 'Aktif');
+      expect(rows[2][5], 'Nonaktif');
+      // ISO, bukan format lokal: Excel/Sheets mengenalinya sebagai tanggal.
+      expect(rows[1][6], '2026-03-07');
+    });
+
+    test('HP/alamat kosong jadi sel kosong (bukan "null")', () {
+      final rows = memberCsvRows([m(phone: null, address: null)]);
+      expect(rows[1][3], isNull);
+      expect(rows[1][4], isNull);
+      expect(buildCsv(rows), isNot(contains('null')));
     });
   });
 }

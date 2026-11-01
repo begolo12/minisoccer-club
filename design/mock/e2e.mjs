@@ -249,22 +249,24 @@ const afterReset = await rows('SELECT * FROM tournament_matches WHERE tournament
 check('reset skor mengembalikan status terjadwal',
   afterReset[0].status === 'scheduled' && afterReset[0].score_home === null);
 
-// ---------- 13. Iuran: cek duplikat per anggota + periode ----------
+// ---------- 13. Iuran: cek duplikat per anggota + turnamen ----------
+// Iuran terikat turnamen (bukan bulan) — SQL persis dari models.dart
+// (`paymentExists`, `insertPayment`).
 const payMember = newMember.id;
-const period = new Date().toISOString().slice(0, 7);
-const before = await rows('SELECT 1 AS ok FROM payments WHERE member_id=@mid AND period=@p LIMIT 1',
-  { mid: payMember, p: period });
+const payTournament = 1;
+const before = await rows('SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
+  { mid: payMember, t: payTournament });
 check('belum ada iuran untuk anggota ini', before.length === 0, `${before.length} baris`);
 await run(
-  `INSERT INTO payments (member_id, amount, period, note)
-           VALUES (@mid, @amt, @period, @note)`,
-  { mid: payMember, amt: 75000, period, note: null },
+  `INSERT INTO payments (member_id, amount, tournament_id, note)
+           VALUES (@mid, @amt, @t, @note) RETURNING id`,
+  { mid: payMember, amt: 75000, t: payTournament, note: null },
 );
-const after = await rows('SELECT 1 AS ok FROM payments WHERE member_id=@mid AND period=@p LIMIT 1',
-  { mid: payMember, p: period });
+const after = await rows('SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
+  { mid: payMember, t: payTournament });
 check('iuran pertama tercatat', after.length === 1, `${after.length} baris`);
-const other = await rows('SELECT 1 AS ok FROM payments WHERE member_id=@mid AND period=@p LIMIT 1',
-  { mid: payMember + 100, p: period });
+const other = await rows('SELECT 1 AS ok FROM payments WHERE member_id=@mid AND tournament_id=@t LIMIT 1',
+  { mid: payMember + 100, t: payTournament });
 check('anggota lain tidak dianggap sudah bayar', other.length === 0, `${other.length} baris`);
 
 // ---------- 14. Buka lagi laga yang sudah selesai ----------
@@ -455,12 +457,13 @@ check('jadwal turnamen bisa dibuat ulang setelah skor direset',
 
 // ---------- 17d. Koreksi pengumuman & transaksi kas ----------
 await run(
-  'UPDATE announcements SET title=@t, body=@b WHERE id=@id',
-  { id: 1, t: 'Judul dikoreksi', b: 'Isi dikoreksi' },
+  'UPDATE announcements SET title=@t, body=@b, pinned_at=@pin WHERE id=@id',
+  { id: 1, t: 'Judul dikoreksi', b: 'Isi dikoreksi', pin: new Date().toISOString() },
 );
 const ann = (await rows('SELECT * FROM announcements')).find((a) => a.id === 1);
 check('pengumuman bisa dikoreksi tanpa membuat ulang',
   ann.title === 'Judul dikoreksi' && ann.body === 'Isi dikoreksi', ann.title);
+check('pengumuman bisa disematkan', Boolean(ann.pinned_at), String(ann.pinned_at));
 
 const txBefore = (await rows('SELECT * FROM transactions')).find((t) => t.kind === 'expense' && !t.booking_id);
 await run(
@@ -518,36 +521,33 @@ const rentTotal = (await rows('SELECT b.*, t.id AS transaction_id FROM bookings 
 check('total sewa = total catatan kas sewa', cashTotal === rentTotal,
   `kas ${cashTotal} vs booking ${rentTotal}`);
 
-// Iuran ganda: buat satu duplikat, pastikan terdeteksi lalu terhapus.
+// Iuran ganda: buat satu duplikat (anggota + turnamen sama), pastikan
+// terdeteksi lalu terhapus. Kunci uniknya (member_id, tournament_id) sejak
+// iuran pindah dari periode bulanan ke turnamen.
 await run(
-  `INSERT INTO payments (member_id, amount, period, note)
-           VALUES (@mid, @amt, @period, @note)`,
-  { mid: payMember, amt: 75000, period, note: 'duplikat uji' },
+  `INSERT INTO payments (member_id, amount, tournament_id, note)
+           VALUES (@mid, @amt, @t, @note) RETURNING id`,
+  { mid: payMember, amt: 75000, t: payTournament, note: 'duplikat uji' },
 );
-const dupeGroups = (await rows(
-  `SELECT count(*)::int AS n FROM (
-         SELECT 1 FROM payments GROUP BY member_id, period HAVING count(*) > 1
-       ) d`,
-))[0].n;
-check('iuran ganda terdeteksi', dupeGroups >= 1, `${dupeGroups} grup`);
-const allPayments = (await rows('SELECT * FROM payments')).sort(
-  (a, b) => a.member_id - b.member_id || a.period.localeCompare(b.period) ||
-    b.paid_at.localeCompare(a.paid_at) || b.id - a.id,
-);
-const seen = new Set();
-const toDelete = [];
-for (const p of allPayments) {
-  const key = `${p.member_id}|${p.period}`;
-  if (seen.has(key)) toDelete.push(p.id);
-  else seen.add(key);
-}
+const dedupeOf = (list) => {
+  const sorted = [...list].sort(
+    (a, b) => a.member_id - b.member_id || a.tournament_id - b.tournament_id ||
+      b.paid_at.localeCompare(a.paid_at) || b.id - a.id,
+  );
+  const seen = new Set();
+  const dupes = [];
+  for (const p of sorted) {
+    const key = `${p.member_id}|${p.tournament_id}`;
+    if (seen.has(key)) dupes.push(p.id);
+    else seen.add(key);
+  }
+  return dupes;
+};
+const toDelete = dedupeOf(await rows('SELECT * FROM payments'));
+check('iuran ganda terdeteksi', toDelete.length >= 1, `${toDelete.length} baris`);
 for (const id of toDelete) await run('DELETE FROM payments WHERE id=@id', { id });
-const dupeAfter = (await rows(
-  `SELECT count(*)::int AS n FROM (
-         SELECT 1 FROM payments GROUP BY member_id, period HAVING count(*) > 1
-       ) d`,
-))[0].n;
-check('setelah db:fix tidak ada iuran ganda', dupeAfter === 0, `${dupeAfter} grup`);
+const dupAfter = dedupeOf(await rows('SELECT * FROM payments')).length;
+check('setelah db:fix tidak ada iuran ganda', dupAfter === 0, `${dupAfter} baris`);
 
 console.log(failures === 0 ? '\nSEMUA E2E LULUS' : `\n${failures} E2E GAGAL`);
 process.exit(failures === 0 ? 0 : 1);

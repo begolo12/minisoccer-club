@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../core/save_file.dart';
+import '../data/models.dart';
 import 'fmt.dart';
 import 'theme.dart';
 
@@ -192,4 +193,68 @@ Future<void> showTextShare(
       );
     },
   );
+}
+
+/// Laporan kas siap-tempel: total per kategori + selisih, untuk periode yang
+/// sedang dipilih di halaman Kas.
+///
+/// Bentuknya teks polos berlabel (bukan kolom sejajar): tujuannya ditempel ke
+/// grup WhatsApp atau laporan pengurus, dan font proporsional di sana membuat
+/// spasi penjajar tidak berguna. Angka memakai `fmtMoney` yang sama dengan
+/// halaman, jadi laporan dan app tidak pernah menyebut nominal berbeda.
+String buildCashReportText({
+  required String periodName,
+  required CashSummary summary,
+  required CashByCategory byCategory,
+}) {
+  final buf = StringBuffer()..writeln('LAPORAN KAS — ${periodName.toUpperCase()}');
+
+  void section(String heading, List<CashCategoryTotal> items, String totalLabel, double total) {
+    buf
+      ..writeln()
+      ..writeln(heading);
+    if (items.isEmpty) {
+      buf.writeln('Tidak ada catatan.');
+    } else {
+      for (final c in items) {
+        buf.writeln('${c.label}: ${fmtMoney(c.total)} (${c.count} catatan)');
+      }
+    }
+    buf.writeln('$totalLabel: ${fmtMoney(total)}');
+  }
+
+  section('PEMASUKAN', byCategory.income, 'Total masuk', summary.income);
+  section('PENGELUARAN', byCategory.expense, 'Total keluar', summary.expense);
+
+  buf
+    ..writeln()
+    ..writeln('SELISIH (MASUK - KELUAR)')
+    ..writeln(fmtMoney(summary.balance));
+  return buf.toString();
+}
+
+/// Daftar anggota lengkap (aktif + nonaktif) sebagai baris CSV.
+///
+/// HP dan alamat ikut tercantum hanya untuk role yang memang boleh
+/// melihatnya: datanya diambil dari hasil query yang sudah disaring server
+/// (`api/_privacy.js`), jadi ekspor tidak pernah membocorkan lebih banyak
+/// daripada yang tampil di layar. Tanggal bergabung memakai ISO supaya
+/// Excel/Sheets mengenalinya sebagai tanggal, bukan teks.
+List<List<Object?>> memberCsvRows(List<Member> members) {
+  final rows = <List<Object?>>[
+    ['Nama', 'Posisi', 'Punggung', 'HP', 'Alamat', 'Status', 'Bergabung'],
+  ];
+  for (final m in members) {
+    rows.add([
+      m.name,
+      m.position,
+      m.jersey,
+      m.phone,
+      m.address,
+      m.active ? 'Aktif' : 'Nonaktif',
+      '${m.joinedAt.year}-${m.joinedAt.month.toString().padLeft(2, '0')}-'
+          '${m.joinedAt.day.toString().padLeft(2, '0')}',
+    ]);
+  }
+  return rows;
 }

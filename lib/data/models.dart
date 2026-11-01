@@ -1095,6 +1095,51 @@ class CashSummary {
   double get balance => income - expense;
 }
 
+/// Total satu kategori di buku kas, berikut berapa catatan yang membentuknya.
+class CashCategoryTotal {
+  final String label;
+  final double total;
+  final int count;
+
+  const CashCategoryTotal(this.label, this.total, this.count);
+}
+
+/// Hasil kelompokan buku kas per kategori.
+class CashByCategory {
+  final List<CashCategoryTotal> income;
+  final List<CashCategoryTotal> expense;
+
+  const CashByCategory({required this.income, required this.expense});
+}
+
+/// Kelompokkan buku kas per kategori untuk laporan bendahara: iuran dan
+/// tiap kategori transaksi jadi satu baris total.
+///
+/// Dihitung dari [CashEntry] yang sudah dimuat halaman Kas — bukan query
+/// agregat baru: jumlah per kategori harus persis sama dengan baris-baris
+/// yang tampil di buku kas, dan satu-satunya cara menjaminnya adalah
+/// menghitung dari daftar yang sama. Urutan menurun (terbesar dulu).
+CashByCategory summarizeCashByCategory(Iterable<CashEntry> entries) {
+  final inc = <String, (double, int)>{};
+  final exp = <String, (double, int)>{};
+  for (final e in entries) {
+    final map = e.isIncome ? inc : exp;
+    final prev = map[e.label] ?? (0.0, 0);
+    // Nominal pengeluaran disimpan negatif di CashEntry; total kategori
+    // dilaporkan positif seperti halnya "Keluar" di ringkasan halaman.
+    map[e.label] = (prev.$1 + (e.isIncome ? e.amount : -e.amount), prev.$2 + 1);
+  }
+  List<CashCategoryTotal> sorted(Map<String, (double, int)> m) {
+    final list = [
+      for (final en in m.entries) CashCategoryTotal(en.key, en.value.$1, en.value.$2),
+    ];
+    list.sort((a, b) => b.total.compareTo(a.total));
+    return list;
+  }
+
+  return CashByCategory(income: sorted(inc), expense: sorted(exp));
+}
+
 // ---------- Bookings ----------
 
 /// Booking sudah tersimpan tetapi catatan kasnya belum — kondisi parsial.
@@ -1656,41 +1701,123 @@ class Announcement {
   final int id;
   final String title;
   final String body;
+
+  /// Kapan pengumuman disematkan oleh pengurus; null = tidak disematkan.
+  /// Yang disematkan tampil paling atas (terbaru di antara yang disematkan),
+  /// supaya info penting (jatuh tempo iuran, perubahan jadwal) tidak
+  /// tenggelam oleh pengumuman baru.
+  final DateTime? pinnedAt;
   final DateTime createdAt;
 
   Announcement({
     required this.id,
     required this.title,
     required this.body,
+    this.pinnedAt,
     required this.createdAt,
   });
+
+  bool get pinned => pinnedAt != null;
 
   factory Announcement.fromMap(Map<String, dynamic> m) => Announcement(
         id: m['id'] as int,
         title: m['title'] as String,
         body: m['body'] as String,
+        pinnedAt: m['pinned_at'] == null ? null : _dt(m['pinned_at']),
         createdAt: _dt(m['created_at']),
       );
 
   static Future<List<Announcement>> all() async {
-    final rows = await Db.query('SELECT * FROM announcements ORDER BY created_at DESC LIMIT 50');
+    final rows = await Db.query(
+        'SELECT * FROM announcements ORDER BY pinned_at DESC NULLS LAST, created_at DESC LIMIT 50');
     return rows.map(Announcement.fromMap).toList();
   }
 
-  static Future<void> insert({required String title, required String body}) => Db.execute(
-        'INSERT INTO announcements (title, body) VALUES (@t, @b) RETURNING id',
-        params: {'t': title, 'b': body},
+  static Future<void> insert({
+    required String title,
+    required String body,
+    bool pinned = false,
+  }) =>
+      Db.execute(
+        'INSERT INTO announcements (title, body, pinned_at) VALUES (@t, @b, @pin) RETURNING id',
+        params: {'t': title, 'b': body, 'pin': _pinValue(pinned, null)},
       );
 
-  /// Ubah judul/isi. Tanpa ini salah ketik berarti hapus lalu buat ulang —
-  /// dan pengumuman lama yang sudah dibaca anggota ikut hilang.
-  Future<void> update({required String title, required String body}) => Db.executeExpect(
-        'UPDATE announcements SET title=@t, body=@b WHERE id=@id',
-        params: {'id': id, 't': title, 'b': body},
+  /// Ubah judul/isi/sematan. Tanpa ini salah ketik berarti hapus lalu buat
+  /// ulang — dan pengumuman lama yang sudah dibaca anggota ikut hilang.
+  ///
+  /// Sematan yang sudah ada mempertahankan waktunya: menyematkan ulang
+  /// setiap suntingan akan melompat-lompatkan urutan di antara pengumuman
+  /// yang sama-sama disematkan.
+  Future<void> update({
+    required String title,
+    required String body,
+    required bool pinned,
+  }) =>
+      Db.executeExpect(
+        'UPDATE announcements SET title=@t, body=@b, pinned_at=@pin WHERE id=@id',
+        params: {'id': id, 't': title, 'b': body, 'pin': _pinValue(pinned, pinnedAt)},
       );
 
   static Future<void> delete(int id) =>
       Db.execute('DELETE FROM announcements WHERE id=@id', params: {'id': id});
+
+  /// Nilai `pinned_at` untuk tulis: waktu semat lama (kalau sudah disematkan)
+  /// atau sekarang; null melepas sematan. ISO-UTC, bentuk yang sama dengan
+  /// parameter tanggal lain yang dikirim ke server.
+  static String? _pinValue(bool pinned, DateTime? existing) {
+    if (!pinned) return null;
+    return (existing ?? DateTime.now()).toUtc().toIso8601String();
+  }
+}
+
+/// Penanda "sudah dilihat" untuk pengumuman, per akun, hanya di perangkat.
+///
+/// Role anggota tidak punya hak tulis di API (read-only), jadi status baca
+/// tidak mungkin disimpan di server tanpa membuka pengecualian baru di
+/// penjaga query. Penandanya disimpan di secure storage dengan scope akun
+/// yang sama dengan cache baca (`Db.cacheScope`).
+///
+/// Konsekuensinya jujur: badge "baru" mengikuti PERANGKAT, bukan orang —
+/// buka dari HP lain dan pengumuman yang sama tampak baru lagi. Itu masih
+/// lebih berguna daripada tidak ada penanda sama sekali.
+class AnnouncementSeen {
+  AnnouncementSeen._();
+
+  static String get _key => 'announcements_seen:${Db.cacheScope}';
+
+  /// Id pengumuman terbesar yang sudah dibuka akun ini di perangkat ini.
+  /// Null = belum pernah membuka halaman pengumuman sama sekali — UI tidak
+  /// boleh menyalakan badge untuk SEMUA pengumuman hanya karena akun baru.
+  static Future<int?> lastId() async {
+    final raw = await SecureStore.read(_key);
+    if (raw == null) return null;
+    return int.tryParse(raw) ?? 0;
+  }
+
+  /// Catat seluruh [items] sebagai sudah dilihat (dipanggil saat halaman
+  /// pengumuman berhasil dimuat). Id sementara dari tulis offline (negatif)
+  /// dilewati: bukan penanda apa pun sampai sinkron memberi id asli.
+  ///
+  /// Kegagalan penyimpanan ditelan: pemanggil melepasnya tanpa await
+  /// (badge adalah informasi, bukan fitur kritis), dan exception async yang
+  /// tidak tertangani akan menjatuhkan app hanya karena penanda gagal ditulis.
+  static Future<void> mark(Iterable<Announcement> items) async {
+    try {
+      var max = 0;
+      for (final a in items) {
+        if (a.id > max) max = a.id;
+      }
+      if (max == 0) return;
+      final prev = await lastId();
+      if (prev == null || max > prev) {
+        await SecureStore.write(_key, '$max');
+      }
+    } catch (_) {
+      // penyimpanan tidak tersedia/penuh — kunjungan berikutnya cukup
+      // menampilkan badge yang sama sekali lagi.
+    }
+  }
 }
 
 // ---------- Sessions (per-babak, ada pemenangnya) ----------

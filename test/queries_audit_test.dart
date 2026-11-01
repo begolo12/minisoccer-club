@@ -268,7 +268,10 @@ void main() {
     // ---- Announcement ----
     await capture('Announcement.all', () => Announcement.all());
     await capture('Announcement.insert', () => Announcement.insert(title: '_audit', body: '_audit'));
-    await capture('Announcement.update', () => _ann.update(title: '_audit', body: '_audit'));
+    await capture('Announcement.insert (disematkan)',
+        () => Announcement.insert(title: '_audit', body: '_audit', pinned: true));
+    await capture('Announcement.update',
+        () => _ann.update(title: '_audit', body: '_audit', pinned: false));
     await capture('Announcement.delete', () => Announcement.delete(1));
 
     // ---- MatchSession ----

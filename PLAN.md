@@ -297,6 +297,43 @@ rail ditemukan oleh `find.bySemanticsLabel`), pohon a11y produksi kini memuat
 kelima tombol rail (dibuktikan lewat CDP), `check:features` 24/24 dan
 `check:visual` 52/52 di produksi 1.16.1.
 
+## Fitur 2026-11-01 (1.17.0+49): laporan kas, sematan pengumuman, ekspor anggota
+
+Audit PLAN 2026-10-27 sudah selesai seluruhnya dan tidak ada issue/TODO
+terbuka, jadi fitur dipilih dari analisis celah terhadap fitur yang ada —
+tanpa melanggar daftar "sengaja tidak dikerjakan" di bawah.
+
+| Fitur | Isi | Bukti |
+|---|---|---|
+| Laporan kas per kategori | Tombol **Laporan** di halaman Kas: total pemasukan/pengeluaran per kategori + jumlah catatan + selisih, sebagai teks siap-tempel (WhatsApp/laporan pengurus). Dihitung dari `CashEntry` yang sudah dimuat — bukan query agregat baru, supaya angka laporan tidak mungkin berbeda dari buku kas yang tampil | `summarizeCashByCategory` di `lib/data/models.dart`, `buildCashReportText` di `lib/ui/export.dart`, `_report()` di `lib/ui/finance.dart`; tes `test/cash_report_test.dart` (9) |
+| Pengumuman disematkan | Kolom `announcements.pinned_at` (ALTER idempoten); form punya switch **Sematkan di atas**; daftar diurut `pinned_at DESC NULLS LAST, created_at DESC`; ikon pin di halaman & beranda. Waktu semat lama dipertahankan saat suntingan — menyematkan ulang tiap edit akan melompat-lompatkan urutan | `db/schema.sql`, `Announcement` di `models.dart`, `showAnnouncementForm`, `announcements.dart`, rail berita `dashboard.dart`; tulis tetap dikenali penambal offline (WHERE `id=@id`, SET ber-parameter) |
+| Badge "Baru" pengumuman | Penanda "sudah dilihat" per akun di secure storage (`announcements_seen:<role>:<id>`, scope sama dengan cache). Role anggota read-only di API, jadi status baca memang tidak bisa disimpan di server tanpa pengecualian baru di penjaga — konsekuensinya jujur: badge mengikuti perangkat. Akun yang belum pernah membuka halaman tidak menyalakan badge untuk SEMUA pengumuman (derau) | `AnnouncementSeen` di `models.dart`, dipakai `announcements.dart` + `dashboard.dart`; tes `test/announcement_seen_test.dart` (11) |
+| Ekspor CSV anggota | Tombol ekspor di halaman Anggota (hanya admin/bendahara — berkas memuat HP & alamat, dan server pun menyaring kolom itu per role); daftar lengkap aktif + nonaktif dengan kolom Status; tanggal bergabung ISO | `memberCsvRows` di `export.dart`, `_export()` di `members.dart`; tes di `test/export_test.dart` (3 baru) |
+
+Ikutan diperbaiki: `design/mock/e2e.mjs` bagian iuran masih memakai model
+lama `payments.period` (sudah diganti `tournament_id` sejak iuran per
+turnamen) sehingga preview e2e crash sebelum mencapai bagian pengumuman —
+ditulis ulang ke bentuk sekarang; mock server + e2e kini mendukung
+`pinned_at` (48 PASS). `check-schema.mjs` ikut mengawasi `pinned_at`.
+
+**Verifikasi (lokal + produksi, 2026-11-01)**
+
+```
+flutter analyze          No issues found
+flutter test             308 lulus (287 + 21 baru)
+npm test                 65 lulus (query sematan baru lolos filter guard)
+flutter build web        sukses (release, no-cdn)
+mock preview e2e         48 PASS (server mock bersih)
+db:init                  93 statement (idempoten; +ALTER pinned_at)
+check:schema             Schema produksi cocok — announcements 5 kolom
+check:audit (produksi)   99/99 query lolos, termasuk SQL pengumuman baru —
+                         dijalankan SEBELUM deploy: kolom sudah ada di DB,
+                         app lama tidak menyentuhnya (SELECT * hanya
+                         mengembalikan kolom ekstra), jadi urutan deploy aman
+Pemeriksaan yang butuh login admin dijalankan lewat akun sementara
+`_uji_envcheck` (lihat catatan lingkungan di atas), dihapus setelah selesai.
+```
+
 ## Yang sengaja tidak dikerjakan
 
 | Hal | Alasan |

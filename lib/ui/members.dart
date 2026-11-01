@@ -3,6 +3,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 
 import '../data/auth.dart';
 import '../data/models.dart';
+import 'export.dart';
 import 'fmt.dart';
 import 'forms.dart';
 import 'member_dues.dart';
@@ -32,6 +33,38 @@ class _MembersPageState extends State<MembersPage> {
     final f = Member.all(activeOnly: _activeOnly);
     setState(() => _future = f);
     await f;
+  }
+
+  /// Ekspor daftar anggota lengkap (aktif & nonaktif) sebagai CSV.
+  ///
+  /// Daftarnya dimuat ulang tanpa saringan: ekspor adalah roster untuk
+  /// spreadsheet pengurus, bukan salinan tampilan layar yang kebetulan
+  /// sedang difilter/dicari. Hanya role yang boleh melihat HP & alamat
+  /// (admin, bendahara) yang mendapat tombol ini — berkasnya memuat data
+  /// pribadi, dan server pun menyaring kolomnya per role.
+  Future<void> _export() async {
+    List<Member> all;
+    try {
+      all = await Member.all();
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, 'Daftar belum termuat: ${errText(e)}');
+      return;
+    }
+    if (all.isEmpty) {
+      if (!mounted) return;
+      toast(context, 'Belum ada anggota untuk diekspor');
+      return;
+    }
+    if (!mounted) return;
+    await showCsvExport(
+      context,
+      title: 'Ekspor daftar anggota',
+      description: '${all.length} anggota (aktif & nonaktif), '
+          'tabel siap dibuka di aplikasi spreadsheet.',
+      filename: 'anggota.csv',
+      csv: buildCsv(memberCsvRows(all)),
+    );
   }
 
   @override
@@ -148,6 +181,9 @@ class _MembersPageState extends State<MembersPage> {
         if (Auth.isAdmin)
           iconAction(context, Icons.link, () => showRegistrationLinkDialog(context),
               tooltip: 'Tautan pendaftaran'),
+        if (Auth.canWrite)
+          iconAction(context, Icons.download_outlined, _export,
+              tooltip: 'Ekspor daftar anggota'),
         if (Auth.canWrite)
           iconAction(context, Icons.person_add_alt_1, () async {
             if (await showMemberForm(context)) _reload();

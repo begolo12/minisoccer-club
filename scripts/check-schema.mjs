@@ -60,7 +60,7 @@ const EXPECTED = {
   bookings: ['id', 'title', 'starts_at', 'duration_min', 'cost', 'status'],
   // Kehadiran per sesi + patungan biaya lapangan.
   booking_attendance: ['id', 'booking_id', 'member_id', 'share_amount', 'paid_at', 'note', 'created_at'],
-  announcements: ['id', 'title', 'body', 'created_at'],
+  announcements: ['id', 'title', 'body', 'pinned_at', 'created_at'],
   settings: ['key', 'value'],
   teams: ['id', 'name', 'created_at'],
   team_players: ['team_id', 'member_id'],

@@ -70,6 +70,12 @@ class _DashboardData {
   /// yang rusak. Beranda menampilkan ajakan masuk di tempat angka uang.
   final bool moneyLocked;
 
+  /// Penanda "sudah dilihat" pengumuman per perangkat (lihat
+  /// `AnnouncementSeen`). Null = halaman pengumuman belum pernah dibuka di
+  /// perangkat ini, dan badge "baru" sengaja tidak dinyalakan untuk semua —
+  /// seluruh daftar berlabel "baru" adalah derau, bukan informasi.
+  final int? seenAnnouncementId;
+
   _DashboardData({
     required this.upcoming,
     required this.tournaments,
@@ -89,6 +95,7 @@ class _DashboardData {
     this.membersKnown = true,
     this.cashKnown = true,
     this.moneyLocked = false,
+    this.seenAnnouncementId,
   });
 
   /// Laga yang sedang berlangsung — satu-satunya laga yang layak jadi papan
@@ -207,6 +214,10 @@ class _DashboardData {
       payments: payments,
       transactions: transactions,
     ));
+    // Penanda "sudah dilihat" ikut dimuat ulang setiap beranda dimuat, jadi
+    // setelah kembali dari halaman pengumuman badge "baru" langsung padam.
+    // Ini penyimpanan lokal per akun, bukan query — tidak ikut daftar soft().
+    final seenAnnouncementId = await AnnouncementSeen.lastId();
     return _DashboardData(
       upcoming: upcoming,
       tournaments: tournaments,
@@ -232,6 +243,7 @@ class _DashboardData {
       // yang sebenarnya melainkan nol yang tidak diketahui.
       cashKnown: money && r[5].ok && r[6].ok,
       moneyLocked: !money,
+      seenAnnouncementId: seenAnnouncementId,
     );
   }
 }
@@ -558,6 +570,32 @@ class _MainColumn extends StatelessWidget {
                   RowItem(
                     title: a.title,
                     subtitle: '${fmtDate(a.createdAt)} • ${a.body}',
+                    // Sematan dan badge "baru" ikut tampil di rail: pengumuman
+                    // penting yang disematkan pengurus harus dikenali sebagai
+                    // yang utama, dan yang belum dibaca mengajak dibuka.
+                    trailing: a.pinned ||
+                            (d.seenAnnouncementId != null &&
+                                a.id > d.seenAnnouncementId!)
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (a.pinned)
+                                Semantics(
+                                  label: 'Disematkan',
+                                  child: Icon(
+                                    Icons.push_pin,
+                                    size: 13,
+                                    color: t.colorScheme.primary,
+                                  ),
+                                ),
+                              if (d.seenAnnouncementId != null &&
+                                  a.id > d.seenAnnouncementId!) ...[
+                                if (a.pinned) const SizedBox(width: 6),
+                                Pill('Baru', color: t.colorScheme.primary),
+                              ],
+                            ],
+                          )
+                        : null,
                   ),
             ],
           ),

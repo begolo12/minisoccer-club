@@ -29,6 +29,10 @@ export const MONEY_READS = new Set([
 ]);
 
 export const reads = {
+  // Pengumuman boleh dibaca semua role (termasuk tamu); yang disematkan
+  // (`pinned_at`) diurut paling atas, sisanya menurut tanggal terbit.
+  announcements:
+    'SELECT * FROM announcements ORDER BY pinned_at DESC NULLS LAST, created_at DESC LIMIT 50',
   members: 'SELECT * FROM members WHERE active ORDER BY name',
   membersAll: 'SELECT * FROM members  ORDER BY name',
   memberCount: 'SELECT count(*)::int AS c FROM members WHERE active',
@@ -259,7 +263,10 @@ export const writes = {
   renameTeam: 'UPDATE teams SET name=@n WHERE id=@id',
   addPlayer: 'INSERT INTO team_players (team_id, member_id) VALUES (@t, @m) ON CONFLICT DO NOTHING',
   removePlayer: 'DELETE FROM team_players WHERE team_id=@t AND member_id=@m',
-  updateAnnouncement: 'UPDATE announcements SET title=@t, body=@b WHERE id=@id',
+  insertAnnouncement:
+    'INSERT INTO announcements (title, body, pinned_at) VALUES (@t, @b, @pin) RETURNING id',
+  updateAnnouncement:
+    'UPDATE announcements SET title=@t, body=@b, pinned_at=@pin WHERE id=@id',
   updateTransaction: `UPDATE transactions SET kind=@kind, category=@category,
              amount=@amount, occurred_at=@date, note=@note WHERE id=@id`,
   deleteAnnouncement: 'DELETE FROM announcements WHERE id=@id',
@@ -291,6 +298,10 @@ export const sampleParams = {
   min: 12,
   m: 1,
   p: '2026-10',
+  // Sematan pengumuman (`announcements.pinned_at`). Sengaja bukan @p: huruf
+  // itu sudah dipakai periode bulan, dan satu nilai contoh tidak bisa
+  // mewakili dua arti berbeda.
+  pin: '2026-10-01T10:00:00.000Z',
   // Rentang bulan untuk `Payment.inMonth` (nama sengaja bukan @a/@b supaya
   // tidak bertabrakan dengan id tim tamu).
   from: '2026-10-01T00:00:00.000Z',

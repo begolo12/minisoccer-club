@@ -205,8 +205,14 @@ CREATE TABLE IF NOT EXISTS announcements (
   id         SERIAL PRIMARY KEY,
   title      TEXT NOT NULL,
   body       TEXT NOT NULL,
+  pinned_at  TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Pengumuman penting (jatuh tempo iuran, perubahan jadwal) disematkan ke
+-- paling atas oleh pengurus; NULL = tidak disematkan. Kolomnya ditambahkan
+-- setelah rilis pertama, jadi DB lama butuh ALTER (idempoten).
+ALTER TABLE announcements ADD COLUMN IF NOT EXISTS pinned_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,

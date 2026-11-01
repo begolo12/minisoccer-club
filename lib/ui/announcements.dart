@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 
@@ -17,17 +19,37 @@ class AnnouncementsPage extends StatefulWidget {
 class _AnnouncementsPageState extends State<AnnouncementsPage> {
   late Future<List<Announcement>> _future;
 
+  /// Id pengumuman terbesar yang sudah dilihat saat halaman dibuka — yang
+  /// lebih baru daripadanya mendapat badge "baru". Null = akun ini belum
+  /// pernah membuka halaman ini di perangkat ini; badge tidak dinyalakan
+  /// sama sekali, karena melabeli seluruh daftar sebagai "baru" hanya
+  /// menjadi derau, bukan informasi.
+  int? _seenId;
+
   @override
   void initState() {
     super.initState();
-    _future = Announcement.all();
+    _load();
   }
 
-  Future<void> _reload() async {
-    final f = Announcement.all();
-    setState(() => _future = f);
-    await f;
+  Future<void> _load() async {
+    // Penanda dibaca harus diambil SEBELUM daftar dimuat: `mark` di bawah
+    // memperbaruinya, dan kalau urutannya terbalik setiap pengumuman sudah
+    // terhitung "dibaca" sebelum sempat ditampilkan — badge tidak pernah
+    // muncul sama sekali.
+    final seen = await AnnouncementSeen.lastId();
+    if (!mounted) return;
+    final f = Announcement.all().then((items) {
+      unawaited(AnnouncementSeen.mark(items));
+      return items;
+    });
+    setState(() {
+      _seenId = seen;
+      _future = f;
+    });
   }
+
+  Future<void> _reload() => _load();
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +109,27 @@ class _AnnouncementsPageState extends State<AnnouncementsPage> {
                               children: [
                                 Text(a.title, style: t.textTheme.large),
                                 const SizedBox(height: 2),
-                                Text(fmtDate(a.createdAt), style: t.textTheme.small),
+                                Row(
+                                  children: [
+                                    if (a.pinned) ...[
+                                      Semantics(
+                                        label: 'Disematkan',
+                                        child: Icon(
+                                          Icons.push_pin,
+                                          size: 12,
+                                          color: t.colorScheme.primary,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                    ],
+                                    Text(fmtDate(a.createdAt),
+                                        style: t.textTheme.small),
+                                    if (_seenId != null && a.id > _seenId!) ...[
+                                      const SizedBox(width: 8),
+                                      Pill('Baru', color: t.colorScheme.primary),
+                                    ],
+                                  ],
+                                ),
                               ],
                             ),
                           ),

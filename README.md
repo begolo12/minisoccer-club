@@ -50,13 +50,13 @@ Screenshot lain (30 layar, termasuk lebar 320px dan mode terang) ada di
 | **Beranda** | Sapaan akun, papan skor laga berjalan (kalau ada) atau hero turnamen berikutnya, turnamen terakhir dengan progres laga — hasil per pertandingan dibuka dengan diketuk, ringkasan anggota/main/iuran, kas bulan ini, aksi cepat, pengumuman; di layar lebar ditambah klasemen, top skor, dan sewa lapangan |
 | **Tanding** | Laga **internal antar tim klub**: jadwal, sesi/babak dengan pemenang, catat gol, umpan gol, dan kartu, tombol **Selesai** langsung di baris, klasemen tim (menang 3 / seri 1), riwayat hasil, hasil bisa dibuka lagi, dan hasil/jadwal bisa **disalin sebagai teks** untuk grup WhatsApp |
 | **Tim** | Tim klub 7–8 pemain: buat tim, atur pemain, klasemen abadi, riwayat laga per tim |
-| **Anggota** | CRUD pemain (nama, HP, alamat, posisi, nomor punggung), cari, filter aktif/nonaktif. Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
+| **Anggota** | CRUD pemain (nama, HP, alamat, posisi, nomor punggung), cari, filter aktif/nonaktif, **ekspor CSV daftar lengkap** (aktif & nonaktif, admin/bendahara). Ketuk baris untuk membuka rekap per anggota: total sudah dibayar, daftar tunggakan (bisa langsung dicatat), riwayat iuran, dan patungan lapangan. Ikon **Ubah** membuka form edit |
 | **Pendaftaran mandiri** | Tautan publik `/daftar` (juga bisa dari layar Masuk) untuk calon anggota: nama, nomor HP, alamat, dan posisi, semuanya wajib. Nama depan jadi username, akun langsung dibuat dengan password awal = nomor HP, dan tautannya bisa disalin dari Pengaturan |
 | **Turnamen internal** | Pilih tim klub, bagi ke grup (1–8), jadwal otomatis per grup (semua tim saling bertemu sekali), klasemen per grup (menang 3 / seri 1 / kalah 0, GM-GK-SG-poin); status draft/berjalan/selesai mengikuti hasil laga. **Iuran per anggota** diisi per turnamen dan bisa diubah kapan saja |
 | **Iuran** | Iuran **per turnamen** (bukan per bulan): pilih turnamen, lihat siapa yang belum bayar (bisa diketuk untuk langsung mencatat), nominal kurang, riwayat, dan **pesan tunggakan siap-tempel** untuk grup WhatsApp. Peserta = anggota dari tim yang ikut turnamen itu, jadi orang yang tidak bermain di turnamen tersebut tidak ikut ditagih |
-| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan), dan **ekspor CSV** (kronologis + saldo berjalan, siap dibuka di Excel/Sheets) |
+| **Kas klub** | Buku kas: iuran + pemasukan/pengeluaran (sewa, wasit, konsumsi, perlengkapan, sponsor), saldo per bulan atau semua waktu (dengan pemisah bulan), **ekspor CSV** (kronologis + saldo berjalan, siap dibuka di Excel/Sheets), dan **laporan per kategori** (total masuk/keluar per kategori + selisih, siap ditempel ke grup atau laporan pengurus) |
 | **Sewa lapangan** | Jadwal sewa dipisah "Akan datang" & "Riwayat", durasi, biaya, tandai selesai/batal; biaya sewa bisa langsung dicatat sebagai pengeluaran kas (satu sewa = satu catatan kas, dan bila pencatatannya gagal di tengah, sisanya masuk antrean — booking tidak pernah diulang dari form). Ketuk baris untuk **kehadiran & patungan**: tandai siapa yang main, biaya sewa dibagi rata otomatis (sisa pembulatan dibagikan satu rupiah supaya jumlahnya tetap pas), dan tiap setoran masuk Kas sebagai pemasukan "Patungan lapangan". Membatalkan sewa ikut membuang setoran patungannya |
-| **Pengumuman** | Info klub untuk anggota |
+| **Pengumuman** | Info klub untuk anggota. Pengurus bisa **menyematkan** pengumuman penting (jatuh tempo iuran, perubahan jadwal) ke paling atas; pengumuman yang belum dibuka mendapat badge **Baru** di beranda dan di halamannya (per akun, per perangkat) |
 | **Statistik** | Main/menang/seri/kalah, gol per laga, selisih gol, pencetak gol + umpan gol (5 teratas, sisanya bisa dibuka), klasemen tim |
 | **Akun & akses** | Khusus admin: daftar akun dengan **ID**, role, anggota tertaut, status, dan tanggal dibuat. Ketuk satu akun → ubah username, role, tautan anggota, aktif/nonaktif, **setel password baru** (ditampilkan sekali + tombol salin), hapus akun. Password lama tidak bisa ditampilkan karena disimpan bcrypt satu arah |
 | **Akun saya** | Untuk role anggota: total iuran, tunggakan, main berikutnya, dan riwayat iuran — jawaban untuk "saya sudah bayar apa?" tanpa mencari nama sendiri di daftar anggota |
@@ -82,8 +82,10 @@ Warna teks kecil di tema terang sudah memenuhi kontras AA (5,1:1).
 
 Keluaran untuk orang luar: buku kas diekspor sebagai berkas tabel (CSV:
 kronologis + saldo berjalan; di web diunduh sebagai berkas, di HP disalin ke
-clipboard untuk ditempel ke aplikasi spreadsheet), daftar tunggakan iuran
-disalin sebagai pesan WhatsApp, dan hasil laga disalin sebagai teks pengumuman.
+clipboard untuk ditempel ke aplikasi spreadsheet), laporan kas per kategori
+disalin sebagai pesan siap-tempel, daftar anggota diekspor sebagai CSV
+(admin/bendahara), daftar tunggakan iuran disalin sebagai pesan WhatsApp, dan
+hasil laga disalin sebagai teks pengumuman.
 
 Catatan: APK sekarang selalu lewat `/api` (token sesi). Connection string DB
 hanya ada di env server, tidak lagi disimpan di HP.
@@ -169,7 +171,7 @@ di web).
 
 | Perintah | Yang dibuktikan |
 |---|---|
-| `flutter test` | 282 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, **tinggi target sentuh judul bagian & chip periode**, dan **shell tetap ada saat halaman turunan dibuka** |
+| `flutter test` | 308 tes: parser SQL, penambalan cache, urutan sinkron, pemetaan id, default kolom vs skema, semua tulis terklasifikasi, **jalur berkas Android** (`cache_io`/`outbox_store_io`), klasifikasi kegagalan jaringan, input nominal, keamanan sinkron, iuran per turnamen, **dialog yang tetap terbuka saat offline**, **penggabungan query satu gelombang**, **writeId untuk tulis idempoten**, **tinggi target sentuh judul bagian & chip periode**, **shell tetap ada saat halaman turunan dibuka**, **laporan kas per kategori**, **sematan + penanda dibaca pengumuman per akun**, dan **baris CSV daftar anggota** |
 | `npm run check:offline` | Di **Chrome sungguhan** terhadap produksi: login → tambah anggota → matikan jaringan → tambah lagi (langsung terlihat) → tutup app → buka lagi → terkirim otomatis ke database |
 | `VIEWPORT=mobile npm run check:offline` | Alur yang sama di layout HP 390×844 (layout yang dipakai APK) |
 | `npm run check:sw` | Server statis **dimatikan** lalu halaman dimuat ulang: app Flutter harus tetap jalan dari cache (disajikan di sub-jalur `/minisoccer/`, sama seperti produksi) |
